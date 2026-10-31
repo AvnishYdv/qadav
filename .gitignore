@@ -1,0 +1,22 @@
+# Binaries
+/bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# LLVM intermediate files
+*.ll
+*.o
+
+# User data
+~/.qadav/
+.vscode/
+
+# Cache files
+*.ydv.cache
+
+# Go build artifacts
+bin/
+*.test
+
