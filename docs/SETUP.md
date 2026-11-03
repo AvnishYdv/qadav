@@ -159,7 +159,41 @@ Qadav provides native cryptographic tamper simulation statements (such as `corru
 In standard builds without `--test`, any test-only statement produces a compile-time type-checker error.
 
 ### Runtime Modules
-Qadav features 30 modular zero-libc runtime objects compiled on demand: `rt`, `tensor`, `nn`, `quantum`, `prime`, `io`, `dataset`, `quasinary`, `cir`, `agi`, `sha3`, `merkle`, `lamport`, `selfcheck`, `qeeh`, `qemwv`, `mctp`, `qemp`, `qecmt`, `qera`, `qecma`, `qec` (QEC-QEMP), `consolidate` (episodic-to-semantic memory consolidation), `scoped` (CB-SRCPP privacy-preserving access), `tools` (safe tool orchestration), `certificate` (TTPCR type-tagged proof-carrying reasoning certificates), `abstain` (calibrated epistemic uncertainty and abstention), `sandbox` (QESI quantum-entangled sandbox isolation), `gpu` (DirectCompute GPU acceleration), and `agke` (Invention #17: Attested GPU Kernel Execution).
+Qadav features 32 modular zero-libc runtime objects compiled on demand (expanded from 30 objects in M6.3+M6.4):
+1. `qadav_alloc` (Zero-libc arena & page allocator)
+2. `qadav_sha3` (Keccak-f1600 / SHA3-256 cryptographic sponge)
+3. `qadav_merkle` (Merkle tree builder & root authentication)
+4. `qadav_lamport` (WOTS post-quantum signature engine)
+5. `qadav_selfcheck` (PE self-validation & code nullification)
+6. `qadav_runtime` (Core runtime entrypoint & syscall layer)
+7. `qadav_tensor` (Tensor storage, strided slicing, allocations)
+8. `qadav_quantum` (Simulated statevector & qubit entanglement)
+9. `qadav_quasinary` (Balanced-ternary & energy minimization)
+10. `qadav_prime` (Prime-symbolic knowledge ontology)
+11. `qadav_dataset` (Batching, streaming, dataset pipelines)
+12. `qadav_cir` (Cognitive Intermediate Representation)
+13. `qadav_agi` (Native AGI types & causality graphs)
+14. `qadav_qeeh` (Quantum-Entangled Ethical Hamiltonian)
+15. `qadav_qemwv` (Quantum-Entangled Model Weight Vault)
+16. `qadav_mctp` (Merkle-Certified Training Provenance)
+17. `qadav_qemp` (Quantum-Entangled Memory Provenance)
+18. `qadav_qecmt` (Quantum-Entangled Cross-Model Transfer)
+19. `qadav_qera` (Quantum-Entangled Reasoning Attestation)
+20. `qadav_qecma` (Quantum-Entangled Cross-Modal Attestation)
+21. `qadav_qec` (Quantum Error-Corrected Memory Provenance)
+22. `qadav_consolidate` (Episodic-to-semantic memory consolidation)
+23. `qadav_scoped` (CB-SRCPP privacy-preserving scoped access)
+24. `qadav_tools` (Safe tool orchestration & pre/post conditions)
+25. `qadav_certificate` (TTPCR type-tagged reasoning certificates)
+26. `qadav_abstain` (Calibrated epistemic uncertainty & abstention)
+27. `qadav_sandbox` (QESI quantum-entangled sandbox isolation)
+28. `qadav_gpu` (DirectCompute GPU device detection & CPU fallback)
+29. `qadav_agke` (Attested GPU Kernel Execution - Invention #17)
+30. `qadav_gpu_matmul` (Zero-libc fallback matrix kernels)
+31. `qadav_multigpu` (Multi-GPU DXGI pipeline parallelism, added in M6.3)
+32. `qadav_cdaga` (Cross-Device Attested Gradient Aggregation - Invention #18, added in M6.4)
+
+*Transition Note (30 → 32):* In M6.3 and M6.4, the runtime was modularly expanded from 30 to 32 compiled C objects by adding `qadav_multigpu.c` (DXGI device topology & pipeline execution) and `qadav_cdaga.c` (canonical device-sorted gradient aggregation attestation).
 
 ### Standard Library Management:
 ```powershell

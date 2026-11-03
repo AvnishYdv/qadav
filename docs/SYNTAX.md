@@ -221,6 +221,22 @@ AGKEVerifyExpr      ::= "agke_verify" Ident
 CorruptGPUDigestStmt::= "corrupt_gpu_digest" Ident "at" "↦" IntLit "·"  // --test only
 ```
 
+### 22. Multi-GPU Pipeline Parallelism Grammar (M6.3)
+Multi-GPU pipeline parallelism grammar enables multi-accelerator stage partitioning:
+```bnf
+PipelineClaimStmt   ::= ("@multi_device")? "pipeline_claim" IntLit "stages" "micro_batch" IntLit "into" Ident "·"
+PipelineRunStmt     ::= "pipeline_run" Ident "on" Expr "into" Expr "·"
+```
+
+### 23. Cross-Device Attested Gradient Aggregation (CDAGA) Grammar (M6.4)
+Invention #18 provides cryptographic attestation for distributed gradient reduction:
+```bnf
+CDAGARecordStmt     ::= "cdaga_record" ("from")? "⟬" (Expr ("⸴" Expr)*)? "⟭" "into" Ident "·"
+CDAGAAttestStmt     ::= "cdaga_attest" Ident "to" Ident "·"
+CDAGAVerifyStmt     ::= "cdaga_verify" Ident ("into" Ident)? "·"
+CorruptCDAGAStmt    ::= "corrupt_cdaga" Ident "at" "↦" Expr "·"  // --test only
+```
+
 ### Compiler Testing Flags:
 - `--test`: Enables test-only AST statements (e.g. `corrupt_memory_share`, `corrupt_reasoning_step`, `corrupt_syndrome`) for cryptographic tamper resilience verification. In normal builds, test-only statements are rejected with a checker error.
 

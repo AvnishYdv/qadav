@@ -3,9 +3,9 @@
 ## Executive Summary
 The Qadav intellectual property portfolio follows a dual-track strategy designed to secure foundational research innovations while establishing proprietary commercial advantages in quantum-safe AI systems.
 
-Total Innovations: 17
+Total Innovations: 18
 - **Patent-Free Defensive Publications (6)**: Established in Phase 2 & Phase 3 as prior art to prevent third-party patent trolling and guarantee universal developer access to core runtime primitives.
-- **Patent-Pending Commercial Inventions (11)**: Developed in Phase 4, Phase 5, and Phase 6, providing proprietary cryptographic security for enterprise AI model protection, training provenance, memory integrity, parameter transfer, reasoning attestation, cross-modal attestation, quantum error-corrected memory provenance, cross-boundary privacy-preserving semantic recall, type-tagged proof-carrying reasoning, quantum-entangled sandbox isolation, and attested GPU kernel execution.
+- **Patent-Pending Commercial Inventions (12)**: Developed in Phase 4, Phase 5, and Phase 6, providing proprietary cryptographic security for enterprise AI model protection, training provenance, memory integrity, parameter transfer, reasoning attestation, cross-modal attestation, quantum error-corrected memory provenance, cross-boundary privacy-preserving semantic recall, type-tagged proof-carrying reasoning, quantum-entangled sandbox isolation, attested GPU kernel execution, and cross-device attested gradient aggregation.
 
 ---
 
@@ -37,11 +37,12 @@ Total Innovations: 17
 | #15 | Type-Tagged Proof-Carrying Reasoning (TTPCR) | Phase 5 (M5.9) | Type-tagged inference certificates, bounded cryptographic proof witness embedding, non-zero hash invariant enforcement, and calibrated product-rule abstention with graceful failure. |
 | #16 | Quantum-Entangled Sandbox Isolation (QESI) | Phase 5 (M5.11) | Register-level quantum isolation, contained decoherence, host continuity guarantee, and post-quantum SHA3 forensic attestation coupling to host reasoning chains. |
 | #17 | Attested GPU Kernel Execution (AGKE) | Phase 6 (M6.2) | Hardware-bound GPU device UUID verification, input/output buffer SHA3-256 digests, bytecode hashing, host QERA attestation, and active decoherence on tamper. |
+| #18 | Cross-Device Attested Gradient Aggregation (CDAGA) | Phase 6 (M6.4) | Canonical lexicographical device sorting, per-device gradient SHA3-256 digests, 468-byte contiguous record preimage, multi-device DXGI topology hash binding, and active decoherence on gradient poisoning. |
 
 ---
 
 ## 3. Prosecution & Enforcement Strategy
 1. **Prior Art Anchoring**: All 6 defensive publications are cross-referenced across public documentation, formal grammar specifications, and reproducible test suites to defeat rival patent claims.
-2. **Deterministic Claims**: Patent-pending inventions (#7–#17) emphasize ASLR-independent deterministic serialization, eliminating hardware-specific variability and establishing reproducible patent claim verification.
+2. **Deterministic Claims**: Patent-pending inventions (#7–#18) emphasize ASLR-independent deterministic serialization, eliminating hardware-specific variability and establishing reproducible patent claim verification.
 3. **Hardware Coupling**: Active quantum wavefunction decoherence and CPU-level zeroing enforce rights directly at the hardware runtime level rather than relying solely on post-hoc legal remedies.
 

@@ -1,0 +1,10 @@
+process main⦅⦆ → int64 ⟦
+    tensor⟨float64⟩⟬2⸴ 2⟭ a ↦ tensor⟬⟬1.0⸴ 2.0⟭⸴ ⟬3.0⸴ 4.0⟭⟭ ·
+
+    @multi_device pipeline_claim 2 stages micro_batch 4 into p_plan ·
+    pipeline_run p_plan on a into out_res ·
+
+    emit "Multi-GPU Pipeline Parallelism Completed Successfully" ·
+    yield 0 ·
+⟧
+

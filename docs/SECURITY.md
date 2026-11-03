@@ -321,6 +321,22 @@ By eliminating `<stdio.h>`, `<stdlib.h>`, `<string.h>`, and `<math.h>`:
 5. **Fail-Stop Wavefunction Decoherence**:
    - Unlike software-level exceptions, any AGKE verification failure immediately triggers global quantum wavefunction collapse (`qadav_qeeh_trigger_decoherence`) and zero-libc process self-nullification (`ExitProcess(0xDEADBEEF)`).
 
+---
+
+## 24. Cross-Device Attested Gradient Aggregation Security (CDAGA — Invention #18)
+
+1. **Adversarial Gradient Poisoning Defense**:
+   - In distributed AI training across multiple accelerators or compute nodes, an adversary attempting gradient inversion, backdoor injection, or weight poisoning must alter gradient bytes. Any such bit modification changes the local device SHA3-256 gradient digest, causing a mismatch in the compound aggregation digest.
+2. **Canonical Lexicographical Sorting Invariance**:
+   - To eliminate packet-order race conditions and timing attacks, CDAGA sorts all participating accelerator UUIDs in strict lexicographical order before constructing the 468-byte contiguous record preimage.
+3. **Physical Topology Hash Anchoring**:
+   - Multi-device DXGI adapter topology is hashed via SHA3-256 into every aggregation record, preventing device spoofing, VM migration hijacking, or unauthorized GPU hot-unplugging during gradient reduction.
+4. **QERA Attestation & Bounded Retries**:
+   - Aggregated records are bound into host QERA chains. Verification occurs before optimizer weight updates; failures are fatal and non-retryable.
+5. **Fail-Stop Quantum Decoherence**:
+   - Any corruption in the 468-byte contiguous record or gradient digest triggers quantum wavefunction collapse (`qadav_qeeh_trigger_decoherence`) and terminates the host process immediately with status `0xDEADBEEF`.
+
+
 
 
 

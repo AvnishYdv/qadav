@@ -134,6 +134,24 @@ func (l *Lexer) NextToken() token.Token {
 					File:    l.file,
 				}
 			}
+			if id == "multi_device" {
+				return token.Token{
+					Type:    token.MULTI_DEVICE,
+					Literal: "@multi_device",
+					Line:    startLine,
+					Col:     startCol,
+					File:    l.file,
+				}
+			}
+			if id == "distributed" {
+				return token.Token{
+					Type:    token.DIST_INIT,
+					Literal: "@distributed",
+					Line:    startLine,
+					Col:     startCol,
+					File:    l.file,
+				}
+			}
 			return token.Token{
 				Type:    token.ILLEGAL,
 				Literal: "@" + id,

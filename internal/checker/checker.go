@@ -615,6 +615,45 @@ func (c *Checker) checkStmt(stmt ast.Stmt) {
 	case *ast.CorruptGPUDigestStmt:
 		c.checkCorruptGPUDigestStmt(s)
 
+	case *ast.PipelineClaimStmt:
+		c.checkPipelineClaimStmt(s)
+
+	case *ast.PipelineRunStmt:
+		c.checkPipelineRunStmt(s)
+
+	case *ast.CDAGARecordStmt:
+		c.checkCDAGARecordStmt(s)
+
+	case *ast.CDAGAAttestStmt:
+		c.checkCDAGAAttestStmt(s)
+
+	case *ast.CDAGAVerifyStmt:
+		c.checkCDAGAVerifyStmt(s)
+
+	case *ast.CorruptCDAGAStmt:
+		c.checkCorruptCDAGAStmt(s)
+
+	case *ast.AllReduceStmt:
+		c.checkAllReduceStmt(s)
+
+	case *ast.PserverInitStmt:
+		c.checkPserverInitStmt(s)
+
+	case *ast.PserverAggregateStmt:
+		c.checkPserverAggregateStmt(s)
+
+	case *ast.BaratSubmitStmt:
+		c.checkBaratSubmitStmt(s)
+
+	case *ast.BaratAggregateStmt:
+		c.checkBaratAggregateStmt(s)
+
+	case *ast.BaratVerifyStmt:
+		c.checkBaratVerifyStmt(s)
+
+	case *ast.CorruptBaratStmt:
+		c.checkCorruptBaratStmt(s)
+
 	case *ast.ExprStmt:
 		c.checkExpr(s.Expr)
 

@@ -1793,6 +1793,71 @@ qyn run --test examples\agke_tamper.ydv
 Output: *(Process self-nullified immediately)*  
 Exit code: `0xDEADBEEF` (`-559038737`)
 
+---
+
+## 44. Multi-GPU Pipeline Parallelism / मल्टी-जीपीयू पाइपलाइन समानांतरता
+
+File: `examples/multi_gpu_pipeline.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    tensor⟨float64⟩⟬2⸴ 2⟭ a ↦ tensor⟬⟬1.0⸴ 2.0⟭⸴ ⟬3.0⸴ 4.0⟭⟭ ·
+
+    @multi_device pipeline_claim 2 stages micro_batch 4 into p_plan ·
+    pipeline_run p_plan on a into out_res ·
+
+    emit "Multi-GPU Pipeline Parallelism Completed Successfully" ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\multi_gpu_pipeline.ydv
+```
+Output:
+```
+Multi-GPU Pipeline Parallelism Completed Successfully
+```
+Exit code: `0`
+
+---
+
+## 45. Cross-Device Attested Gradient Aggregation (CDAGA) / क्रॉस-डिवाइस प्रमाणित ग्रेडिएंट एकत्रीकरण
+
+File: `examples/cdaga_demo.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule execution_safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain training_log with auth ⟦ capacity ↦ 20 · ⟧
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_dev0 ↦ tensor⟬⟬0.01⸴ 0.02⟭⸴ ⟬0.03⸴ 0.04⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_dev1 ↦ tensor⟬⟬0.05⸴ 0.06⟭⸴ ⟬0.07⸴ 0.08⟭⟭ ·
+
+    cdaga_record from ⟬grad_dev0⸴ grad_dev1⟭ into rec ·
+    cdaga_attest rec to training_log ·
+    cdaga_verify rec into is_valid ·
+
+    emit "CDAGA Cross-Device Attested Gradient Aggregation Verified" ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\cdaga_demo.ydv
+```
+Output:
+```
+CDAGA Cross-Device Attested Gradient Aggregation Verified
+```
+Exit code: `0`
+
+
 
 
 

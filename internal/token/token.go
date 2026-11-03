@@ -406,6 +406,29 @@ const (
 	AGKE_ATTEST        Type = "AGKE_ATTEST"
 	AGKE_VERIFY        Type = "AGKE_VERIFY"
 	CORRUPT_GPU_DIGEST Type = "CORRUPT_GPU_DIGEST"
+
+	// M6.3: Multi-GPU Pipeline Parallelism Keywords
+	PIPELINE_CLAIM Type = "PIPELINE_CLAIM"
+	PIPELINE_RUN   Type = "PIPELINE_RUN"
+	MULTI_DEVICE   Type = "MULTI_DEVICE"
+
+	// M6.4: CDAGA (Invention #18: Cross-Device Attested Gradient Aggregation) Keywords
+	CDAGA_RECORD  Type = "CDAGA_RECORD"
+	CDAGA_ATTEST  Type = "CDAGA_ATTEST"
+	CDAGA_VERIFY  Type = "CDAGA_VERIFY"
+	CORRUPT_CDAGA Type = "CORRUPT_CDAGA"
+
+	// M6.5: Distributed Training Keywords
+	ALL_REDUCE   Type = "ALL_REDUCE"
+	PSERVER_INIT Type = "PSERVER_INIT"
+	PSERVER_AGG  Type = "PSERVER_AGG"
+	DIST_INIT    Type = "DIST_INIT"
+
+	// M6.6: BARAT (Invention #19: Byzantine-Attested Robust Aggregation) Keywords
+	BARAT_SUBMIT    Type = "BARAT_SUBMIT"
+	BARAT_AGGREGATE Type = "BARAT_AGGREGATE"
+	BARAT_VERIFY    Type = "BARAT_VERIFY"
+	CORRUPT_BARAT   Type = "CORRUPT_BARAT"
 )
 
 
@@ -808,6 +831,29 @@ var keywords = map[string]Type{
 	"agke_verify":        AGKE_VERIFY,
 	"corrupt_gpu_digest": CORRUPT_GPU_DIGEST,
 
+	// M6.3: Multi-GPU Pipeline Parallelism
+	"@multi_device":  MULTI_DEVICE,
+	"pipeline_claim": PIPELINE_CLAIM,
+	"pipeline_run":   PIPELINE_RUN,
+
+	// M6.4: CDAGA (Invention #18)
+	"cdaga_record":  CDAGA_RECORD,
+	"cdaga_attest":  CDAGA_ATTEST,
+	"cdaga_verify":  CDAGA_VERIFY,
+	"corrupt_cdaga": CORRUPT_CDAGA,
+
+	// M6.5: Distributed Training
+	"all_reduce":        ALL_REDUCE,
+	"pserver_init":      PSERVER_INIT,
+	"pserver_aggregate": PSERVER_AGG,
+	"@distributed":      DIST_INIT,
+
+	// M6.6: BARAT (Invention #19)
+	"barat_submit":    BARAT_SUBMIT,
+	"barat_aggregate": BARAT_AGGREGATE,
+	"barat_verify":    BARAT_VERIFY,
+	"corrupt_barat":   CORRUPT_BARAT,
+
 	// Cryptography
 	"sign":    SIGN,
 	"verify":  VERIFY,
@@ -940,6 +986,21 @@ var fallbacks = func() map[string]Type {
 		`\agke_attest`:            AGKE_ATTEST,
 		`\agke_verify`:            AGKE_VERIFY,
 		`\corrupt_gpu_digest`:     CORRUPT_GPU_DIGEST,
+		`\pipeline_claim`:         PIPELINE_CLAIM,
+		`\pipeline_run`:           PIPELINE_RUN,
+		`\multi_device`:           MULTI_DEVICE,
+		`\cdaga_record`:           CDAGA_RECORD,
+		`\cdaga_attest`:           CDAGA_ATTEST,
+		`\cdaga_verify`:           CDAGA_VERIFY,
+		`\corrupt_cdaga`:          CORRUPT_CDAGA,
+		`\all_reduce`:              ALL_REDUCE,
+		`\pserver_init`:            PSERVER_INIT,
+		`\pserver_aggregate`:       PSERVER_AGG,
+		`\distributed`:            DIST_INIT,
+		`\barat_submit`:           BARAT_SUBMIT,
+		`\barat_aggregate`:        BARAT_AGGREGATE,
+		`\barat_verify`:           BARAT_VERIFY,
+		`\corrupt_barat`:          CORRUPT_BARAT,
 	}
 	for k, v := range kwFallbacks {
 		m[k] = v

@@ -66,6 +66,8 @@ func runCryptoTestHarness(t *testing.T, testName string) string {
 #include "qadav_sandbox.h"
 #include "qadav_gpu.h"
 #include "qadav_agke.h"
+#include "qadav_multigpu.h"
+#include "qadav_cdaga.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -88,6 +90,12 @@ static int qadav_streq(const char* a, const char* b) {
     if (!a || !b) return 0;
     while (*a && *b && *a == *b) { a++; b++; }
     return (*a == *b);
+}
+
+static void qadav_copy_bytes(void* dst, const void* src, unsigned long long n) {
+    unsigned char* d = (unsigned char*)dst;
+    const unsigned char* s = (const unsigned char*)src;
+    for (unsigned long long i = 0; i < n; i++) d[i] = s[i];
 }
 
 int main(void) {
@@ -612,7 +620,7 @@ int main(void) {
         hex_dump(out, 32);
         return 0;
     }
-    if (req[0] == 'm') { // merkle
+    if (qadav_streq(req, "merkle")) {
         unsigned char* buf = (unsigned char*)qadav_alloc(10000);
         if (!buf) return 1;
         for (int i = 0; i < 10000; i++) buf[i] = (unsigned char)(i & 0xFF);
@@ -1561,6 +1569,170 @@ int main(void) {
         qadav_agke_verify(chain, auth);
         return 0; // Should not reach here
     }
+    if (qadav_streq(req, "multigpu_init_and_plan")) {
+        qadav_multigpu_context* ctx = qadav_multigpu_init();
+        if (!ctx) return 1;
+        int res = qadav_multigpu_build_pipeline(ctx, 8, 2, 4);
+        if (res != 0) return 2;
+        qadav_multigpu_shutdown(ctx);
+        qadav_write_raw("MULTIGPU_INIT_AND_PLAN_OK\n", 26);
+        return 0;
+    }
+    if (qadav_streq(req, "multigpu_run_fallback")) {
+        qadav_multigpu_context* ctx = qadav_multigpu_init();
+        if (!ctx) return 1;
+        qadav_multigpu_build_pipeline(ctx, 4, 2, 2);
+        double in[4] = {1.0, 2.0, 3.0, 4.0};
+        double out[4] = {0.0, 0.0, 0.0, 0.0};
+        int res = qadav_multigpu_run_pipeline(ctx, in, out);
+        if (res != 0) return 2;
+        qadav_multigpu_shutdown(ctx);
+        qadav_write_raw("MULTIGPU_RUN_OK\n", 16);
+        return 0;
+    }
+    if (qadav_streq(req, "cdaga_record_and_verify")) {
+        qadav_multigpu_context* ctx = qadav_multigpu_init();
+        qadav_cdaga_record rec;
+        double g0[4] = {0.01, 0.02, 0.03, 0.04};
+        double g1[4] = {0.05, 0.06, 0.07, 0.08};
+        void* bufs[2] = {g0, g1};
+        unsigned long long sizes[2] = {sizeof(g0), sizeof(g1)};
+        int rres = qadav_cdaga_record_aggregation(ctx, 1, bufs, sizes, 2, &rec);
+        if (rres != 0) return 1;
+        int vres = qadav_cdaga_verify(&rec, ctx);
+        if (vres != 1) return 2;
+        qadav_multigpu_shutdown(ctx);
+        qadav_write_raw("CDAGA_RECORD_AND_VERIFY_OK\n", 27);
+        return 0;
+    }
+    if (qadav_streq(req, "cdaga_attest_to_qera")) {
+        qadav_multigpu_context* ctx = qadav_multigpu_init();
+        double pen = 1.0;
+        qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
+        qadav_reasoning_chain* chain = qadav_qera_create("cdaga_train_chain", 10, auth);
+        qadav_cdaga_record rec;
+        double g0[4] = {0.1, 0.2, 0.3, 0.4};
+        void* bufs[1] = {g0};
+        unsigned long long sizes[1] = {sizeof(g0)};
+        qadav_cdaga_record_aggregation(ctx, 1, bufs, sizes, 1, &rec);
+        int ares = qadav_cdaga_attest(chain, &rec, ctx);
+        if (ares != 1) return 1;
+        int vres = qadav_cdaga_verify(&rec, ctx);
+        if (vres != 1) return 2;
+        qadav_qera_free(chain);
+        qadav_qeeh_free(auth);
+        qadav_multigpu_shutdown(ctx);
+        qadav_write_raw("CDAGA_ATTEST_TO_QERA_OK\n", 24);
+        return 0;
+    }
+    if (qadav_streq(req, "cdaga_canonical_sort")) {
+        unsigned char u0[16] = {0x01, 0x02, 0x03, 0x04};
+        unsigned char u1[16] = {0x05, 0x06, 0x07, 0x08};
+        unsigned char u2[16] = {0x09, 0x0A, 0x0B, 0x0C};
+        double g0[4] = {0.1, 0.2, 0.3, 0.4};
+        double g1[4] = {0.5, 0.6, 0.7, 0.8};
+        double g2[4] = {0.9, 1.0, 1.1, 1.2};
+        unsigned char topo[32] = {0xAA};
+
+        unsigned char uuids_fwd[8][16];
+        qadav_copy_bytes(uuids_fwd[0], u0, 16);
+        qadav_copy_bytes(uuids_fwd[1], u1, 16);
+        qadav_copy_bytes(uuids_fwd[2], u2, 16);
+        void* bufs_fwd[3] = {g0, g1, g2};
+        unsigned long long sizes_fwd[3] = {sizeof(g0), sizeof(g1), sizeof(g2)};
+        qadav_cdaga_record rec1;
+        qadav_cdaga_record_aggregation_with_uuids(uuids_fwd, topo, 1, bufs_fwd, sizes_fwd, 3, &rec1);
+
+        unsigned char uuids_rev[8][16];
+        qadav_copy_bytes(uuids_rev[0], u2, 16);
+        qadav_copy_bytes(uuids_rev[1], u1, 16);
+        qadav_copy_bytes(uuids_rev[2], u0, 16);
+        void* bufs_rev[3] = {g2, g1, g0};
+        unsigned long long sizes_rev[3] = {sizeof(g2), sizeof(g1), sizeof(g0)};
+        qadav_cdaga_record rec2;
+        qadav_cdaga_record_aggregation_with_uuids(uuids_rev, topo, 1, bufs_rev, sizes_rev, 3, &rec2);
+
+        if (qadav_sha3_ct_compare(rec1.aggregation_digest, rec2.aggregation_digest, 32) != 0) {
+            return 1;
+        }
+
+        unsigned char u5[5][16];
+        double g5[5][4];
+        for (int i = 0; i < 5; i++) {
+            for (int k = 0; k < 16; k++) u5[i][k] = (unsigned char)((i * 37 + k + 3) & 0xFF);
+            for (int k = 0; k < 4; k++) g5[i][k] = (double)(i * 10 + k);
+        }
+
+        unsigned char base_digest[32];
+        unsigned char uuids_base[8][16];
+        void* bufs_base[5];
+        unsigned long long sizes_base[5];
+        for (int i = 0; i < 5; i++) {
+            qadav_copy_bytes(uuids_base[i], u5[i], 16);
+            bufs_base[i] = g5[i];
+            sizes_base[i] = sizeof(g5[i]);
+        }
+        qadav_cdaga_record rec_base;
+        qadav_cdaga_record_aggregation_with_uuids(uuids_base, topo, 1, bufs_base, sizes_base, 5, &rec_base);
+        qadav_copy_bytes(base_digest, rec_base.aggregation_digest, 32);
+
+        int perm[10][5] = {
+            {4, 3, 2, 1, 0},
+            {1, 0, 3, 2, 4},
+            {2, 4, 0, 3, 1},
+            {3, 1, 4, 0, 2},
+            {0, 2, 4, 1, 3},
+            {4, 1, 3, 0, 2},
+            {2, 3, 1, 4, 0},
+            {1, 4, 2, 0, 3},
+            {3, 0, 2, 4, 1},
+            {4, 2, 0, 1, 3}
+        };
+
+        for (int p = 0; p < 10; p++) {
+            unsigned char uuids_p[8][16];
+            void* bufs_p[5];
+            unsigned long long sizes_p[5];
+            for (int i = 0; i < 5; i++) {
+                int idx = perm[p][i];
+                qadav_copy_bytes(uuids_p[i], u5[idx], 16);
+                bufs_p[i] = g5[idx];
+                sizes_p[i] = sizeof(g5[idx]);
+            }
+            qadav_cdaga_record rec_p;
+            qadav_cdaga_record_aggregation_with_uuids(uuids_p, topo, 1, bufs_p, sizes_p, 5, &rec_p);
+            if (qadav_sha3_ct_compare(base_digest, rec_p.aggregation_digest, 32) != 0) {
+                return 2;
+            }
+        }
+
+        qadav_write_raw("CDAGA_CANONICAL_SORT_OK\n", 24);
+        return 0;
+    }
+    if (qadav_streq(req, "cdaga_aslr_determinism")) {
+        unsigned char first_hash[32];
+        for (int iter = 0; iter < 100; iter++) {
+            void* pad = qadav_alloc((iter %% 17 + 1) * 64);
+            qadav_cdaga_record* rec = (qadav_cdaga_record*)qadav_alloc(sizeof(qadav_cdaga_record));
+            double g0[4] = {0.123, 0.456, 0.789, 0.012};
+            void* bufs[1] = {g0};
+            unsigned long long sizes[1] = {sizeof(g0)};
+            qadav_cdaga_record_aggregation(0, 42, bufs, sizes, 1, rec);
+            if (iter == 0) {
+                qadav_copy_bytes(first_hash, rec->record_hash, 32);
+            } else {
+                if (qadav_sha3_ct_compare(first_hash, rec->record_hash, 32) != 0) {
+                    qadav_free(rec);
+                    qadav_free(pad);
+                    return 1;
+                }
+            }
+            qadav_free(rec);
+            qadav_free(pad);
+        }
+        qadav_write_raw("CDAGA_ASLR_DETERMINISM_OK\n", 26);
+        return 0;
+    }
     if (qadav_streq(req, "integration_vault_reasoning")) {
         double pen = 1.0;
         qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
@@ -1769,6 +1941,8 @@ func runCryptoTestHarnessExpectExit(t *testing.T, testName string) (string, erro
 #include "qadav_sandbox.h"
 #include "qadav_gpu.h"
 #include "qadav_agke.h"
+#include "qadav_multigpu.h"
+#include "qadav_cdaga.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -1780,6 +1954,12 @@ static int qadav_streq(const char* a, const char* b) {
     if (!a || !b) return 0;
     while (*a && *b && *a == *b) { a++; b++; }
     return (*a == *b);
+}
+
+static void qadav_copy_bytes(void* dst, const void* src, unsigned long long n) {
+    unsigned char* d = (unsigned char*)dst;
+    const unsigned char* s = (const unsigned char*)src;
+    for (unsigned long long i = 0; i < n; i++) d[i] = s[i];
 }
 
 int main(void) {
@@ -1797,6 +1977,21 @@ int main(void) {
         qadav_agke_attest(chain, auth);
         qadav_agke_corrupt_record(0, 1);
         qadav_agke_verify(chain, auth);
+        return 0;
+    }
+    if (qadav_streq(req, "cdaga_tamper_detection")) {
+        qadav_multigpu_context* ctx = qadav_multigpu_init();
+        double pen = 1.0;
+        qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
+        qadav_reasoning_chain* chain = qadav_qera_create("cdaga_tamper_chain", 10, auth);
+        qadav_cdaga_record rec;
+        double g0[4] = {0.1, 0.2, 0.3, 0.4};
+        void* bufs[1] = {g0};
+        unsigned long long sizes[1] = {sizeof(g0)};
+        qadav_cdaga_record_aggregation(ctx, 1, bufs, sizes, 1, &rec);
+        qadav_cdaga_attest(chain, &rec, ctx);
+        qadav_cdaga_corrupt(&rec, 16);
+        qadav_cdaga_verify(&rec, ctx);
         return 0;
     }
     return 0;

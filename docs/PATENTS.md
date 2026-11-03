@@ -327,6 +327,24 @@ Conventional frameworks (PyTorch, TensorFlow, ONNX Runtime) depend on multi-giga
 4. Seamless cognitive chain integration: linking GPU kernel attestations into host QERA reasoning chains as verified epistemic steps with calibrated confidence 1.0.
 5. Fail-stop quantum decoherence: enforcing immediate zero-libc process self-nullification (`0xDEADBEEF`) upon detection of unauthorized kernel tampering, rogue buffer manipulation, or hardware device substitution.
 
+---
+
+## 18. Invention #18: Cross-Device Attested Gradient Aggregation (CDAGA)
+## आविष्कार #18: क्रॉस-डिवाइस प्रमाणित ग्रेडिएंट एकत्रीकरण (CDAGA)
+
+- **Status / स्थिति:** PROPRIETARY (Patent Pending / पेटेंट लंबित)
+- **First disclosed / प्रथम प्रकटीकरण:** 2026-11-03
+- **Mechanism / कार्यप्रणाली:** A hardware-anchored cryptographic consensus and gradient aggregation protocol for multi-accelerator pipelines. Across all participating accelerators (GPUs), device UUIDs are canonically sorted in strict lexicographical order, paired with SHA3-256 digests of local gradient vectors, and bound together with step index, monotonic RDTSC timestamp, and multi-device DXGI topology hash into a contiguous 468-byte record preimage. The resulting 32-byte aggregation digest is attested into host QERA reasoning chains. Any modification of gradient bytes, device ordering, or topology triggers immediate process quantum decoherence (`ExitProcess(0xDEADBEEF)`).
+- **Novelty / नवीनता:** First distributed training gradient aggregation protocol providing deterministic canonical device ordering, multi-device hardware topology anchoring, and active zero-libc quantum decoherence against gradient poisoning and man-in-the-middle accelerator tampering.
+- **NOT open source / बंद स्रोत:** Proprietary Qadav feature.
+
+### Technical Claims / तकनीकी बिंदु:
+1. Canonical lexicographic device sorting: sorting 16-byte hardware device UUIDs before evaluating reduction commitments, guaranteeing invariant consensus digests independent of device arrival order.
+2. Contiguous 468-byte attestation preimage: structuring step index, timestamp, device count, 8x16 UUIDs, 8x32 gradient digests, 32-byte topology hash, and 32-byte aggregation digest into a single verifiable preimage.
+3. Multi-GPU topology anchoring: hashing physical DXGI device bus enumeration into each gradient reduction epoch.
+4. Epistemic QERA chain attestation: registering multi-device gradient consensus records as verified reasoning steps in host cognitive chains.
+5. Catastrophic quantum decoherence protection: terminating host process (`0xDEADBEEF`) upon detection of unauthorized gradient manipulation or device spoofing.
+
 
 
 

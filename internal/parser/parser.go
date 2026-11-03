@@ -559,6 +559,36 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseAGKEVerifyStmt()
 	case p.current.Type == token.CORRUPT_GPU_DIGEST:
 		return p.parseCorruptGPUDigestStmt()
+	case p.current.Type == token.MULTI_DEVICE:
+		return p.parseMultiDeviceAnnotatedStmt()
+	case p.current.Type == token.PIPELINE_CLAIM:
+		return p.parsePipelineClaimStmt(false)
+	case p.current.Type == token.PIPELINE_RUN:
+		return p.parsePipelineRunStmt()
+	case p.current.Type == token.CDAGA_RECORD:
+		return p.parseCDAGARecordStmt()
+	case p.current.Type == token.CDAGA_ATTEST:
+		return p.parseCDAGAAttestStmt()
+	case p.current.Type == token.CDAGA_VERIFY:
+		return p.parseCDAGAVerifyStmt()
+	case p.current.Type == token.CORRUPT_CDAGA:
+		return p.parseCorruptCDAGAStmt()
+	case p.current.Type == token.DIST_INIT:
+		return p.parseDistributedAnnotatedStmt()
+	case p.current.Type == token.ALL_REDUCE:
+		return p.parseAllReduceStmt()
+	case p.current.Type == token.PSERVER_INIT:
+		return p.parsePserverInitStmt()
+	case p.current.Type == token.PSERVER_AGG:
+		return p.parsePserverAggregateStmt()
+	case p.current.Type == token.BARAT_SUBMIT:
+		return p.parseBaratSubmitStmt()
+	case p.current.Type == token.BARAT_AGGREGATE:
+		return p.parseBaratAggregateStmt()
+	case p.current.Type == token.BARAT_VERIFY:
+		return p.parseBaratVerifyStmt()
+	case p.current.Type == token.CORRUPT_BARAT:
+		return p.parseCorruptBaratStmt()
 	case isTypeToken(p.current.Type):
 		return p.parseBindStmt()
 	case p.current.Type == token.EMIT:
@@ -3467,6 +3497,464 @@ func (p *Parser) parseCorruptGPUDigestStmt() *ast.CorruptGPUDigestStmt {
 	return &ast.CorruptGPUDigestStmt{
 		Pos_:   pos,
 		Chain:  chain,
+		Offset: offset,
+	}
+}
+
+func (p *Parser) parseMultiDeviceAnnotatedStmt() ast.Stmt {
+	p.nextToken() // consume '@multi_device'
+	if p.current.Type == token.PIPELINE_CLAIM {
+		return p.parsePipelineClaimStmt(true)
+	}
+	return p.parseStatement()
+}
+
+func (p *Parser) parsePipelineClaimStmt(annotated bool) *ast.PipelineClaimStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'pipeline_claim'
+
+	stages := 1
+	if p.current.Type == token.INT {
+		val, _ := strconv.Atoi(p.current.Literal)
+		stages = val
+		p.nextToken()
+	}
+	if p.current.Literal == "stages" {
+		p.nextToken()
+	}
+	microBatch := 1
+	if p.current.Literal == "micro_batch" {
+		p.nextToken()
+		if p.current.Type == token.INT {
+			val, _ := strconv.Atoi(p.current.Literal)
+			microBatch = val
+			p.nextToken()
+		}
+	}
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+	return &ast.PipelineClaimStmt{
+		Pos_:        pos,
+		IsAnnotated: annotated,
+		Stages:      stages,
+		MicroBatch:  microBatch,
+		Into:        into,
+	}
+}
+
+func (p *Parser) parsePipelineRunStmt() *ast.PipelineRunStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'pipeline_run'
+	plan := ""
+	if p.current.Type == token.IDENT {
+		plan = p.current.Literal
+		p.nextToken()
+	}
+	if p.current.Type == token.ON || p.current.Literal == "on" {
+		p.nextToken()
+	}
+	input := p.parseExpression(CALL_PREC)
+	if p.current.Literal == "into" {
+		p.nextToken()
+	}
+	output := p.parseExpression(CALL_PREC)
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+	return &ast.PipelineRunStmt{
+		Pos_:    pos,
+		Plan:    plan,
+		Input:   input,
+		Output:  output,
+	}
+}
+
+func (p *Parser) parseCDAGARecordStmt() *ast.CDAGARecordStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'cdaga_record'
+
+	if p.current.Literal == "from" {
+		p.nextToken()
+	}
+	var grads []ast.Expr
+	if p.current.Type == token.INDEX_OPEN {
+		p.nextToken() // consume ⟬
+		for p.current.Type != token.INDEX_CLOSE && p.current.Type != token.EOF {
+			grad := p.parseExpression(LOWEST)
+			if grad != nil {
+				grads = append(grads, grad)
+			}
+			if p.current.Type == token.SEP {
+				p.nextToken()
+			} else {
+				break
+			}
+		}
+		if p.current.Type == token.INDEX_CLOSE {
+			p.nextToken()
+		}
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+	return &ast.CDAGARecordStmt{
+		Pos_:     pos,
+		GradList: grads,
+		Into:     into,
+	}
+}
+
+func (p *Parser) parseCDAGAAttestStmt() *ast.CDAGAAttestStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'cdaga_attest'
+
+	record := ""
+	if p.current.Type == token.IDENT {
+		record = p.current.Literal
+		p.nextToken()
+	}
+	if p.current.Literal == "to" {
+		p.nextToken()
+	}
+	chain := ""
+	if p.current.Type == token.IDENT {
+		chain = p.current.Literal
+		p.nextToken()
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+	return &ast.CDAGAAttestStmt{
+		Pos_:    pos,
+		Record:  record,
+		Chain:   chain,
+	}
+}
+
+func (p *Parser) parseCDAGAVerifyStmt() *ast.CDAGAVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'cdaga_verify'
+
+	record := ""
+	if p.current.Type == token.IDENT {
+		record = p.current.Literal
+		p.nextToken()
+	}
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+	return &ast.CDAGAVerifyStmt{
+		Pos_:    pos,
+		Record:  record,
+		Into:    into,
+	}
+}
+
+func (p *Parser) parseCorruptCDAGAStmt() *ast.CorruptCDAGAStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_cdaga'
+
+	record := ""
+	if p.current.Type == token.IDENT {
+		record = p.current.Literal
+		p.nextToken()
+	}
+	if p.current.Literal == "at" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+	offset := p.parseExpression(LOWEST)
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+	return &ast.CorruptCDAGAStmt{
+		Pos_:    pos,
+		Record:  record,
+		Offset:  offset,
+	}
+}
+
+func (p *Parser) parseDistributedAnnotatedStmt() ast.Stmt {
+	p.nextToken() // consume '@distributed'
+	return p.parseStatement()
+}
+
+func (p *Parser) parseAllReduceStmt() *ast.AllReduceStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'all_reduce'
+
+	var grads []ast.Expr
+	var target ast.Expr
+	var into string
+
+	if p.current.Literal == "from" {
+		p.nextToken()
+		if p.current.Type == token.INDEX_OPEN {
+			p.nextToken()
+			for p.current.Type != token.INDEX_CLOSE && p.current.Type != token.EOF {
+				g := p.parseExpression(LOWEST)
+				if g != nil {
+					grads = append(grads, g)
+				}
+				if p.current.Type == token.SEP {
+					p.nextToken()
+				} else {
+					break
+				}
+			}
+			if p.current.Type == token.INDEX_CLOSE {
+				p.nextToken()
+			}
+		}
+	} else if p.current.Type != token.STMT_END && p.current.Literal != "into" {
+		target = p.parseExpression(LOWEST)
+	}
+
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.AllReduceStmt{
+		Pos_:     pos,
+		GradList: grads,
+		Target:   target,
+		Into:     into,
+	}
+}
+
+func (p *Parser) parsePserverInitStmt() *ast.PserverInitStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'pserver_init'
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	var workers ast.Expr
+	if p.current.Literal == "with" {
+		p.nextToken()
+		workers = p.parseExpression(LOWEST)
+		if p.current.Literal == "workers" {
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.PserverInitStmt{
+		Pos_:    pos,
+		Into:    into,
+		Workers: workers,
+	}
+}
+
+func (p *Parser) parsePserverAggregateStmt() *ast.PserverAggregateStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'pserver_aggregate'
+
+	pserver := ""
+	if p.current.Type == token.IDENT {
+		pserver = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.PserverAggregateStmt{
+		Pos_:    pos,
+		Pserver: pserver,
+	}
+}
+
+func (p *Parser) parseBaratSubmitStmt() *ast.BaratSubmitStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'barat_submit'
+
+	var worker ast.Expr
+	grp := ""
+	var grad ast.Expr
+
+	if p.current.Literal == "from" {
+		p.nextToken()
+		grad = p.parseExpression(LOWEST)
+		if p.current.Literal == "into" {
+			p.nextToken()
+			if p.current.Type == token.IDENT {
+				grp = p.current.Literal
+				p.nextToken()
+			}
+		}
+	} else {
+		worker = p.parseExpression(LOWEST)
+		if p.current.Literal == "into" {
+			p.nextToken()
+			if p.current.Type == token.IDENT {
+				grp = p.current.Literal
+				p.nextToken()
+			}
+		}
+		if p.current.Literal == "with" {
+			p.nextToken()
+			grad = p.parseExpression(LOWEST)
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.BaratSubmitStmt{
+		Pos_:     pos,
+		Worker:   worker,
+		Group:    grp,
+		Gradient: grad,
+	}
+}
+
+func (p *Parser) parseBaratAggregateStmt() *ast.BaratAggregateStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'barat_aggregate'
+
+	grp := ""
+	if p.current.Type == token.IDENT {
+		grp = p.current.Literal
+		p.nextToken()
+	}
+
+	intoGrad := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			intoGrad = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	intoCert := ""
+	if p.current.Literal == "cert" || p.current.Literal == "with" {
+		p.nextToken()
+		if p.current.Literal == "into" {
+			p.nextToken()
+		}
+		if p.current.Type == token.IDENT {
+			intoCert = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.BaratAggregateStmt{
+		Pos_:     pos,
+		Group:    grp,
+		IntoGrad: intoGrad,
+		IntoCert: intoCert,
+	}
+}
+
+func (p *Parser) parseBaratVerifyStmt() *ast.BaratVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'barat_verify'
+
+	cert := ""
+	if p.current.Type == token.IDENT {
+		cert = p.current.Literal
+		p.nextToken()
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.BaratVerifyStmt{
+		Pos_:  pos,
+		Cert:  cert,
+		Into:  into,
+	}
+}
+
+func (p *Parser) parseCorruptBaratStmt() *ast.CorruptBaratStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_barat'
+
+	cert := ""
+	if p.current.Type == token.IDENT {
+		cert = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Literal == "at" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+
+	offset := p.parseExpression(LOWEST)
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.CorruptBaratStmt{
+		Pos_:   pos,
+		Cert:   cert,
 		Offset: offset,
 	}
 }

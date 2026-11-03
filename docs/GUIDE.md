@@ -919,6 +919,59 @@ process main ⦅ ⦆ → int64 ⟦
 ⟧
 ```
 
+---
+
+## 32. Multi-GPU Pipeline Parallelism (M6.3)
+
+Qadav natively supports multi-device pipeline parallelism for deep neural architectures and multi-stage cognitive models.
+
+### Key Capabilities:
+1. **Zero-Libc Device Enumeration:** Physical DXGI adapters are discovered dynamically without external dependencies.
+2. **Transparent Pipeline Stage Allocation:** The `@multi_device` annotation partitions multi-layer computations across pipeline stages and micro-batches.
+3. **Graceful Single-Device & CPU Fallback:** When multiple physical accelerators are unavailable, execution falls back seamlessly to single-device slicing or multi-threaded CPU matrix operations.
+
+```qadav
+process main ⦅ ⦆ → int64 ⟦
+    tensor⟨float64⟩⟬2⸴ 2⟭ a ↦ tensor⟬⟬1.0⸴ 2.0⟭⸴ ⟬3.0⸴ 4.0⟭⟭ ·
+
+    @multi_device pipeline_claim 2 stages micro_batch 4 into p_plan ·
+    pipeline_run p_plan on a into out_res ·
+
+    emit "Multi-GPU Pipeline Parallelism Completed Successfully" ·
+    yield 0 ·
+⟧
+```
+
+---
+
+## 33. Cross-Device Attested Gradient Aggregation (CDAGA — Invention #18)
+
+CDAGA (Invention #18, Patent Pending) provides cryptographic consensus and tamper-proof verification for distributed gradient accumulation across multi-accelerator topologies.
+
+### Security Guarantees:
+1. **Canonical Lexicographic Ordering:** Prevents non-deterministic race conditions and packet reordering attacks by sorting device UUIDs before generating reduction hashes.
+2. **468-Byte Preimage Commitment:** Encapsulates step index, RDTSC timestamp, device UUIDs, gradient digests, and topology hash into an immutable verification block.
+3. **QERA Chain Integration:** Registers the 32-byte aggregation digest into host reasoning chains (`cdaga_attest rec to train_chain ·`).
+4. **Active Quantum Decoherence:** Any byte modification across gradient vectors or device headers triggers immediate process decoherence (`0xDEADBEEF`).
+
+```qadav
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary auth ⟦ rule execution_safety ↦ 1.0 · ⟧
+    reasoning_chain training_log with auth ⟦ capacity ↦ 20 · ⟧
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_dev0 ↦ tensor⟬⟬0.01⸴ 0.02⟭⸴ ⟬0.03⸴ 0.04⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_dev1 ↦ tensor⟬⟬0.05⸴ 0.06⟭⸴ ⟬0.07⸴ 0.08⟭⟭ ·
+
+    cdaga_record from ⟬grad_dev0⸴ grad_dev1⟭ into rec ·
+    cdaga_attest rec to training_log ·
+    cdaga_verify rec into is_valid ·
+
+    emit "CDAGA Cross-Device Attested Gradient Aggregation Verified" ·
+    yield 0 ·
+⟧
+```
+
+
 
 
 

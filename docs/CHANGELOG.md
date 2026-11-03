@@ -5,6 +5,37 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M6.3 + M6.4] — Combined Milestone: Multi-GPU Pipeline Parallelism + Cross-Device Attested Gradient Aggregation (CDAGA — Invention #18, Patent Pending) (100% Complete)
+## [M6.3 + M6.4] — संयुक्त माइलस्टोन: मल्टी-जीपीयू पाइपलाइन समानांतरता + क्रॉस-डिवाइस प्रमाणित ग्रेडिएंट एकत्रीकरण (CDAGA — आविष्कार #18, पेटेंट लंबित) (100% पूर्ण)
+
+### Added / नया जोड़ा गया:
+- **Multi-GPU Pipeline Parallelism (M6.3)**:
+  - Language tokens, annotations, and statements: `@multi_device`, `pipeline_claim`, `pipeline_run`.
+  - Zero-libc multi-GPU detection and stage scheduling: `internal/gpu/multigpu.go`, `internal/gpu/pipeline.go`, and zero-libc C engine in `internal/runtime/qadav_multigpu.c` / `qadav_multigpu.h`.
+  - Native Windows DXGI enumeration dynamically detects multi-GPU topology without third-party libraries or CUDA/Vulkan runtimes.
+  - Automatic single-device and high-precision CPU fallback ensures complete deterministic execution across all developer environments.
+  - Example: `examples/multi_gpu_pipeline.ydv`.
+- **Cross-Device Attested Gradient Aggregation (CDAGA — Invention #18, Patent Pending) (M6.4)**:
+  - Language tokens and statements: `cdaga_record`, `cdaga_attest`, `cdaga_verify`, `corrupt_cdaga` (test-only, safety-gated by `--test`).
+  - Zero-libc cryptographic consensus runtime in `internal/runtime/qadav_cdaga.c` and `qadav_cdaga.h`.
+  - Canonical lexicographic device sorting: sorts participating accelerator 16-byte UUIDs before computing aggregation commitments, guaranteeing invariant consensus digests.
+  - Contiguous 468-byte attestation preimage: encapsulating step index, timestamp, device UUIDs, per-device gradient SHA3-256 digests, and multi-device topology hash into an immutable verification block.
+  - Seamless QERA cognitive chain attestation: commits multi-device gradient consensus records as verified epistemic reasoning steps (`QADAV_OP_VERIFY`, confidence 1.0).
+  - Fail-stop quantum decoherence: any gradient tampering, device spoofing, or packet modification triggers catastrophic quantum decoherence (`ExitProcess(0xDEADBEEF)`).
+  - Specification: `docs/CDAGA_SPEC.md`.
+  - Examples: `examples/cdaga_demo.ydv` and `examples/cdaga_tamper.ydv`.
+- **Runtime Module Count Expansion**:
+  - Embedded zero-libc runtime expanded to **32 modular compiled C objects** (added `qadav_multigpu.o` and `qadav_cdaga.o`).
+- **Full Coverage & Test Verification**:
+  - Lexer: 97.4% ($\ge 96.1\%$)
+  - Parser: 87.9% ($\ge 86.2\%$)
+  - Checker: 84.0% ($\ge 83.8\%$)
+  - Runtime tests: `internal/runtime/multigpu_test.go` and `internal/runtime/cdaga_test.go` (100% pass).
+- **Patent Portfolio Strategy**:
+  - Portfolio expanded to **18 total innovations** (12 patent-pending commercial inventions #7–#18 + 6 defensive open publications #1–#6).
+
+---
+
 ## [M6.1 + M6.2] — Combined Milestone: DirectCompute GPU Backend + Attested GPU Kernel Execution (AGKE — Invention #17, Patent Pending) (100% Complete)
 ## [M6.1 + M6.2] — संयुक्त माइलस्टोन: डायरेक्टकम्प्यूट जीपीयू बैकएंड + प्रमाणित जीपीयू कर्नेल निष्पादन (AGKE — आविष्कार #17, पेटेंट लंबित) (100% पूर्ण)
 

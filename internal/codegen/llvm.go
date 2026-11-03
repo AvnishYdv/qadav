@@ -399,6 +399,32 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 	header.WriteString("declare i32 @qadav_agke_verify(i8*, i8*)\n")
 	header.WriteString("declare i32 @qadav_agke_corrupt_record(i32, i32)\n\n")
 
+	// Multi-GPU Pipeline Parallelism (M6.3) & CDAGA (M6.4 — Invention #18)
+	header.WriteString("declare i8* @qadav_multigpu_init()\n")
+	header.WriteString("declare i32 @qadav_multigpu_build_pipeline(i8*, i32, i32, i32)\n")
+	header.WriteString("declare i32 @qadav_multigpu_run_pipeline(i8*, i8*, i8*)\n")
+	header.WriteString("declare void @qadav_multigpu_shutdown(i8*)\n")
+	header.WriteString("declare i64 @qadav_multigpu_get_device_count()\n")
+	header.WriteString("declare i32 @qadav_cdaga_record_aggregation(i8*, i64, i8**, i64*, i32, i8*)\n")
+	header.WriteString("declare i32 @qadav_cdaga_verify(i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_cdaga_attest(i8*, i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_cdaga_corrupt(i8*, i32)\n\n")
+
+	// Distributed Training (M6.5) & BARAT (M6.6 — Invention #19)
+	header.WriteString("declare i8* @qadav_dist_init(i32)\n")
+	header.WriteString("declare i32 @qadav_dist_ring_allreduce(i8*)\n")
+	header.WriteString("declare i32 @qadav_dist_pserver_aggregate(i8*)\n")
+	header.WriteString("declare void @qadav_dist_shutdown(i8*)\n")
+	header.WriteString("declare i64 @qadav_dist_get_worker_count()\n")
+
+	header.WriteString("declare i8* @qadav_barat_create_group(i32)\n")
+	header.WriteString("declare void @qadav_barat_destroy_group(i8*)\n")
+	header.WriteString("declare i32 @qadav_barat_submit(i8*, i32, i8*, i64)\n")
+	header.WriteString("declare i32 @qadav_barat_aggregate(i8*, i8*, i64, i8*)\n")
+	header.WriteString("declare i32 @qadav_barat_verify(i8*, i8*, i64)\n")
+	header.WriteString("declare i32 @qadav_barat_attest(i8*, i8*, i8*, i64)\n")
+	header.WriteString("declare i32 @qadav_barat_corrupt(i8*, i32)\n\n")
+
 	// Quantum global state
 	header.WriteString(g.generateQuantumGlobal())
 
@@ -847,6 +873,32 @@ func (g *Generator) genStmt(stmt ast.Stmt) {
 		g.genAGKEVerifyStmt(s)
 	case *ast.CorruptGPUDigestStmt:
 		g.genCorruptGPUDigestStmt(s)
+	case *ast.PipelineClaimStmt:
+		g.genPipelineClaimStmt(s)
+	case *ast.PipelineRunStmt:
+		g.genPipelineRunStmt(s)
+	case *ast.CDAGARecordStmt:
+		g.genCDAGARecordStmt(s)
+	case *ast.CDAGAAttestStmt:
+		g.genCDAGAAttestStmt(s)
+	case *ast.CDAGAVerifyStmt:
+		g.genCDAGAVerifyStmt(s)
+	case *ast.CorruptCDAGAStmt:
+		g.genCorruptCDAGAStmt(s)
+	case *ast.AllReduceStmt:
+		g.genAllReduceStmt(s)
+	case *ast.PserverInitStmt:
+		g.genPserverInitStmt(s)
+	case *ast.PserverAggregateStmt:
+		g.genPserverAggregateStmt(s)
+	case *ast.BaratSubmitStmt:
+		g.genBaratSubmitStmt(s)
+	case *ast.BaratAggregateStmt:
+		g.genBaratAggregateStmt(s)
+	case *ast.BaratVerifyStmt:
+		g.genBaratVerifyStmt(s)
+	case *ast.CorruptBaratStmt:
+		g.genCorruptBaratStmt(s)
 	case *ast.TileStmt, *ast.EnergyDecl:
 		// No-op
 	}
