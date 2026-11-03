@@ -1,0 +1,19 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary evo_auth ⟦
+        rule evolution_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain evo_log with evo_auth ⟦ capacity ↦ 30 · ⟧
+
+    text state_v1 ↦ "agent_logic_v1.0" ·
+    text state_v2 ↦ "agent_logic_v1.1" ·
+    text evo_reason ↦ "small heuristic tweak" ·
+
+    evolve_policy constant into policy with rate 0.10 budget 100 ·
+    evolve_bounded policy from state_v1 to state_v2 with reason evo_reason max_flips 8 max_new_symbols 2 into proposal envelope ·
+    eea_verify envelope into is_valid ·
+    evolve_history to evo_log ·
+
+    emit "Envelope attested" ·
+    emit is_valid ·
+    yield 0 ·
+⟧

@@ -62,3 +62,4 @@ func TestParseSEAStatements(t *testing.T) {
 		t.Fatalf("unexpected stmt 3: %+v", proc.Body.Statements[3])
 	}
 }
+

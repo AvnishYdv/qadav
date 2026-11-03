@@ -90,3 +90,4 @@ func TestSEALineageChain(t *testing.T) {
 	}
 	t.Logf("sea_lineage_chain verified: %s", out)
 }
+

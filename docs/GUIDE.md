@@ -1088,6 +1088,72 @@ process main⦅⦆ → int64 ⟦
 ⟧
 ```
 
+---
+
+## 38. Hardware Target Transpilation (M7.3)
+
+Qadav includes a zero-libc, direct text transpiler that translates QHAL high-level quantum circuits into target-native code for major quantum computing frameworks:
+1. **Qiskit (Python):** Generates `QuantumCircuit(n, n)` with standard gates (`qc.h()`, `qc.x()`, `qc.cx()`, etc.).
+2. **Cirq (Python):** Generates `cirq.LineQubit.range(n)` with `cirq.Circuit([cirq.H(...), ...])`.
+3. **IonQ Native (JSON):** Generates Trapped-Ion JSON circuit format (`{"qubits": n, "circuit": [...]}`).
+4. **OpenQASM 3.0:** Generates standard IEEE/QASM3 program strings.
+
+### Gate Cancellation & Depth Optimization
+Transpilation includes automatic adjacent gate cancellation (`optimize_adjacent`) which removes back-to-back idempotent/inversion pairs: $X \cdot X = I$, $Y \cdot Y = I$, $Z \cdot Z = I$, $H \cdot H = I$, and $\text{CNOT} \cdot \text{CNOT} = I$.
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    @qhal_backend sim
+    qubit q0 ⸴ q1 ·
+    superpose q0 ·
+    entangle q0 ⸴ q1 ·
+
+    text qiskit_code ↦ "" ·
+    transpile_to "qiskit" into qiskit_code with size 2048 ·
+    emit qiskit_code ·
+
+    text cirq_code ↦ "" ·
+    transpile_to "cirq" into cirq_code with size 2048 ·
+    emit cirq_code ·
+
+    yield 0 ·
+⟧
+```
+
+---
+
+## 39. Evolution Envelope Attestation (EEA — Invention #21)
+
+EEA (Invention #21, Patent Pending) provides cryptographic envelope containment for agent self-modification proposals, strictly bounding evolutionary search parameters.
+
+### Key Capabilities:
+1. **Deterministic 187-Byte Envelope Preimage:** Encapsulates step index, declared mutation limits (`max_bit_flips`, `max_new_symbols`), observed diffs, policy type/name, current mutation rate, `from_state_hash`, `to_state_hash`, and bound SEA `proposal_hash`.
+2. **In-Situ Bound Enforcement:** Measures actual Hamming bit flips and byte vocabulary changes (`eea_compute_diff`). If actual diffs exceed declared limits, `eea_build_envelope` cleanly rejects the proposal (`-2`) without process decoherence.
+3. **Active Quantum Decoherence on Tamper:** Modifying any envelope field after construction invalidates the 187-byte SHA3-256 envelope commitment, triggering immediate quantum register nullification and process termination (`ExitProcess(0xDEADBEEF)`).
+4. **Adaptive Mutation Policies:** Supports `constant`, `decaying` (rate diminishes geometrically per step), and `adaptive` schedules.
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary evo_auth ⟦
+        rule evolution_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain evo_log with evo_auth ⟦ capacity ↦ 30 · ⟧
+
+    text state_v1 ↦ "agent_logic_v1.0" ·
+    text state_v2 ↦ "agent_logic_v1.1" ·
+    text evo_reason ↦ "small heuristic tweak" ·
+
+    evolve_policy constant into policy with rate 0.10 budget 100 ·
+    evolve_bounded policy from state_v1 to state_v2 with reason evo_reason max_flips 8 max_new_symbols 2 into proposal envelope ·
+    eea_verify envelope into is_valid ·
+    evolve_history to evo_log ·
+
+    emit "Envelope attested" ·
+    emit is_valid ·
+    yield 0 ·
+⟧
+```
+
 
 
 

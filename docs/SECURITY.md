@@ -366,6 +366,22 @@ By eliminating `<stdio.h>`, `<stdlib.h>`, `<string.h>`, and `<math.h>`:
 5. **Fail-Stop Quantum Decoherence Nullification**:
    - Any tampering with proposal state hashes, lineage linkages, or timestamps invokes zero-libc quantum register zeroing and immediate process termination (`ExitProcess(0xDEADBEEF)`). Test corruptions (`corrupt_evolve`) are strictly rejected by the type checker unless explicit `--test` compilation mode is active.
 
+---
+
+## 27. Evolution Envelope Attestation Security (EEA — Invention #21)
+
+1. **Strictly Bounded Evolutionary Search Space**:
+   - Unconstrained self-modification can cause explosive genetic drift or sudden catastrophic alignment breakage. EEA enforces that every candidate mutation proposal must declare strict upper bounds on both the Hamming bit difference (`max_bit_flips`) and byte vocabulary expansion (`max_new_symbols`).
+2. **Deterministic Diff Calculation via Popcount Invariants**:
+   - The diff measurement engine (`eea_compute_diff`) calculates Hamming distance across byte XOR differences using constant-time software bit popcount, ensuring deterministic, architecture-independent measurement free of side-channel timing variations.
+3. **Dual-Tier Violation vs Tamper Defense**:
+   - **Boundary Violation (-2):** If an agent proposes a valid mutation that simply exceeds its declared budget or rate envelope, `eea_build_envelope` cleanly rejects the proposal with code `-2` without decoherence. This allows safe cognitive backoff and search realignment.
+   - **Tamper Attempt (0xDEADBEEF):** If an adversary or faulty code mutates the envelope struct after generation (e.g. inflating `max_bit_flips` to disguise an out-of-bounds mutation), the 187-byte non-padded SHA3-256 envelope digest check fails during `eea_verify_envelope` or `eea_attest_envelope`, instantly triggering quantum register nullification and process destruction (`ExitProcess(0xDEADBEEF)`).
+4. **ASLR and Memory Padding Independence**:
+   - Preimage serialization uses deterministic 187-byte contiguous packing without compiler struct padding, guaranteeing identical digests across differing heap layouts, memory addresses, and compiler versions.
+5. **Gated Test Corruptions**:
+   - The `corrupt_eea` statement is strictly gated by compiler `--test` flag. Production builds reject corrupt statements during semantic type checking.
+
 
 
 

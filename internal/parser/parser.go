@@ -607,6 +607,16 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseEvolveHistoryStmt()
 	case p.current.Type == token.CORRUPT_EVOLVE:
 		return p.parseCorruptEvolveStmt()
+	case p.current.Type == token.TRANSPILE_TO:
+		return p.parseTranspileToStmt()
+	case p.current.Type == token.EVOLVE_POLICY:
+		return p.parseEvolvePolicyStmt()
+	case p.current.Type == token.EVOLVE_BOUNDED:
+		return p.parseEvolveBoundedStmt()
+	case p.current.Type == token.EEA_VERIFY:
+		return p.parseEEAVerifyStmt()
+	case p.current.Type == token.CORRUPT_EEA:
+		return p.parseCorruptEEAStmt()
 	case isTypeToken(p.current.Type):
 		return p.parseBindStmt()
 	case p.current.Type == token.EMIT:
@@ -4154,6 +4164,256 @@ func (p *Parser) parseCorruptEvolveStmt() *ast.CorruptEvolveStmt {
 	return &ast.CorruptEvolveStmt{
 		Pos_:     pos,
 		Proposal: prop,
+		Offset:   offset,
+	}
+}
+
+func (p *Parser) parseTranspileToStmt() *ast.TranspileToStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'transpile_to'
+
+	target := ""
+	if p.current.Type == token.STRING || p.current.Type == token.IDENT {
+		target = p.current.Literal
+		p.nextToken()
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	var bufLen ast.Expr
+	if p.current.Literal == "with" {
+		p.nextToken()
+		if p.current.Literal == "size" {
+			p.nextToken()
+		}
+		bufLen = p.parseExpression(LOWEST)
+	}
+
+	var opts *ast.TranspileOpts
+	if p.current.Literal == "options" || p.current.Type == token.TRANSPILE_OPTS {
+		p.nextToken()
+		opts = &ast.TranspileOpts{}
+		if p.current.Type == token.BLOCK_OPEN {
+			p.nextToken()
+			for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+				if p.current.Literal == "optimize" {
+					opts.Optimize = true
+					p.nextToken()
+				} else if p.current.Literal == "reduce_depth" {
+					opts.ReduceDepth = true
+					p.nextToken()
+				} else {
+					p.nextToken()
+				}
+				if p.current.Type == token.STMT_END {
+					p.nextToken()
+				}
+			}
+			if p.current.Type == token.BLOCK_CLOSE {
+				p.nextToken()
+			}
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.TranspileToStmt{
+		Pos_:    pos,
+		Target:  target,
+		Into:    into,
+		BufLen:  bufLen,
+		Options: opts,
+	}
+}
+
+func (p *Parser) parseEvolvePolicyStmt() *ast.EvolvePolicyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'evolve_policy'
+
+	kind := ""
+	if p.current.Type == token.IDENT || p.current.Type == token.STRING {
+		kind = p.current.Literal
+		p.nextToken()
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	var initialRate ast.Expr
+	var totalBudget ast.Expr
+	if p.current.Literal == "with" {
+		p.nextToken()
+	}
+	if p.current.Literal == "rate" {
+		p.nextToken()
+		initialRate = p.parseExpression(LOWEST)
+	}
+	if p.current.Literal == "budget" {
+		p.nextToken()
+		totalBudget = p.parseExpression(LOWEST)
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.EvolvePolicyStmt{
+		Pos_:        pos,
+		Kind:        kind,
+		Into:        into,
+		InitialRate: initialRate,
+		TotalBudget: totalBudget,
+	}
+}
+
+func (p *Parser) parseEvolveBoundedStmt() *ast.EvolveBoundedStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'evolve_bounded'
+
+	policy := ""
+	if p.current.Type == token.IDENT {
+		policy = p.current.Literal
+		p.nextToken()
+	}
+
+	var fromState ast.Expr
+	if p.current.Literal == "from" {
+		p.nextToken()
+		fromState = p.parseExpression(LOWEST)
+	}
+
+	var toState ast.Expr
+	if p.current.Literal == "to" {
+		p.nextToken()
+		toState = p.parseExpression(LOWEST)
+	}
+
+	var reason ast.Expr
+	if p.current.Literal == "with" {
+		p.nextToken()
+		if p.current.Literal == "reason" {
+			p.nextToken()
+			reason = p.parseExpression(LOWEST)
+		}
+	} else if p.current.Literal == "reason" {
+		p.nextToken()
+		reason = p.parseExpression(LOWEST)
+	}
+
+	var maxFlips ast.Expr
+	if p.current.Literal == "max_flips" {
+		p.nextToken()
+		maxFlips = p.parseExpression(LOWEST)
+	}
+
+	var maxNewSyms ast.Expr
+	if p.current.Literal == "max_new_symbols" {
+		p.nextToken()
+		maxNewSyms = p.parseExpression(LOWEST)
+	}
+
+	intoProp := ""
+	intoEnv := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			intoProp = p.current.Literal
+			p.nextToken()
+		}
+		if p.current.Type == token.IDENT {
+			intoEnv = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.EvolveBoundedStmt{
+		Pos_:          pos,
+		Policy:        policy,
+		FromState:     fromState,
+		ToState:       toState,
+		Reason:        reason,
+		MaxBitFlips:   maxFlips,
+		MaxNewSymbols: maxNewSyms,
+		IntoProposal:  intoProp,
+		IntoEnvelope:  intoEnv,
+	}
+}
+
+func (p *Parser) parseEEAVerifyStmt() *ast.EEAVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'eea_verify'
+
+	env := ""
+	if p.current.Type == token.IDENT {
+		env = p.current.Literal
+		p.nextToken()
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.EEAVerifyStmt{
+		Pos_:     pos,
+		Envelope: env,
+		Into:     into,
+	}
+}
+
+func (p *Parser) parseCorruptEEAStmt() *ast.CorruptEEAStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_eea'
+
+	env := ""
+	if p.current.Type == token.IDENT {
+		env = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Literal == "at" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+
+	offset := p.parseExpression(LOWEST)
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.CorruptEEAStmt{
+		Pos_:     pos,
+		Envelope: env,
 		Offset:   offset,
 	}
 }

@@ -72,6 +72,8 @@ func runCryptoTestHarness(t *testing.T, testName string) string {
 #include "qadav_barat.h"
 #include "qadav_qhal.h"
 #include "qadav_sea.h"
+#include "qadav_transpile.h"
+#include "qadav_eea.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -2176,6 +2178,258 @@ int main(void) {
         qadav_write_raw("SEA_LINEAGE_CHAIN_OK\n", 21);
         return 0;
     }
+    // --- M7.3 Transpiler Tests ---
+    if (qadav_streq(req, "transpile_qiskit")) {
+        qhal_circuit* c = qhal_create(2, 0);
+        qhal_add_op(c, QHAL_OP_H, 0, 0);
+        qhal_add_op(c, QHAL_OP_CNOT, 0, 1);
+        char buf[1024];
+        unsigned long long written = 0;
+        int op_cnt = 0;
+        int r = transpile_circuit(c, TRANSPILE_TARGET_QISKIT, 0, buf, sizeof(buf), &written, &op_cnt);
+        qhal_shutdown(c);
+        if (r != 0) return 1;
+        int found = 0;
+        for (int i = 0; buf[i]; i++) {
+            if (buf[i] == 'q' && buf[i+1] == 'c' && buf[i+2] == '.' && buf[i+3] == 'h') { found = 1; break; }
+        }
+        if (!found) return 2;
+        qadav_write_raw("TRANSPILE_QISKIT_OK\n", 20);
+        return 0;
+    }
+    if (qadav_streq(req, "transpile_cirq")) {
+        qhal_circuit* c = qhal_create(2, 0);
+        qhal_add_op(c, QHAL_OP_H, 0, 0);
+        qhal_add_op(c, QHAL_OP_CNOT, 0, 1);
+        char buf[1024];
+        unsigned long long written = 0;
+        int op_cnt = 0;
+        int r = transpile_circuit(c, TRANSPILE_TARGET_CIRQ, 0, buf, sizeof(buf), &written, &op_cnt);
+        qhal_shutdown(c);
+        if (r != 0) return 1;
+        int found = 0;
+        for (int i = 0; buf[i]; i++) {
+            if (buf[i] == 'c' && buf[i+1] == 'i' && buf[i+2] == 'r' && buf[i+3] == 'q') { found = 1; break; }
+        }
+        if (!found) return 2;
+        qadav_write_raw("TRANSPILE_CIRQ_OK\n", 18);
+        return 0;
+    }
+    if (qadav_streq(req, "transpile_ionq")) {
+        qhal_circuit* c = qhal_create(2, 0);
+        qhal_add_op(c, QHAL_OP_H, 0, 0);
+        qhal_add_op(c, QHAL_OP_CNOT, 0, 1);
+        char buf[1024];
+        unsigned long long written = 0;
+        int op_cnt = 0;
+        int r = transpile_circuit(c, TRANSPILE_TARGET_IONQ, 0, buf, sizeof(buf), &written, &op_cnt);
+        qhal_shutdown(c);
+        if (r != 0) return 1;
+        int found = 0;
+        for (int i = 0; buf[i]; i++) {
+            if (buf[i] == 'g' && buf[i+1] == 'a' && buf[i+2] == 't' && buf[i+3] == 'e') { found = 1; break; }
+        }
+        if (!found) return 2;
+        qadav_write_raw("TRANSPILE_IONQ_OK\n", 18);
+        return 0;
+    }
+    if (qadav_streq(req, "transpile_qasm3")) {
+        qhal_circuit* c = qhal_create(2, 0);
+        qhal_add_op(c, QHAL_OP_H, 0, 0);
+        char buf[1024];
+        unsigned long long written = 0;
+        int op_cnt = 0;
+        int r = transpile_circuit(c, TRANSPILE_TARGET_QASM3, 0, buf, sizeof(buf), &written, &op_cnt);
+        qhal_shutdown(c);
+        if (r != 0) return 1;
+        int found = 0;
+        for (int i = 0; buf[i]; i++) {
+            if (buf[i] == 'O' && buf[i+1] == 'P' && buf[i+2] == 'E' && buf[i+3] == 'N') { found = 1; break; }
+        }
+        if (!found) return 2;
+        qadav_write_raw("TRANSPILE_QASM3_OK\n", 19);
+        return 0;
+    }
+    if (qadav_streq(req, "transpile_adjacent_cancel")) {
+        qhal_circuit* c = qhal_create(2, 0);
+        qhal_add_op(c, QHAL_OP_X, 0, 0);
+        qhal_add_op(c, QHAL_OP_X, 0, 0);
+        transpile_opts opts;
+        opts.optimize_adjacent = 1;
+        opts.decompose_u3 = 0;
+        opts.reduce_depth = 0;
+        opts.max_qubits = 2;
+        char buf[1024];
+        unsigned long long written = 0;
+        int op_cnt = 0;
+        int r = transpile_circuit(c, TRANSPILE_TARGET_QISKIT, &opts, buf, sizeof(buf), &written, &op_cnt);
+        qhal_shutdown(c);
+        if (r != 0) return 1;
+        if (op_cnt != 0) return 2;
+        qadav_write_raw("TRANSPILE_ADJACENT_CANCEL_OK\n", 29);
+        return 0;
+    }
+    if (qadav_streq(req, "transpile_buffer_too_small")) {
+        qhal_circuit* c = qhal_create(2, 0);
+        qhal_add_op(c, QHAL_OP_H, 0, 0);
+        char buf[8];
+        unsigned long long written = 0;
+        int op_cnt = 0;
+        int r = transpile_circuit(c, TRANSPILE_TARGET_QISKIT, 0, buf, sizeof(buf), &written, &op_cnt);
+        qhal_shutdown(c);
+        if (r != -3) return 1;
+        if (written <= 8) return 2;
+        qadav_write_raw("TRANSPILE_BUFFER_TOO_SMALL_OK\n", 30);
+        return 0;
+    }
+    if (qadav_streq(req, "transpile_unsupported_target")) {
+        qhal_circuit* c = qhal_create(2, 0);
+        char buf[128];
+        unsigned long long written = 0;
+        int op_cnt = 0;
+        int r = transpile_circuit(c, (transpile_target)99, 0, buf, sizeof(buf), &written, &op_cnt);
+        qhal_shutdown(c);
+        if (r != -1) return 1;
+        qadav_write_raw("TRANSPILE_UNSUPPORTED_TARGET_OK\n", 32);
+        return 0;
+    }
+    if (qadav_streq(req, "transpile_no_crash_huge")) {
+        qhal_circuit* c = qhal_create(10, 0);
+        for (int i = 0; i < 200; i++) {
+            qhal_add_op(c, (unsigned char)(i %% 5), i %% 10, (i + 1) %% 10);
+        }
+        char buf[16384];
+        unsigned long long written = 0;
+        int op_cnt = 0;
+        int r = transpile_circuit(c, TRANSPILE_TARGET_QISKIT, 0, buf, sizeof(buf), &written, &op_cnt);
+        qhal_shutdown(c);
+        if (r != 0) return 1;
+        if (op_cnt != 200) return 2;
+        qadav_write_raw("TRANSPILE_NO_CRASH_HUGE_OK\n", 27);
+        return 0;
+    }
+
+    // --- M7.4 EEA Tests ---
+    if (qadav_streq(req, "eea_create_policy")) {
+        eea_context* c1 = eea_create_policy(POLICY_CONSTANT_RATE, 0.10, 100);
+        eea_context* c2 = eea_create_policy(POLICY_DECAYING_RATE, 0.20, 200);
+        eea_context* c3 = eea_create_policy(POLICY_ADAPTIVE, 0.30, 300);
+        if (!c1 || !c2 || !c3) return 1;
+        if (c1->kind != POLICY_CONSTANT_RATE || c2->kind != POLICY_DECAYING_RATE || c3->kind != POLICY_ADAPTIVE) return 2;
+        eea_free(c1);
+        eea_free(c2);
+        eea_free(c3);
+        qadav_write_raw("EEA_CREATE_POLICY_OK\n", 21);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_compute_diff")) {
+        unsigned char from[] = "hello";
+        unsigned char to[] = "jello";
+        unsigned long long flips = 0, new_syms = 0;
+        int r = eea_compute_diff(from, 5, to, 5, &flips, &new_syms);
+        if (r != 0) return 1;
+        if (flips != 1) return 2;
+        if (new_syms != 1) return 3;
+        qadav_write_raw("EEA_COMPUTE_DIFF_OK\n", 20);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_build_envelope_valid")) {
+        eea_context* ctx = eea_create_policy(POLICY_CONSTANT_RATE, 0.10, 100);
+        eea_envelope env;
+        int r = eea_build_envelope_text(ctx, 0, "hello", "jello", 8, 2, &env);
+        eea_free(ctx);
+        if (r != 0) return 1;
+        if (env.actual_bit_flips != 1 || env.actual_new_symbols != 1) return 2;
+        qadav_write_raw("EEA_BUILD_ENVELOPE_VALID_OK\n", 28);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_build_envelope_violation")) {
+        eea_context* ctx = eea_create_policy(POLICY_CONSTANT_RATE, 0.10, 100);
+        eea_envelope env;
+        int r = eea_build_envelope_text(ctx, 0, "hello", "jello", 0, 2, &env);
+        eea_free(ctx);
+        if (r != -2) return 1;
+        qadav_write_raw("EEA_BUILD_ENVELOPE_VIOLATION_OK\n", 32);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_verify_valid")) {
+        eea_context* ctx = eea_create_policy(POLICY_CONSTANT_RATE, 0.10, 100);
+        eea_envelope env;
+        eea_build_envelope_text(ctx, 0, "logic_v1", "logic_v2", 16, 4, &env);
+        eea_free(ctx);
+        if (!eea_verify_envelope(&env)) return 1;
+        qadav_write_raw("EEA_VERIFY_VALID_OK\n", 20);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_verify_tampered")) {
+        eea_context* ctx = eea_create_policy(POLICY_CONSTANT_RATE, 0.10, 100);
+        eea_envelope env;
+        eea_build_envelope_text(ctx, 0, "logic_v1", "logic_v2", 16, 4, &env);
+        eea_free(ctx);
+        eea_corrupt(&env, 16);
+        eea_verify_envelope(&env);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_attest_success")) {
+        double pen = 1.0;
+        qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
+        qadav_reasoning_chain* chain = qadav_qera_create("eea_chain", 10, auth);
+        eea_context* ctx = eea_create_policy(POLICY_CONSTANT_RATE, 0.10, 100);
+        eea_envelope env;
+        eea_build_envelope_text(ctx, 0, "logic_v1", "logic_v2", 16, 4, &env);
+        eea_free(ctx);
+        if (!eea_attest_envelope(&env, chain)) return 1;
+        if (chain->n_steps != 1) return 2;
+        qadav_qera_free(chain);
+        qadav_qeeh_free(auth);
+        qadav_write_raw("EEA_ATTEST_SUCCESS_OK\n", 22);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_attest_tampered")) {
+        double pen = 1.0;
+        qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
+        qadav_reasoning_chain* chain = qadav_qera_create("eea_chain", 10, auth);
+        eea_context* ctx = eea_create_policy(POLICY_CONSTANT_RATE, 0.10, 100);
+        eea_envelope env;
+        eea_build_envelope_text(ctx, 0, "logic_v1", "logic_v2", 16, 4, &env);
+        eea_free(ctx);
+        eea_corrupt(&env, 8);
+        eea_attest_envelope(&env, chain);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_decaying_rate")) {
+        eea_context* ctx = eea_create_policy(POLICY_DECAYING_RATE, 1.0, 1000);
+        double prev_rate = ctx->mutation_rate;
+        for (int i = 0; i < 10; i++) {
+            eea_envelope env;
+            char from[16], to[16];
+            from[0] = (char)('a' + i); from[1] = '\0';
+            to[0] = (char)('b' + i); to[1] = '\0';
+            eea_build_envelope_text(ctx, 0, from, to, 16, 4, &env);
+            if (ctx->mutation_rate >= prev_rate && i > 0) return 1;
+            prev_rate = ctx->mutation_rate;
+        }
+        eea_free(ctx);
+        qadav_write_raw("EEA_DECAYING_RATE_OK\n", 21);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_aslr_determinism")) {
+        unsigned char h1[32], h2[32];
+        for (int iter = 0; iter < 100; iter++) {
+            eea_context* ctx = eea_create_policy(POLICY_CONSTANT_RATE, 0.10, 100);
+            eea_envelope env;
+            eea_build_envelope_text(ctx, 0, "fixed_from", "fixed_to", 16, 4, &env);
+            eea_free(ctx);
+            if (iter == 0) {
+                for (int k = 0; k < 32; k++) h1[k] = env.envelope_hash[k];
+            } else {
+                for (int k = 0; k < 32; k++) h2[k] = env.envelope_hash[k];
+                if (qadav_sha3_ct_compare(h1, h2, 32) != 0) return 1;
+            }
+        }
+        qadav_write_raw("EEA_ASLR_DETERMINISM_OK\n", 24);
+        return 0;
+    }
     if (qadav_streq(req, "integration_vault_reasoning")) {
         double pen = 1.0;
         qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
@@ -2390,6 +2644,8 @@ func runCryptoTestHarnessExpectExit(t *testing.T, testName string) (string, erro
 #include "qadav_barat.h"
 #include "qadav_qhal.h"
 #include "qadav_sea.h"
+#include "qadav_transpile.h"
+#include "qadav_eea.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -2481,6 +2737,27 @@ int main(void) {
         sea_propose(h, from, to, reason, &p);
         sea_corrupt(p, 16);
         sea_attest(h, chain);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_verify_tampered")) {
+        eea_context* ctx = eea_create_policy(POLICY_CONSTANT_RATE, 0.10, 100);
+        eea_envelope env;
+        eea_build_envelope_text(ctx, 0, "logic_v1", "logic_v2", 16, 4, &env);
+        eea_free(ctx);
+        eea_corrupt(&env, 16);
+        eea_verify_envelope(&env);
+        return 0;
+    }
+    if (qadav_streq(req, "eea_attest_tampered")) {
+        double pen = 1.0;
+        qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
+        qadav_reasoning_chain* chain = qadav_qera_create("eea_chain", 10, auth);
+        eea_context* ctx = eea_create_policy(POLICY_CONSTANT_RATE, 0.10, 100);
+        eea_envelope env;
+        eea_build_envelope_text(ctx, 0, "logic_v1", "logic_v2", 16, 4, &env);
+        eea_free(ctx);
+        eea_corrupt(&env, 8);
+        eea_attest_envelope(&env, chain);
         return 0;
     }
     return 0;

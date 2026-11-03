@@ -1,0 +1,16 @@
+process main⦅⦆ → int64 ⟦
+    @qhal_backend sim
+    qubit q0 ⸴ q1 ·
+    superpose q0 ·
+    entangle q0 ⸴ q1 ·
+
+    text qiskit_code ↦ "" ·
+    transpile_to "qiskit" into qiskit_code with size 2048 ·
+    emit qiskit_code ·
+
+    text cirq_code ↦ "" ·
+    transpile_to "cirq" into cirq_code with size 2048 ·
+    emit cirq_code ·
+
+    yield 0 ·
+⟧

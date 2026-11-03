@@ -5,6 +5,44 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M7.3 + M7.4] — Combined Milestone: Hardware Target Transpilation + Evolution Envelope Attestation (EEA — Invention #21, Patent Pending) (100% Complete)
+## [M7.3 + M7.4] — संयुक्त माइलस्टोन: हार्डवेयर लक्ष्य पारगमन + विकास आवरण प्रमाणीकरण (EEA — आविष्कार #21, पेटेंट लंबित) (100% पूर्ण)
+
+### Added / नया जोड़ा गया:
+- **Hardware Target Transpilation (M7.3)**:
+  - Language tokens and statements: `transpile_to`, `options`, plus LaTeX fallbacks (`\transpile_to`, `\transpile_options`).
+  - AST nodes in `internal/ast/transpile.go` (`TranspileToStmt`, `TranspileOpts`).
+  - Parser grammar integration in `internal/parser/parser.go`.
+  - Semantic type-checking in `internal/checker/transpile_checker.go` validating targets (`qiskit`, `cirq`, `ionq`, `qasm3`) and buffer sizes ($\ge 256$ bytes).
+  - LLVM IR code generator in `internal/codegen/transpile_codegen.go` and `llvm.go`.
+  - Pure zero-libc C engine in `internal/runtime/qadav_transpile.c` and `qadav_transpile.h`:
+    - Qiskit (Python), Cirq (Python), IonQ Trapped-Ion (JSON), and OpenQASM 3.0 string generation.
+    - Adjacent gate cancellation (`optimize_adjacent`) eliminating $X \cdot X = I$, $Y \cdot Y = I$, $Z \cdot Z = I$, $H \cdot H = I$, and $\text{CNOT} \cdot \text{CNOT} = I$.
+    - Buffer size overflow protection and error return codes (`-1` invalid target, `-2` unsupported gate, `-3` buffer too small).
+  - Example: `examples/transpile_demo.ydv`.
+  - Unit tests in `internal/runtime/transpile_test.go` (8 tests: Qiskit, Cirq, IonQ, QASM3, adjacent cancel, buffer too small, unsupported target, huge circuit safety).
+- **Evolution Envelope Attestation (EEA — Invention #21, Patent Pending) (M7.4)**:
+  - Language tokens and statements: `evolve_policy`, `evolve_bounded`, `eea_verify`, `corrupt_eea` (strictly gated by `--test`), plus LaTeX fallbacks.
+  - AST nodes in `internal/ast/eea.go` (`EvolvePolicyStmt`, `EvolveBoundedStmt`, `EEAVerifyStmt`, `CorruptEEAStmt`).
+  - Parser grammar integration in `internal/parser/parser.go`.
+  - Static type-checking in `internal/checker/eea_checker.go` enforcing compile-time `--test` gating for `corrupt_eea`, valid policy kinds (`constant`, `decaying`, `adaptive`), rates in $(0.0, 1.0]$, budgets $\ge 1$, and bound constraints.
+  - LLVM IR code generator in `internal/codegen/eea_codegen.go` and `llvm.go`.
+  - Pure zero-libc C engine in `internal/runtime/qadav_eea.c` and `qadav_eea.h`:
+    - Deterministic 187-byte binary preimage packing step index, bounds, diffs, policy, rate, state hashes, and proposal hash without struct padding.
+    - Popcount Hamming bit difference and byte vocabulary diff computation (`eea_compute_diff`).
+    - In-situ bound enforcement returning clean `-2` validation failure (no decoherence) when diff exceeds declared limits.
+    - Active quantum decoherence and process termination (`ExitProcess(0xDEADBEEF)`) on any post-creation envelope tampering.
+    - Policy rate schedule progression (`constant`, `decaying` at $0.95^t$, `adaptive`).
+  - Specification: `docs/EEA_SPEC.md`.
+  - Examples: `examples/eea_demo.ydv`, `examples/eea_tamper.ydv`.
+  - Unit tests in `internal/runtime/eea_test.go` (10 tests: policy creation, compute diff, valid envelope, bound violation rejection, verify valid, verify tampered, attest success, attest tampered, decaying rate, ASLR determinism).
+- **Runtime Object Count Expansion**:
+  - Expanded zero-libc runtime objects from 36 to 38 (`qadav_transpile.o` and `qadav_eea.o`).
+  - Updated `internal/runtime/runtime.go` (`//go:embed`, `Hash()`, `Build()`, `modules` slice, returned object slice).
+  - Updated `internal/runtime/runtime_test.go` and `docs/SETUP.md`.
+
+---
+
 ## [M7.1 + M7.2] — Combined Milestone: Quantum Hardware Abstraction Layer (QHAL) + Self-Evolution Attestation (SEA — Invention #20, Patent Pending) (100% Complete)
 ## [M7.1 + M7.2] — संयुक्त माइलस्टोन: क्वांटम हार्डवेयर एब्स्ट्रैक्शन लेयर (QHAL) + स्व-विकास प्रमाणीकरण (SEA — आविष्कार #20, पेटेंट लंबित) (100% पूर्ण)
 

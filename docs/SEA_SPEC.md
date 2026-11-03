@@ -77,3 +77,4 @@ Evolution proposals cannot be committed without an active ethical Hamiltonian bo
 
 ### 6. Verification & Auditability
 Auditing an evolved agent requires only verifying the Merkle lineage root and stepping through the QERA audit trail. Because each step is deterministically hash-chained, an independent verifier can prove the exact evolutionary trajectory of the agent from genesis to its current state without executing untrusted intermediate bytecode.
+

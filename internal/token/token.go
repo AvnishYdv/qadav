@@ -438,6 +438,16 @@ const (
 	EVOLVE_VERIFY  Type = "EVOLVE_VERIFY"
 	EVOLVE_HISTORY Type = "EVOLVE_HISTORY"
 	CORRUPT_EVOLVE Type = "CORRUPT_EVOLVE"
+
+	// M7.3: Hardware Target Transpilation Keywords
+	TRANSPILE_TO   Type = "TRANSPILE_TO"
+	TRANSPILE_OPTS Type = "TRANSPILE_OPTS"
+
+	// M7.4: Evolution Operators & EEA (Invention #21) Keywords
+	EVOLVE_POLICY  Type = "EVOLVE_POLICY"
+	EVOLVE_BOUNDED Type = "EVOLVE_BOUNDED"
+	EEA_VERIFY     Type = "EEA_VERIFY"
+	CORRUPT_EEA    Type = "CORRUPT_EEA"
 )
 
 // Quasinary Keywords & Literals
@@ -870,6 +880,16 @@ var keywords = map[string]Type{
 	"evolve_history": EVOLVE_HISTORY,
 	"corrupt_evolve": CORRUPT_EVOLVE,
 
+	// M7.3: Hardware Target Transpilation
+	"transpile_to":   TRANSPILE_TO,
+	"transpile_opts": TRANSPILE_OPTS,
+
+	// M7.4: Evolution Operators & EEA (Invention #21)
+	"evolve_policy":  EVOLVE_POLICY,
+	"evolve_bounded": EVOLVE_BOUNDED,
+	"eea_verify":     EEA_VERIFY,
+	"corrupt_eea":    CORRUPT_EEA,
+
 	// Cryptography
 	"sign":    SIGN,
 	"verify":  VERIFY,
@@ -1023,6 +1043,12 @@ var fallbacks = func() map[string]Type {
 		`\evolve_verify`:          EVOLVE_VERIFY,
 		`\evolve_history`:         EVOLVE_HISTORY,
 		`\corrupt_evolve`:         CORRUPT_EVOLVE,
+		`\transpile_to`:           TRANSPILE_TO,
+		`\transpile_opts`:         TRANSPILE_OPTS,
+		`\evolve_policy`:          EVOLVE_POLICY,
+		`\evolve_bounded`:         EVOLVE_BOUNDED,
+		`\eea_verify`:             EEA_VERIFY,
+		`\corrupt_eea`:            CORRUPT_EEA,
 	}
 	for k, v := range kwFallbacks {
 		m[k] = v

@@ -70,3 +70,4 @@ func (c *Checker) checkCorruptEvolveStmt(s *ast.CorruptEvolveStmt) {
 		c.checkExpr(s.Offset)
 	}
 }
+

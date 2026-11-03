@@ -2078,6 +2078,132 @@ qyn run --test examples\sea_tamper.ydv
 Output: Process terminates immediately with catastrophic quantum decoherence (`0xDEADBEEF`).  
 Exit code: `0xdeadbeef` (`3735928559`)
 
+---
+
+## 52. Hardware Target Transpilation (Qiskit / Cirq) / हार्डवेयर लक्ष्य पारगमन
+
+File: `examples/transpile_demo.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    @qhal_backend sim
+    qubit q0 ⸴ q1 ·
+    superpose q0 ·
+    entangle q0 ⸴ q1 ·
+
+    text qiskit_code ↦ "" ·
+    transpile_to "qiskit" into qiskit_code with size 2048 ·
+    emit qiskit_code ·
+
+    text cirq_code ↦ "" ·
+    transpile_to "cirq" into cirq_code with size 2048 ·
+    emit cirq_code ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run examples\transpile_demo.ydv
+```
+Output:
+```python
+from qiskit import QuantumCircuit
+qc = QuantumCircuit(2, 2)
+qc.h(0)
+qc.cx(0, 1)
+
+import cirq
+q = cirq.LineQubit.range(2)
+circuit = cirq.Circuit([cirq.H(q[0]), cirq.CNOT(q[0], q[1])])
+```
+Exit code: `0`
+
+---
+
+## 53. Evolution Envelope Attestation (EEA) / विकास आवरण साक्ष्य
+
+File: `examples/eea_demo.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary evo_auth ⟦
+        rule evolution_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain evo_log with evo_auth ⟦ capacity ↦ 30 · ⟧
+
+    text state_v1 ↦ "agent_logic_v1.0" ·
+    text state_v2 ↦ "agent_logic_v1.1" ·
+    text evo_reason ↦ "small heuristic tweak" ·
+
+    evolve_policy constant into policy with rate 0.10 budget 100 ·
+    evolve_bounded policy from state_v1 to state_v2 with reason evo_reason max_flips 8 max_new_symbols 2 into proposal envelope ·
+    eea_verify envelope into is_valid ·
+    evolve_history to evo_log ·
+
+    emit "Envelope attested" ·
+    emit is_valid ·
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run examples\eea_demo.ydv
+```
+Output:
+```
+Envelope attested
+affirm
+```
+Exit code: `0`
+
+---
+
+## 54. EEA Tamper Detection & Decoherence / ईईए छेड़छाड़ पहचान और डिकोहेरेंस
+
+File: `examples/eea_tamper.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary evo_auth ⟦
+        rule evolution_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain evo_log with evo_auth ⟦ capacity ↦ 30 · ⟧
+
+    text s1 ↦ "state_a" ·
+    text s2 ↦ "state_b" ·
+    text r ↦ "reason_x" ·
+
+    evolve_policy constant into policy with rate 0.10 budget 100 ·
+    evolve_bounded policy from s1 to s2 with reason r max_flips 4 max_new_symbols 1 into p env ·
+    corrupt_eea env at ↦ 16 ·
+    eea_verify env into is_valid ·
+    evolve_history to evo_log ·
+    emit "Unreachable" ·
+    yield 0 ·
+⟧
+```
+
+### Execution (Production Mode):
+```powershell
+qyn run examples\eea_tamper.ydv
+```
+Output:
+```
+qyn run: type errors in examples\eea_tamper.ydv:
+  examples\eea_tamper.ydv:13:5: corrupt_eea is only permitted in test mode (--test)
+```
+Exit code: `1`
+
+### Execution (Test Mode):
+```powershell
+qyn run --test examples\eea_tamper.ydv
+```
+Output: Active quantum decoherence nullifies register and terminates process immediately (`0xDEADBEEF`).  
+Exit code: `0xdeadbeef` (`3735928559`)
+
 
 
 

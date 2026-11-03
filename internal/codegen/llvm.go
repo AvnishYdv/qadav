@@ -442,6 +442,20 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 	header.WriteString("declare i32 @sea_corrupt(i8*, i32)\n")
 	header.WriteString("declare void @sea_free(i8*)\n\n")
 
+	// Hardware Target Transpilation (QHAL Transpiler — M7.3)
+	header.WriteString("declare i32 @transpile_circuit(i8*, i32, i8*, i8*, i64, i64*, i32*)\n")
+	header.WriteString("declare i32 @transpile_supported_targets(i8*, i64)\n\n")
+
+	// Evolution Operators & EEA (Invention #21, M7.4)
+	header.WriteString("declare i8* @eea_create_policy(i32, double, i64)\n")
+	header.WriteString("declare i8* @eea_create_envelope()\n")
+	header.WriteString("declare i32 @eea_build_envelope_text(i8*, i8*, i8*, i8*, i64, i64, i8*)\n")
+	header.WriteString("declare i32 @eea_verify_envelope(i8*)\n")
+	header.WriteString("declare i32 @eea_attest_envelope(i8*, i8*)\n")
+	header.WriteString("declare i32 @eea_corrupt(i8*, i32)\n")
+	header.WriteString("declare void @eea_free_envelope(i8*)\n")
+	header.WriteString("declare void @eea_free(i8*)\n\n")
+
 	// Quantum global state
 	header.WriteString(g.generateQuantumGlobal())
 
@@ -926,6 +940,16 @@ func (g *Generator) genStmt(stmt ast.Stmt) {
 		g.genEvolveHistoryStmt(s)
 	case *ast.CorruptEvolveStmt:
 		g.genCorruptEvolveStmt(s)
+	case *ast.TranspileToStmt:
+		g.genTranspileToStmt(s)
+	case *ast.EvolvePolicyStmt:
+		g.genEvolvePolicyStmt(s)
+	case *ast.EvolveBoundedStmt:
+		g.genEvolveBoundedStmt(s)
+	case *ast.EEAVerifyStmt:
+		g.genEEAVerifyStmt(s)
+	case *ast.CorruptEEAStmt:
+		g.genCorruptEEAStmt(s)
 	case *ast.QHALBackendAnnotation:
 		// No-op
 	case *ast.TileStmt, *ast.EnergyDecl:

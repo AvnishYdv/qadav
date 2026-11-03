@@ -49,3 +49,4 @@ void qhal_shutdown(qhal_circuit* c);
 #endif
 
 #endif /* QADAV_QHAL_H */
+

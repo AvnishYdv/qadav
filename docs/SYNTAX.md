@@ -271,6 +271,21 @@ EvolveHistoryStmt   ::= "evolve_history" "to" Ident "·"
 CorruptEvolveStmt   ::= "corrupt_evolve" Ident "at" "↦" Expr "·"  // --test only
 ```
 
+### 28. Hardware Target Transpilation Grammar (M7.3)
+QHAL quantum circuit transpilation to external framework representations:
+```bnf
+TranspileToStmt     ::= "transpile_to" (StringLit | Ident) "into" Ident ("with" "size" Expr)? ("options" "⟦" (Ident "·")* "⟧" "·")? "·"
+```
+
+### 29. Evolution Envelope Attestation (EEA) Grammar (M7.4)
+Invention #21 establishes cryptographic bounded mutation envelopes for autonomous evolution:
+```bnf
+EvolvePolicyStmt    ::= "evolve_policy" Ident "into" Ident "with" "rate" Expr "budget" Expr "·"
+EvolveBoundedStmt   ::= "evolve_bounded" Ident "from" Expr "to" Expr "with" "reason" Expr "max_flips" Expr "max_new_symbols" Expr "into" Ident Ident "·"
+EEAVerifyStmt       ::= "eea_verify" Ident "into" Ident "·"
+CorruptEEAStmt      ::= "corrupt_eea" Ident "at" "↦" Expr "·"  // --test only
+```
+
 ### Compiler Testing Flags:
 - `--test`: Enables test-only AST statements (e.g. `corrupt_memory_share`, `corrupt_reasoning_step`, `corrupt_syndrome`) for cryptographic tamper resilience verification. In normal builds, test-only statements are rejected with a checker error.
 

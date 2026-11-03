@@ -672,6 +672,21 @@ func (c *Checker) checkStmt(stmt ast.Stmt) {
 	case *ast.CorruptEvolveStmt:
 		c.checkCorruptEvolveStmt(s)
 
+	case *ast.TranspileToStmt:
+		c.checkTranspileToStmt(s)
+
+	case *ast.EvolvePolicyStmt:
+		c.checkEvolvePolicyStmt(s)
+
+	case *ast.EvolveBoundedStmt:
+		c.checkEvolveBoundedStmt(s)
+
+	case *ast.EEAVerifyStmt:
+		c.checkEEAVerifyStmt(s)
+
+	case *ast.CorruptEEAStmt:
+		c.checkCorruptEEAStmt(s)
+
 	case *ast.ExprStmt:
 		c.checkExpr(s.Expr)
 
