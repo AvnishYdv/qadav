@@ -286,6 +286,25 @@ EEAVerifyStmt       ::= "eea_verify" Ident "into" Ident "·"
 CorruptEEAStmt      ::= "corrupt_eea" Ident "at" "↦" Expr "·"  // --test only
 ```
 
+### 30. Real QEC Decoder Grammar (M7.5)
+Enables zero-libc greedy min-weight decoding and verification on surface code distances $d \in \{3, 5, 7\}$:
+```bnf
+QECDDecodeStmt  ::= "qecd_decode" "distance" "↦" Expr "from" Ident "into" Ident "·"
+QECDVerifyStmt  ::= "qecd_verify" Ident "into" Ident "·"
+QECDApplyStmt   ::= "qecd_apply" Ident "on" Ident "·"
+```
+
+### 31. Attested Adaptive Decoder (AAD) Grammar (M7.6 — Invention #22)
+Invention #22 establishes cryptographic operating envelopes and meta-learning lineage:
+```bnf
+AADCertStmt         ::= "aad_cert" "with" "model" "↦" Expr "train" "↦" Expr "max_syndrome" "↦" Expr "max_corr_dist" "↦" Expr "into" Ident "·"
+AADAttestStmt       ::= "aad_attest" Ident ("cert" "↦" Ident "decode" "↦" Ident)? "into" Ident "·"
+MetaFitStmt         ::= "meta_fit" "into" Ident "cert" "↦" Ident "·"
+MetaAdaptStmt       ::= "meta_adapt" Ident "with" Ident "into" Ident "·"
+MetaVerifyStmt      ::= "meta_verify" Ident "into" Ident "·"
+CorruptAADEnvStmt   ::= "corrupt_aad_env" Ident "at" "↦" Expr "·"  // --test only
+```
+
 ### Compiler Testing Flags:
 - `--test`: Enables test-only AST statements (e.g. `corrupt_memory_share`, `corrupt_reasoning_step`, `corrupt_syndrome`) for cryptographic tamper resilience verification. In normal builds, test-only statements are rejected with a checker error.
 

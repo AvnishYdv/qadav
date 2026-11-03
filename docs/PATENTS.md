@@ -399,6 +399,24 @@ Conventional frameworks (PyTorch, TensorFlow, ONNX Runtime) depend on multi-giga
 4. Annealing policy rate decay attestation: formally attesting mutation cooling schedules ($\text{rate}_{t+1} = \text{rate}_t \times 0.95$) directly inside the hash-chained envelope preimage.
 5. QERA reasoning chain envelope coupling: binding attested evolution envelopes into host QERA chains under operation `QADAV_OP_EVOLVE` (5) evaluated against active ethical Hamiltonian boundary penalties.
 
+---
+
+## 22. Invention #22: Attested Adaptive Decoder (AAD)
+## आविष्कार #22: साक्ष्यांकित अनुकूली विसंकेतक (AAD)
+
+- **Status / स्थिति:** PROPRIETARY (Patent Pending / पेटेंट लंबित)
+- **First disclosed / प्रथम प्रकटीकरण:** 2026-11-03
+- **Mechanism / कार्यप्रणाली:** A cryptographically verified operating envelope and meta-learning framework for adaptive quantum error correction (QEC) syndrome decoders. Pairs a decoder training certificate (`aad_training_cert`) binding model hash, training syndrome set digest, and maximum operating bounds ($\text{max\_syndrome\_weight} \le 128$, $\text{max\_correction\_distance} \le 16$) with a per-inference operating envelope (`aad_decode_envelope`) binding measured syndrome defect weights, proposed correction distances, and calibrated confidence scores. Enforces calibrated abstention (return code `-3`) on out-of-distribution syndrome bursts while triggering immediate quantum decoherence and process destruction (`ExitProcess(0xDEADBEEF)`) on envelope tampering or forgery.
+- **Novelty / नवीनता:** First quantum error correction runtime integrating cryptographic decoder operating envelopes with verified online meta-learning lineage tracking and active quantum fail-stop tamper containment.
+- **NOT open source / बंद स्रोत:** Proprietary Qadav feature.
+
+### Technical Claims / तकनीकी बिंदु:
+1. Dual cryptographic envelope architecture: binding decoder model parameters, training set digests, and operational threshold bounds into an invariant 88-byte root certificate, coupled to a 92-byte runtime decoding envelope capturing inference metrics and calibrated confidence.
+2. Calibrated syndrome abstention: providing deterministic error code `-3` abstention without host decoherence when incoming syndrome defect weights or correction distances exceed certified operational boundaries.
+3. Quantum fail-stop tamper containment: recomputing the 92-byte envelope digest prior to attestation or correction dispatch and immediately triggering quantum wavefunction collapse (`ExitProcess(0xDEADBEEF)`) upon any bit discrepancy.
+4. Continual meta-learning lineage chain: recursively chaining verified decoding envelope digests into a cumulative SHA3-256 lineage hash anchored to the initial root training certificate.
+5. Surface code lattice integration: coupling zero-libc greedy min-weight decoding across surface code distances $d \in \{3, 5, 7\}$ with idempotent Pauli correction operators ($X \oplus X = I$, $Z \oplus Z = I$) and QERA chain attestation under operation code `QADAV_OP_AAD_DECODE` (6).
+
 
 
 

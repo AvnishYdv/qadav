@@ -1154,6 +1154,70 @@ process main⦅⦆ → int64 ⟦
 ⟧
 ```
 
+---
+
+## 40. Real QEC Decoder (M7.5)
+
+Qadav includes a zero-libc planar surface code syndrome decoder for distances $d \in \{3, 5, 7\}$. Given raw stabilizer syndrome defect bytes extracted from physical or simulated qubits, `qecd_decode` applies greedy minimum-weight matching to compute optimal Pauli corrections and binds them into a SHA3-256 attestation digest:
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary qec_auth ⟦
+        rule memory_coherence ↦ 1.0 ·
+        rule non_harm ↦ 1.0 ·
+    ⟧
+
+    qec_memory qm as surface_code distance ↦ 3 with qec_auth ⟦ ⟧ ·
+    syndrome qm into syn0 ·
+    verify_syndrome qm with syn0 ·
+
+    qecd_decode distance ↦ 3 from syn0 into decoded ·
+    qecd_verify decoded into is_valid ·
+    emit "QEC decode attestation verified" ·
+    emit is_valid ·
+
+    yield 0 ·
+⟧
+```
+
+---
+
+## 41. Attested Adaptive Decoder (AAD — Invention #22)
+
+AAD (Invention #22, Patent Pending) wraps adaptive syndrome decoding in cryptographically verified operating envelopes with meta-learning lineage tracking:
+- **`aad_cert`**: Binds decoder model parameters, training set hash, maximum syndrome weight, and maximum correction distance into an 88-byte root certificate.
+- **`aad_attest`**: Wraps candidate corrections in a 92-byte operating envelope, verifying that measured syndrome weight $\le \text{max\_syn\_weight}$ and distance $\le \text{max\_corr\_dist}$. Out-of-bounds inputs safely return error code `-3` (abstention). Any tampering with envelope digests triggers catastrophic active quantum decoherence (`ExitProcess(0xDEADBEEF)`).
+- **`meta_fit` / `meta_adapt` / `meta_verify`**: Continual meta-learning primitives maintaining a hash-chained SHA3-256 adaptation lineage DAG.
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary aad_auth ⟦
+        rule decode_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain decode_log with aad_auth ⟦ capacity ↦ 30 · ⟧
+
+    text model_bytes ↦ "qec_decoder_v1" ·
+    text train_bytes ↦ "training_samples_v1" ·
+
+    aad_cert with model ↦ model_bytes train ↦ train_bytes max_syndrome ↦ 64 max_corr_dist ↦ 8 into cert ·
+
+    qec_memory qm as surface_code distance ↦ 3 with aad_auth ⟦ ⟧ ·
+    syndrome qm into syn0 ·
+    verify_syndrome qm with syn0 ·
+
+    qecd_decode distance ↦ 3 from syn0 into decoded ·
+    aad_attest cert cert ↦ cert decode ↦ decoded into envelope ·
+    emit "AAD envelope attested" ·
+
+    meta_fit into meta_state cert ↦ cert ·
+    meta_adapt meta_state with envelope into adapted ·
+    meta_verify meta_state into is_valid ·
+
+    emit is_valid ·
+    yield 0 ·
+⟧
+```
+
 
 
 

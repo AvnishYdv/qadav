@@ -14,7 +14,7 @@ import (
 	"github.com/qadav-lang/qadav/internal/llvm"
 )
 
-//go:embed qadav_rt.c qadav_rt_linux.c qadav_tensor.c qadav_tensor.h qadav_nn.c qadav_nn.h qadav_quantum.c qadav_quantum.h qadav_prime.c qadav_prime.h qadav_io.c qadav_io.h qadav_dataset.c qadav_dataset.h qadav_quasinary.c qadav_quasinary.h qadav_cir.c qadav_cir.h qadav_agi.c qadav_agi.h qadav_sha3.c qadav_sha3.h qadav_merkle.c qadav_merkle.h qadav_lamport.c qadav_lamport.h qadav_selfcheck.c qadav_selfcheck.h qadav_qeeh.c qadav_qeeh.h qadav_qemwv.c qadav_qemwv.h qadav_mctp.c qadav_mctp.h qadav_qemp.c qadav_qemp.h qadav_qecmt.c qadav_qecmt.h qadav_qera.c qadav_qera.h qadav_qecma.c qadav_qecma.h qadav_qec.c qadav_qec.h qadav_consolidate.c qadav_consolidate.h qadav_scoped.c qadav_scoped.h qadav_tools.c qadav_tools.h qadav_certificate.c qadav_certificate.h qadav_abstain.c qadav_abstain.h qadav_sandbox.c qadav_sandbox.h qadav_gpu.c qadav_gpu.h qadav_agke.c qadav_agke.h qadav_multigpu.c qadav_multigpu.h qadav_cdaga.c qadav_cdaga.h qadav_distributed.c qadav_distributed.h qadav_barat.c qadav_barat.h qadav_qhal.c qadav_qhal.h qadav_sea.c qadav_sea.h qadav_transpile.c qadav_transpile.h qadav_eea.c qadav_eea.h
+//go:embed qadav_rt.c qadav_rt_linux.c qadav_tensor.c qadav_tensor.h qadav_nn.c qadav_nn.h qadav_quantum.c qadav_quantum.h qadav_prime.c qadav_prime.h qadav_io.c qadav_io.h qadav_dataset.c qadav_dataset.h qadav_quasinary.c qadav_quasinary.h qadav_cir.c qadav_cir.h qadav_agi.c qadav_agi.h qadav_sha3.c qadav_sha3.h qadav_merkle.c qadav_merkle.h qadav_lamport.c qadav_lamport.h qadav_selfcheck.c qadav_selfcheck.h qadav_qeeh.c qadav_qeeh.h qadav_qemwv.c qadav_qemwv.h qadav_mctp.c qadav_mctp.h qadav_qemp.c qadav_qemp.h qadav_qecmt.c qadav_qecmt.h qadav_qera.c qadav_qera.h qadav_qecma.c qadav_qecma.h qadav_qec.c qadav_qec.h qadav_consolidate.c qadav_consolidate.h qadav_scoped.c qadav_scoped.h qadav_tools.c qadav_tools.h qadav_certificate.c qadav_certificate.h qadav_abstain.c qadav_abstain.h qadav_sandbox.c qadav_sandbox.h qadav_gpu.c qadav_gpu.h qadav_agke.c qadav_agke.h qadav_multigpu.c qadav_multigpu.h qadav_cdaga.c qadav_cdaga.h qadav_distributed.c qadav_distributed.h qadav_barat.c qadav_barat.h qadav_qhal.c qadav_qhal.h qadav_sea.c qadav_sea.h qadav_transpile.c qadav_transpile.h qadav_eea.c qadav_eea.h qadav_qecdecoder.c qadav_qecdecoder.h qadav_aad.c qadav_aad.h
 var srcFiles embed.FS
 
 // Sources returns the primary runtime C source file name and content for the current platform.
@@ -116,6 +116,10 @@ func Hash() string {
 	transpileH, _ := srcFiles.ReadFile("qadav_transpile.h")
 	eeaC, _ := srcFiles.ReadFile("qadav_eea.c")
 	eeaH, _ := srcFiles.ReadFile("qadav_eea.h")
+	qecdC, _ := srcFiles.ReadFile("qadav_qecdecoder.c")
+	qecdH, _ := srcFiles.ReadFile("qadav_qecdecoder.h")
+	aadC, _ := srcFiles.ReadFile("qadav_aad.c")
+	aadH, _ := srcFiles.ReadFile("qadav_aad.h")
 
 	h := sha256.New()
 	h.Write(content)
@@ -193,6 +197,10 @@ func Hash() string {
 	h.Write(transpileH)
 	h.Write(eeaC)
 	h.Write(eeaH)
+	h.Write(qecdC)
+	h.Write(qecdH)
+	h.Write(aadC)
+	h.Write(aadH)
 	sum := h.Sum(nil)
 	return hex.EncodeToString(sum)[:16]
 }
@@ -264,6 +272,8 @@ func Build(tc *llvm.Toolchain, cacheDir string) ([]string, error) {
 	seaObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_sea_%s.o", hashStr))
 	transpileObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_transpile_%s.o", hashStr))
 	eeaObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_eea_%s.o", hashStr))
+	qecdObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_qecdecoder_%s.o", hashStr))
+	aadObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_aad_%s.o", hashStr))
 
 	if entries, err := srcFiles.ReadDir("."); err == nil {
 		for _, entry := range entries {
@@ -359,6 +369,8 @@ func Build(tc *llvm.Toolchain, cacheDir string) ([]string, error) {
 		{"qadav_sea", seaObjPath},
 		{"qadav_transpile", transpileObjPath},
 		{"qadav_eea", eeaObjPath},
+		{"qadav_qecdecoder", qecdObjPath},
+		{"qadav_aad", aadObjPath},
 	}
 
 	for _, m := range modules {
@@ -376,6 +388,7 @@ func Build(tc *llvm.Toolchain, cacheDir string) ([]string, error) {
 		certObjPath, abstainObjPath, sbObjPath, gpuObjPath, agkeObjPath,
 		mgpuObjPath, cdagaObjPath, distObjPath, baratObjPath,
 		qhalObjPath, seaObjPath, transpileObjPath, eeaObjPath,
+		qecdObjPath, aadObjPath,
 	}, nil
 }
 

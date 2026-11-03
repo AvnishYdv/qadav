@@ -5,6 +5,49 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M7.5 + M7.6] — Combined Milestone: Real QEC Surface Code Decoder + Meta-Learning Primitives + Attested Adaptive Decoder (AAD — Invention #22, Patent Pending) (100% Complete)
+## [M7.5 + M7.6] — संयुक्त माइलस्टोन: वास्तविक क्यूईसी सतह कोड विसंकेतक + मेटा-लर्निंग + साक्ष्यांकित अनुकूली विसंकेतक (AAD — आविष्कार #22, पेटेंट लंबित) (100% पूर्ण)
+
+### Added / नया जोड़ा गया:
+- **Real QEC Surface Code Decoder (M7.5)**:
+  - Language tokens and statements: `qecd_decode`, `qecd_verify`, `qecd_apply` with LaTeX fallbacks.
+  - AST nodes in `internal/ast/qecdecoder.go` (`QECDDecodeStmt`, `QECDVerifyStmt`, `QECDApplyStmt`).
+  - Parser grammar integration in `internal/parser/parser.go`.
+  - Semantic type-checking in `internal/checker/qecdecoder_checker.go` validating code distances $d \in \{3, 5, 7\}$, scope lookups for syndrome and statevector variables, and resulting symbol definitions.
+  - LLVM IR code generator in `internal/codegen/qecdecoder_codegen.go` and `llvm.go`.
+  - Pure zero-libc C engine in `internal/runtime/qadav_qecdecoder.c` and `qadav_qecdecoder.h`:
+    - Greedy min-weight decoder for planar surface codes.
+    - Idempotent operator cancellation ($X \oplus X = I$, $Z \oplus Z = I$, $X \oplus Z = Y$).
+    - Deterministic SHA3-256 `decode_attestation` packing over syndrome and correction arrays.
+    - Constant-time attestation verification and bounds-checked state vector correction application.
+  - Example: `examples/qecdecoder_demo.ydv`.
+  - Unit tests in `internal/runtime/qecdecoder_test.go` (8 tests: basic, empty, large syndrome, verify valid, verify tampered, apply corrections, apply bounds check, ASLR determinism).
+- **Attested Adaptive Decoder (AAD — Invention #22, Patent Pending) & Meta-Learning (M7.6)**:
+  - Language tokens and statements: `aad_cert`, `aad_attest`, `meta_fit`, `meta_adapt`, `meta_verify`, `corrupt_aad_env` (strictly gated by `--test`).
+  - AST nodes in `internal/ast/aad.go` (`AADCertStmt`, `AADAttestStmt`, `MetaFitStmt`, `MetaAdaptStmt`, `MetaVerifyStmt`, `CorruptAADEnvStmt`).
+  - Parser grammar integration in `internal/parser/parser.go`.
+  - Semantic type-checking in `internal/checker/aad_checker.go` enforcing compile-time `--test` gating for `corrupt_aad_env`, valid operating bounds ($\text{max\_syndrome} \le 128$, $\text{max\_corr\_dist} \le 16$), and scope safety.
+  - LLVM IR code generator in `internal/codegen/aad_codegen.go` and `llvm.go`.
+  - Pure zero-libc C engine in `internal/runtime/qadav_aad.c` and `qadav_aad.h`:
+    - Dual cryptographic envelopes: 88-byte `aad_training_cert` and 92-byte `aad_decode_envelope`.
+    - Operating bound enforcement: returns `-3` (abstention) on out-of-distribution syndrome bursts without decoherence.
+    - Constant-time SHA3 envelope recomputation: triggers active quantum decoherence and immediate process termination (`ExitProcess(0xDEADBEEF)`) on tamper.
+    - Online meta-learning lifecycle maintaining a cumulative SHA3 lineage chain.
+    - Integration into host reasoning chains under operation code `QADAV_OP_AAD_DECODE` (6).
+  - Examples: `examples/aad_demo.ydv`, `examples/aad_tamper.ydv`.
+  - Unit tests in `internal/runtime/aad_test.go` (12 tests: build cert, invalid bounds, wrap valid, wrap out-of-bounds, verify valid, verify tampered, attest success, attest tampered decoherence, meta-fit/adapt/verify, meta-adapt tampered envelope, adapt chain determinism, ASLR determinism).
+- **Runtime Expansion**:
+  - Expanded modular zero-libc runtime from 38 to **40 runtime objects** (`+qadav_qecdecoder.o`, `+qadav_aad.o`).
+  - Embedded sources and headers in `internal/runtime/runtime.go`.
+  - Updated runtime test suite `internal/runtime/runtime_test.go` verifying all 40 objects.
+- **Specification and Patent Documentation**:
+  - Created `docs/AAD_SPEC.md` with complete 10-section formal specification.
+  - Added Invention #22 (AAD) to `docs/PATENTS.md` with 5 technical claims.
+  - Updated `docs/PATENTS_STRATEGY.md` (22 total: 16 pending + 6 defensive).
+  - Updated `docs/GUIDE.md` (Sections 40 & 41), `docs/SYNTAX.md` (Sections 30 & 31), `docs/EXAMPLES.md` (Sections 55, 56, 57), `docs/SECURITY.md` (Section 28), and `docs/SETUP.md`.
+
+---
+
 ## [M7.3 + M7.4] — Combined Milestone: Hardware Target Transpilation + Evolution Envelope Attestation (EEA — Invention #21, Patent Pending) (100% Complete)
 ## [M7.3 + M7.4] — संयुक्त माइलस्टोन: हार्डवेयर लक्ष्य पारगमन + विकास आवरण प्रमाणीकरण (EEA — आविष्कार #21, पेटेंट लंबित) (100% पूर्ण)
 

@@ -456,6 +456,24 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 	header.WriteString("declare void @eea_free_envelope(i8*)\n")
 	header.WriteString("declare void @eea_free(i8*)\n\n")
 
+	// Real QEC Decoder (M7.5)
+	header.WriteString("declare i8* @qecd_decode(i32, i32, i8*, i32)\n")
+	header.WriteString("declare i32 @qecd_verify_decode_attestation(i8*)\n")
+	header.WriteString("declare i32 @qecd_apply_corrections(i8*, i8*, i32)\n")
+	header.WriteString("declare void @qecd_free(i8*)\n\n")
+
+	// Invention #22: Attested Adaptive Decoder (AAD) & Meta-Learning (M7.6)
+	header.WriteString("declare i8* @aad_build_training_cert(i8*, i64, i8*, i64, i64, i64, i64)\n")
+	header.WriteString("declare i32 @aad_wrap_decode(i8*, i8*, i8*, i32, i8*)\n")
+	header.WriteString("declare i32 @aad_verify_envelope(i8*, i8*)\n")
+	header.WriteString("declare i32 @aad_attest_envelope(i8*, i8*)\n")
+	header.WriteString("declare i32 @aad_meta_fit(i8*, i8*)\n")
+	header.WriteString("declare i32 @aad_meta_adapt(i8*, i8*)\n")
+	header.WriteString("declare i32 @aad_meta_verify(i8*)\n")
+	header.WriteString("declare i32 @aad_corrupt_envelope(i8*, i32)\n")
+	header.WriteString("declare void @aad_free_training_cert(i8*)\n")
+	header.WriteString("declare void @aad_free_meta_state(i8*)\n\n")
+
 	// Quantum global state
 	header.WriteString(g.generateQuantumGlobal())
 
@@ -950,6 +968,24 @@ func (g *Generator) genStmt(stmt ast.Stmt) {
 		g.genEEAVerifyStmt(s)
 	case *ast.CorruptEEAStmt:
 		g.genCorruptEEAStmt(s)
+	case *ast.QECDDecodeStmt:
+		g.genQECDDecodeStmt(s)
+	case *ast.QECDVerifyStmt:
+		g.genQECDVerifyStmt(s)
+	case *ast.QECDApplyStmt:
+		g.genQECDApplyStmt(s)
+	case *ast.AADCertStmt:
+		g.genAADCertStmt(s)
+	case *ast.AADAttestStmt:
+		g.genAADAttestStmt(s)
+	case *ast.MetaFitStmt:
+		g.genMetaFitStmt(s)
+	case *ast.MetaAdaptStmt:
+		g.genMetaAdaptStmt(s)
+	case *ast.MetaVerifyStmt:
+		g.genMetaVerifyStmt(s)
+	case *ast.CorruptAADEnvStmt:
+		g.genCorruptAADEnvStmt(s)
 	case *ast.QHALBackendAnnotation:
 		// No-op
 	case *ast.TileStmt, *ast.EnergyDecl:

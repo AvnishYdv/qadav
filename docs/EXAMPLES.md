@@ -2204,6 +2204,140 @@ qyn run --test examples\eea_tamper.ydv
 Output: Active quantum decoherence nullifies register and terminates process immediately (`0xDEADBEEF`).  
 Exit code: `0xdeadbeef` (`3735928559`)
 
+---
+
+## 55. Real QEC Surface Code Decoder / वास्तविक क्यूईसी सतह कोड विसंकेतक
+
+File: `examples/qecdecoder_demo.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary qec_auth ⟦
+        rule memory_coherence ↦ 1.0 ·
+        rule non_harm ↦ 1.0 ·
+    ⟧
+
+    qec_memory qm as surface_code distance ↦ 3 with qec_auth ⟦ ⟧ ·
+    syndrome qm into syn0 ·
+    verify_syndrome qm with syn0 ·
+
+    qecd_decode distance ↦ 3 from syn0 into decoded ·
+    qecd_verify decoded into is_valid ·
+    emit "QEC decode attestation verified" ·
+    emit is_valid ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\qecdecoder_demo.ydv
+```
+Output:
+```
+QEC decode attestation verified
+affirm
+```
+Exit code: `0`
+
+---
+
+## 56. Attested Adaptive Decoder (AAD) / साक्ष्यांकित अनुकूली विसंकेतक
+
+File: `examples/aad_demo.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary aad_auth ⟦
+        rule decode_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain decode_log with aad_auth ⟦ capacity ↦ 30 · ⟧
+
+    text model_bytes ↦ "qec_decoder_v1" ·
+    text train_bytes ↦ "training_samples_v1" ·
+
+    aad_cert with model ↦ model_bytes train ↦ train_bytes max_syndrome ↦ 64 max_corr_dist ↦ 8 into cert ·
+
+    qec_memory qm as surface_code distance ↦ 3 with aad_auth ⟦ ⟧ ·
+    syndrome qm into syn0 ·
+    verify_syndrome qm with syn0 ·
+
+    qecd_decode distance ↦ 3 from syn0 into decoded ·
+    aad_attest cert cert ↦ cert decode ↦ decoded into envelope ·
+    emit "AAD envelope attested" ·
+
+    meta_fit into meta_state cert ↦ cert ·
+    meta_adapt meta_state with envelope into adapted ·
+    meta_verify meta_state into is_valid ·
+
+    emit is_valid ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\aad_demo.ydv
+```
+Output:
+```
+AAD envelope attested
+affirm
+```
+Exit code: `0`
+
+---
+
+## 57. AAD Tamper Detection & Decoherence / एएडी छेड़छाड़ पहचान और डिकोहेरेंस
+
+File: `examples/aad_tamper.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary aad_auth ⟦
+        rule decode_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain decode_log with aad_auth ⟦ capacity ↦ 30 · ⟧
+
+    text model_bytes ↦ "qec_decoder_v1" ·
+    text train_bytes ↦ "training_samples_v1" ·
+
+    aad_cert with model ↦ model_bytes train ↦ train_bytes max_syndrome ↦ 64 max_corr_dist ↦ 8 into cert ·
+
+    qec_memory qm as surface_code distance ↦ 3 with aad_auth ⟦ ⟧ ·
+    syndrome qm into syn0 ·
+    verify_syndrome qm with syn0 ·
+
+    qecd_decode distance ↦ 3 from syn0 into decoded ·
+    aad_attest cert cert ↦ cert decode ↦ decoded into envelope ·
+
+    corrupt_aad_env envelope at ↦ 16 ·
+
+    aad_attest envelope ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution (Production Mode):
+```powershell
+qyn run examples\aad_tamper.ydv
+```
+Output:
+```
+qyn run: type errors in examples\aad_tamper.ydv:
+  examples\aad_tamper.ydv:20:5: corrupt_aad_env is only permitted in test mode (--test)
+```
+Exit code: `1`
+
+### Execution (Test Mode):
+```powershell
+qyn run --test examples\aad_tamper.ydv
+```
+Output: Active quantum decoherence nullifies register and terminates process immediately (`0xDEADBEEF`).  
+Exit code: `0xdeadbeef` (`-559038737`)
+
 
 
 

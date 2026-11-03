@@ -26,4 +26,5 @@ checker_cov.out
 coverage
 *.out
 *.cov
+*.mctp
 

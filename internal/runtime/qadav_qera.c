@@ -111,7 +111,7 @@ int qadav_qera_reason(qadav_reasoning_chain* chain,
         }
     }
 
-    if (operation < 1 || operation > 5) return -2;
+    if (operation < 1 || operation > 6) return -2;
     if (confidence < 0.0 || confidence > 1.0) return -3;
 
     int idx = chain->n_steps;

@@ -1,0 +1,17 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary qec_auth ⟦
+        rule memory_coherence ↦ 1.0 ·
+        rule non_harm ↦ 1.0 ·
+    ⟧
+
+    qec_memory qm as surface_code distance ↦ 3 with qec_auth ⟦ ⟧ ·
+    syndrome qm into syn0 ·
+    verify_syndrome qm with syn0 ·
+
+    qecd_decode distance ↦ 3 from syn0 into decoded ·
+    qecd_verify decoded into is_valid ·
+    emit "QEC decode attestation verified" ·
+    emit is_valid ·
+
+    yield 0 ·
+⟧

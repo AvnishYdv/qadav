@@ -1,0 +1,27 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary aad_auth ⟦
+        rule decode_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain decode_log with aad_auth ⟦ capacity ↦ 30 · ⟧
+
+    text model_bytes ↦ "qec_decoder_v1" ·
+    text train_bytes ↦ "training_samples_v1" ·
+
+    aad_cert with model ↦ model_bytes train ↦ train_bytes max_syndrome ↦ 64 max_corr_dist ↦ 8 into cert ·
+
+    qec_memory qm as surface_code distance ↦ 3 with aad_auth ⟦ ⟧ ·
+    syndrome qm into syn0 ·
+    verify_syndrome qm with syn0 ·
+
+    qecd_decode distance ↦ 3 from syn0 into decoded ·
+
+    aad_attest cert cert ↦ cert decode ↦ decoded into envelope ·
+    emit "AAD envelope attested" ·
+
+    meta_fit into meta_state cert ↦ cert ·
+    meta_adapt meta_state with envelope into adapted ·
+    meta_verify meta_state into is_valid ·
+
+    emit is_valid ·
+    yield 0 ·
+⟧

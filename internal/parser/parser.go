@@ -617,6 +617,24 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseEEAVerifyStmt()
 	case p.current.Type == token.CORRUPT_EEA:
 		return p.parseCorruptEEAStmt()
+	case p.current.Type == token.QECD_DECODE:
+		return p.parseQECDDecodeStmt()
+	case p.current.Type == token.QECD_VERIFY:
+		return p.parseQECDVerifyStmt()
+	case p.current.Type == token.QECD_APPLY:
+		return p.parseQECDApplyStmt()
+	case p.current.Type == token.AAD_CERT:
+		return p.parseAADCertStmt()
+	case p.current.Type == token.AAD_ATTEST:
+		return p.parseAADAttestStmt()
+	case p.current.Type == token.META_FIT:
+		return p.parseMetaFitStmt()
+	case p.current.Type == token.META_ADAPT:
+		return p.parseMetaAdaptStmt()
+	case p.current.Type == token.META_VERIFY:
+		return p.parseMetaVerifyStmt()
+	case p.current.Type == token.CORRUPT_AAD_ENV:
+		return p.parseCorruptAADEnvStmt()
 	case isTypeToken(p.current.Type):
 		return p.parseBindStmt()
 	case p.current.Type == token.EMIT:
@@ -4415,5 +4433,365 @@ func (p *Parser) parseCorruptEEAStmt() *ast.CorruptEEAStmt {
 		Pos_:     pos,
 		Envelope: env,
 		Offset:   offset,
+	}
+}
+
+func (p *Parser) parseQECDDecodeStmt() *ast.QECDDecodeStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'qecd_decode'
+
+	if p.current.Literal == "distance" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken() // consume ↦
+	}
+	dist := p.parseExpression(LOWEST)
+
+	synIn := ""
+	if p.current.Literal == "from" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			synIn = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.QECDDecodeStmt{
+		Pos_:       pos,
+		Distance:   dist,
+		SyndromeIn: synIn,
+		Into:       into,
+	}
+}
+
+func (p *Parser) parseQECDVerifyStmt() *ast.QECDVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'qecd_verify'
+
+	res := ""
+	if p.current.Type == token.IDENT {
+		res = p.current.Literal
+		p.nextToken()
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.QECDVerifyStmt{
+		Pos_:   pos,
+		Result: res,
+		Into:   into,
+	}
+}
+
+func (p *Parser) parseQECDApplyStmt() *ast.QECDApplyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'qecd_apply'
+
+	res := ""
+	if p.current.Type == token.IDENT {
+		res = p.current.Literal
+		p.nextToken()
+	}
+
+	stateVec := ""
+	if p.current.Type == token.ON || p.current.Literal == "on" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			stateVec = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.QECDApplyStmt{
+		Pos_:     pos,
+		Result:   res,
+		StateVec: stateVec,
+	}
+}
+
+func (p *Parser) parseAADCertStmt() *ast.AADCertStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'aad_cert'
+
+	if p.current.Type == token.WITH || p.current.Literal == "with" {
+		p.nextToken()
+	}
+
+	var model, trainSet, maxSyn, maxCorr ast.Expr
+	into := ""
+
+	for p.current.Type != token.STMT_END && p.current.Type != token.EOF {
+		lit := p.current.Literal
+		if lit == "model" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			model = p.parseExpression(LOWEST)
+		} else if lit == "train" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			trainSet = p.parseExpression(LOWEST)
+		} else if lit == "max_syndrome" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			maxSyn = p.parseExpression(LOWEST)
+		} else if lit == "max_corr_dist" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			maxCorr = p.parseExpression(LOWEST)
+		} else if lit == "into" {
+			p.nextToken()
+			if p.current.Type == token.IDENT {
+				into = p.current.Literal
+				p.nextToken()
+			}
+		} else {
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.AADCertStmt{
+		Pos_:        pos,
+		Model:       model,
+		TrainSet:    trainSet,
+		MaxSyndrome: maxSyn,
+		MaxCorrDist: maxCorr,
+		Into:        into,
+	}
+}
+
+func (p *Parser) parseAADAttestStmt() *ast.AADAttestStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'aad_attest'
+
+	cert := ""
+	decode := ""
+	into := ""
+
+	if p.current.Type == token.IDENT && p.peeked.Literal != "↦" && p.peeked.Type != token.BIND {
+		cert = p.current.Literal
+		p.nextToken()
+	}
+
+	for p.current.Type != token.STMT_END && p.current.Type != token.EOF {
+		lit := p.current.Literal
+		if lit == "cert" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT {
+				cert = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "decode" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT {
+				decode = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "into" {
+			p.nextToken()
+			if p.current.Type == token.IDENT {
+				into = p.current.Literal
+				p.nextToken()
+			}
+		} else {
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.AADAttestStmt{
+		Pos_:   pos,
+		Cert:   cert,
+		Decode: decode,
+		Into:   into,
+	}
+}
+
+func (p *Parser) parseMetaFitStmt() *ast.MetaFitStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'meta_fit'
+
+	into := ""
+	cert := ""
+
+	for p.current.Type != token.STMT_END && p.current.Type != token.EOF {
+		lit := p.current.Literal
+		if lit == "into" {
+			p.nextToken()
+			if p.current.Type == token.IDENT {
+				into = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "cert" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT {
+				cert = p.current.Literal
+				p.nextToken()
+			}
+		} else {
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.MetaFitStmt{
+		Pos_: pos,
+		Into: into,
+		Cert: cert,
+	}
+}
+
+func (p *Parser) parseMetaAdaptStmt() *ast.MetaAdaptStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'meta_adapt'
+
+	state := ""
+	if p.current.Type == token.IDENT {
+		state = p.current.Literal
+		p.nextToken()
+	}
+
+	env := ""
+	if p.current.Type == token.WITH || p.current.Literal == "with" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			env = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.MetaAdaptStmt{
+		Pos_:     pos,
+		State:    state,
+		Envelope: env,
+		Into:     into,
+	}
+}
+
+func (p *Parser) parseMetaVerifyStmt() *ast.MetaVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'meta_verify'
+
+	state := ""
+	if p.current.Type == token.IDENT {
+		state = p.current.Literal
+		p.nextToken()
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.MetaVerifyStmt{
+		Pos_:  pos,
+		State: state,
+		Into:  into,
+	}
+}
+
+func (p *Parser) parseCorruptAADEnvStmt() *ast.CorruptAADEnvStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_aad_env'
+
+	env := ""
+	if p.current.Type == token.IDENT {
+		env = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Literal == "at" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+
+	offset := p.parseExpression(LOWEST)
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.CorruptAADEnvStmt{
+		Pos_:   pos,
+		Env:    env,
+		Offset: offset,
 	}
 }

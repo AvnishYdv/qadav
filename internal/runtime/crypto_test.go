@@ -74,6 +74,8 @@ func runCryptoTestHarness(t *testing.T, testName string) string {
 #include "qadav_sea.h"
 #include "qadav_transpile.h"
 #include "qadav_eea.h"
+#include "qadav_qecdecoder.h"
+#include "qadav_aad.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -2430,6 +2432,254 @@ int main(void) {
         qadav_write_raw("EEA_ASLR_DETERMINISM_OK\n", 24);
         return 0;
     }
+    if (qadav_streq(req, "qecd_decode_basic")) {
+        unsigned char syn[1] = {0x01};
+        qecd_decode_result* res = qecd_decode(3, 9, syn, 1);
+        if (!res) return 1;
+        if (res->n_corrections != 1) return 2;
+        if (res->corrections[0].qubit_index != 0 || res->corrections[0].pauli != 1) return 3;
+        qecd_free(res);
+        qadav_write_raw("QECD_DECODE_BASIC_OK\n", 21);
+        return 0;
+    }
+    if (qadav_streq(req, "qecd_decode_empty")) {
+        qecd_decode_result* res = qecd_decode(3, 9, 0, 0);
+        if (!res) return 1;
+        if (res->n_corrections != 0) return 2;
+        if (!qecd_verify_decode_attestation(res)) return 3;
+        qecd_free(res);
+        qadav_write_raw("QECD_DECODE_EMPTY_OK\n", 21);
+        return 0;
+    }
+    if (qadav_streq(req, "qecd_decode_large")) {
+        unsigned char syn64[64];
+        for (int i = 0; i < 64; i++) syn64[i] = (unsigned char)(i * 3 + 1);
+        qecd_decode_result* res = qecd_decode(5, 25, syn64, 64);
+        if (!res) return 1;
+        if (res->n_corrections > QADAV_QECD_MAX_CORRECTIONS) return 2;
+        if (!qecd_verify_decode_attestation(res)) return 3;
+        qecd_free(res);
+        qadav_write_raw("QECD_DECODE_LARGE_OK\n", 21);
+        return 0;
+    }
+    if (qadav_streq(req, "qecd_verify_attestation")) {
+        unsigned char syn[2] = {0x05, 0x0A};
+        qecd_decode_result* res = qecd_decode(3, 9, syn, 2);
+        if (!res) return 1;
+        if (!qecd_verify_decode_attestation(res)) return 2;
+        qecd_free(res);
+        qadav_write_raw("QECD_VERIFY_ATTESTATION_OK\n", 27);
+        return 0;
+    }
+    if (qadav_streq(req, "qecd_verify_tampered")) {
+        unsigned char syn[2] = {0x05, 0x0A};
+        qecd_decode_result* res = qecd_decode(3, 9, syn, 2);
+        if (!res) return 1;
+        res->decode_attestation[0] ^= 0xFF;
+        if (qecd_verify_decode_attestation(res)) return 2;
+        qecd_free(res);
+        qadav_write_raw("QECD_VERIFY_TAMPERED_OK\n", 24);
+        return 0;
+    }
+    if (qadav_streq(req, "qecd_apply_corrections")) {
+        unsigned char syn[1] = {0x01};
+        qecd_decode_result* res = qecd_decode(3, 9, syn, 1);
+        if (!res) return 1;
+        unsigned char vec[18];
+        for (int i = 0; i < 18; i++) vec[i] = 0;
+        int r = qecd_apply_corrections(res, vec, 18);
+        if (r != 0 || vec[0] != 1) return 2;
+        qecd_free(res);
+        qadav_write_raw("QECD_APPLY_CORRECTIONS_OK\n", 26);
+        return 0;
+    }
+    if (qadav_streq(req, "qecd_apply_bounds")) {
+        unsigned char syn[1] = {0x01};
+        qecd_decode_result* res = qecd_decode(3, 9, syn, 1);
+        if (!res) return 1;
+        res->corrections[0].qubit_index = 20;
+        unsigned char vec[18];
+        for (int i = 0; i < 18; i++) vec[i] = 0;
+        int r = qecd_apply_corrections(res, vec, 18);
+        if (r != -2) return 2;
+        qecd_free(res);
+        qadav_write_raw("QECD_APPLY_BOUNDS_OK\n", 21);
+        return 0;
+    }
+    if (qadav_streq(req, "qecd_aslr_determinism")) {
+        unsigned char h1[32], h2[32];
+        unsigned char syn[4] = {0x12, 0x34, 0x56, 0x78};
+        for (int iter = 0; iter < 100; iter++) {
+            qecd_decode_result* res = qecd_decode(3, 9, syn, 4);
+            if (!res) return 1;
+            if (iter == 0) {
+                for (int k = 0; k < 32; k++) h1[k] = res->decode_attestation[k];
+            } else {
+                for (int k = 0; k < 32; k++) h2[k] = res->decode_attestation[k];
+                if (qadav_sha3_ct_compare(h1, h2, 32) != 0) return 2;
+            }
+            qecd_free(res);
+        }
+        qadav_write_raw("QECD_ASLR_DETERMINISM_OK\n", 25);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_build_cert")) {
+        aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"model", 5, (const unsigned char*)"train", 5, 100, 64, 8);
+        if (!cert) return 1;
+        aad_free_training_cert(cert);
+        qadav_write_raw("AAD_BUILD_CERT_OK\n", 18);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_build_cert_invalid")) {
+        aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"model", 5, (const unsigned char*)"train", 5, 100, 200, 8);
+        if (cert != 0) return 1;
+        qadav_write_raw("AAD_BUILD_CERT_INVALID_OK\n", 26);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_wrap_decode_valid")) {
+        aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"model", 5, (const unsigned char*)"train", 5, 100, 64, 8);
+        unsigned char syn[2] = {0x03, 0x0C};
+        qecd_decode_result* dec = qecd_decode(3, 9, syn, 2);
+        aad_decode_envelope env;
+        int r = aad_wrap_decode(cert, dec, syn, 2, &env);
+        qecd_free(dec);
+        aad_free_training_cert(cert);
+        if (r != 0 || env.syndrome_weight != 4) return 1;
+        qadav_write_raw("AAD_WRAP_DECODE_VALID_OK\n", 25);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_wrap_decode_outofbounds")) {
+        aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"model", 5, (const unsigned char*)"train", 5, 100, 4, 8);
+        unsigned char syn[2] = {0xFF, 0xFF}; // 16 bits set > 4
+        qecd_decode_result* dec = qecd_decode(3, 9, syn, 2);
+        aad_decode_envelope env;
+        int r = aad_wrap_decode(cert, dec, syn, 2, &env);
+        qecd_free(dec);
+        aad_free_training_cert(cert);
+        if (r != -3) return 1;
+        qadav_write_raw("AAD_WRAP_DECODE_OUTOFBOUNDS_OK\n", 31);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_verify_valid")) {
+        aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"model", 5, (const unsigned char*)"train", 5, 100, 64, 8);
+        unsigned char syn[1] = {0x01};
+        qecd_decode_result* dec = qecd_decode(3, 9, syn, 1);
+        aad_decode_envelope env;
+        aad_wrap_decode(cert, dec, syn, 1, &env);
+        int v = aad_verify_envelope(&env, cert);
+        qecd_free(dec);
+        aad_free_training_cert(cert);
+        if (!v) return 1;
+        qadav_write_raw("AAD_VERIFY_VALID_OK\n", 20);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_verify_tampered")) {
+        aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"model", 5, (const unsigned char*)"train", 5, 100, 64, 8);
+        unsigned char syn[1] = {0x01};
+        qecd_decode_result* dec = qecd_decode(3, 9, syn, 1);
+        aad_decode_envelope env;
+        aad_wrap_decode(cert, dec, syn, 1, &env);
+        aad_corrupt_envelope(&env, 16);
+        int v = aad_verify_envelope(&env, cert);
+        qecd_free(dec);
+        aad_free_training_cert(cert);
+        if (v) return 1;
+        qadav_write_raw("AAD_VERIFY_TAMPERED_OK\n", 23);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_attest_success")) {
+        double pen = 1.0;
+        qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
+        qadav_reasoning_chain* chain = qadav_qera_create("aad_chain", 10, auth);
+        aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"model", 5, (const unsigned char*)"train", 5, 100, 64, 8);
+        unsigned char syn[1] = {0x01};
+        qecd_decode_result* dec = qecd_decode(3, 9, syn, 1);
+        aad_decode_envelope env;
+        aad_wrap_decode(cert, dec, syn, 1, &env);
+        int r = aad_attest_envelope(&env, chain);
+        qecd_free(dec);
+        aad_free_training_cert(cert);
+        if (!r || chain->n_steps != 1) return 1;
+        qadav_qera_free(chain);
+        qadav_qeeh_free(auth);
+        qadav_write_raw("AAD_ATTEST_SUCCESS_OK\n", 22);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_meta_fit_adapt_verify")) {
+        aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"model", 5, (const unsigned char*)"train", 5, 100, 64, 8);
+        unsigned char syn[1] = {0x01};
+        qecd_decode_result* dec = qecd_decode(3, 9, syn, 1);
+        aad_decode_envelope env;
+        aad_wrap_decode(cert, dec, syn, 1, &env);
+        aad_meta_state state;
+        aad_meta_fit(&state, cert);
+        int ar = aad_meta_adapt(&state, &env);
+        if (ar != 0 || state.adaptation_steps != 1) return 1;
+        if (!aad_meta_verify(&state)) return 2;
+        qecd_free(dec);
+        aad_free_training_cert(cert);
+        qadav_write_raw("AAD_META_FIT_ADAPT_VERIFY_OK\n", 29);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_meta_adapt_tampered")) {
+        aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"model", 5, (const unsigned char*)"train", 5, 100, 64, 8);
+        unsigned char syn[1] = {0x01};
+        qecd_decode_result* dec = qecd_decode(3, 9, syn, 1);
+        aad_decode_envelope env;
+        aad_wrap_decode(cert, dec, syn, 1, &env);
+        aad_corrupt_envelope(&env, 16);
+        aad_meta_state state;
+        aad_meta_fit(&state, cert);
+        int ar = aad_meta_adapt(&state, &env);
+        qecd_free(dec);
+        aad_free_training_cert(cert);
+        if (ar != -2) return 1; // Returns -2 on tampered envelope without decoherence
+        qadav_write_raw("AAD_META_ADAPT_TAMPERED_OK\n", 27);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_adapt_chain_determinism")) {
+        unsigned char c1[32], c2[32];
+        for (int iter = 0; iter < 100; iter++) {
+            aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"m", 1, (const unsigned char*)"t", 1, 50, 64, 8);
+            unsigned char syn[1] = {0x02};
+            qecd_decode_result* dec = qecd_decode(3, 9, syn, 1);
+            aad_decode_envelope env;
+            aad_wrap_decode(cert, dec, syn, 1, &env);
+            aad_meta_state state;
+            aad_meta_fit(&state, cert);
+            aad_meta_adapt(&state, &env);
+            if (iter == 0) {
+                for (int k = 0; k < 32; k++) c1[k] = state.adaptation_chain[k];
+            } else {
+                for (int k = 0; k < 32; k++) c2[k] = state.adaptation_chain[k];
+                if (qadav_sha3_ct_compare(c1, c2, 32) != 0) return 1;
+            }
+            qecd_free(dec);
+            aad_free_training_cert(cert);
+        }
+        qadav_write_raw("AAD_ADAPT_CHAIN_DETERMINISM_OK\n", 31);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_aslr_determinism")) {
+        unsigned char h1[32], h2[32];
+        for (int iter = 0; iter < 50; iter++) {
+            aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"fixed_m", 7, (const unsigned char*)"fixed_t", 7, 50, 64, 8);
+            unsigned char syn[2] = {0x11, 0x22};
+            qecd_decode_result* dec = qecd_decode(3, 9, syn, 2);
+            aad_decode_envelope env;
+            aad_wrap_decode(cert, dec, syn, 2, &env);
+            if (iter == 0) {
+                for (int k = 0; k < 32; k++) h1[k] = env.envelope_hash[k];
+            } else {
+                for (int k = 0; k < 32; k++) h2[k] = env.envelope_hash[k];
+                if (qadav_sha3_ct_compare(h1, h2, 32) != 0) return 1;
+            }
+            qecd_free(dec);
+            aad_free_training_cert(cert);
+        }
+        qadav_write_raw("AAD_ASLR_DETERMINISM_OK\n", 24);
+        return 0;
+    }
     if (qadav_streq(req, "integration_vault_reasoning")) {
         double pen = 1.0;
         qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
@@ -2646,6 +2896,8 @@ func runCryptoTestHarnessExpectExit(t *testing.T, testName string) (string, erro
 #include "qadav_sea.h"
 #include "qadav_transpile.h"
 #include "qadav_eea.h"
+#include "qadav_qecdecoder.h"
+#include "qadav_aad.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -2758,6 +3010,19 @@ int main(void) {
         eea_free(ctx);
         eea_corrupt(&env, 8);
         eea_attest_envelope(&env, chain);
+        return 0;
+    }
+    if (qadav_streq(req, "aad_attest_tampered")) {
+        double pen = 1.0;
+        qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
+        qadav_reasoning_chain* chain = qadav_qera_create("aad_tamper_chain", 10, auth);
+        aad_training_cert* cert = aad_build_training_cert((const unsigned char*)"model", 5, (const unsigned char*)"train", 5, 100, 64, 8);
+        unsigned char syn[1] = {0x01};
+        qecd_decode_result* dec = qecd_decode(3, 9, syn, 1);
+        aad_decode_envelope env;
+        aad_wrap_decode(cert, dec, syn, 1, &env);
+        aad_corrupt_envelope(&env, 16);
+        aad_attest_envelope(&env, chain);
         return 0;
     }
     return 0;

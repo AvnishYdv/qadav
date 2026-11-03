@@ -687,6 +687,33 @@ func (c *Checker) checkStmt(stmt ast.Stmt) {
 	case *ast.CorruptEEAStmt:
 		c.checkCorruptEEAStmt(s)
 
+	case *ast.QECDDecodeStmt:
+		c.checkQECDDecodeStmt(s)
+
+	case *ast.QECDVerifyStmt:
+		c.checkQECDVerifyStmt(s)
+
+	case *ast.QECDApplyStmt:
+		c.checkQECDApplyStmt(s)
+
+	case *ast.AADCertStmt:
+		c.checkAADCertStmt(s)
+
+	case *ast.AADAttestStmt:
+		c.checkAADAttestStmt(s)
+
+	case *ast.MetaFitStmt:
+		c.checkMetaFitStmt(s)
+
+	case *ast.MetaAdaptStmt:
+		c.checkMetaAdaptStmt(s)
+
+	case *ast.MetaVerifyStmt:
+		c.checkMetaVerifyStmt(s)
+
+	case *ast.CorruptAADEnvStmt:
+		c.checkCorruptAADEnvStmt(s)
+
 	case *ast.ExprStmt:
 		c.checkExpr(s.Expr)
 

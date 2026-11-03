@@ -448,6 +448,19 @@ const (
 	EVOLVE_BOUNDED Type = "EVOLVE_BOUNDED"
 	EEA_VERIFY     Type = "EEA_VERIFY"
 	CORRUPT_EEA    Type = "CORRUPT_EEA"
+
+	// M7.5: Real QEC Decoder Keywords
+	QECD_DECODE Type = "QECD_DECODE"
+	QECD_VERIFY Type = "QECD_VERIFY"
+	QECD_APPLY  Type = "QECD_APPLY"
+
+	// M7.6: Meta-Learning & AAD (Invention #22) Keywords
+	META_FIT        Type = "META_FIT"
+	META_ADAPT      Type = "META_ADAPT"
+	META_VERIFY     Type = "META_VERIFY"
+	AAD_CERT        Type = "AAD_CERT"
+	AAD_ATTEST      Type = "AAD_ATTEST"
+	CORRUPT_AAD_ENV Type = "CORRUPT_AAD_ENV"
 )
 
 // Quasinary Keywords & Literals
@@ -890,6 +903,19 @@ var keywords = map[string]Type{
 	"eea_verify":     EEA_VERIFY,
 	"corrupt_eea":    CORRUPT_EEA,
 
+	// M7.5: Real QEC Decoder
+	"qecd_decode": QECD_DECODE,
+	"qecd_verify": QECD_VERIFY,
+	"qecd_apply":  QECD_APPLY,
+
+	// M7.6: Meta-Learning & AAD (Invention #22)
+	"meta_fit":        META_FIT,
+	"meta_adapt":      META_ADAPT,
+	"meta_verify":     META_VERIFY,
+	"aad_cert":        AAD_CERT,
+	"aad_attest":      AAD_ATTEST,
+	"corrupt_aad_env": CORRUPT_AAD_ENV,
+
 	// Cryptography
 	"sign":    SIGN,
 	"verify":  VERIFY,
@@ -1049,6 +1075,15 @@ var fallbacks = func() map[string]Type {
 		`\evolve_bounded`:         EVOLVE_BOUNDED,
 		`\eea_verify`:             EEA_VERIFY,
 		`\corrupt_eea`:            CORRUPT_EEA,
+		`\qecd_decode`:            QECD_DECODE,
+		`\qecd_verify`:            QECD_VERIFY,
+		`\qecd_apply`:             QECD_APPLY,
+		`\meta_fit`:               META_FIT,
+		`\meta_adapt`:             META_ADAPT,
+		`\meta_verify`:            META_VERIFY,
+		`\aad_cert`:               AAD_CERT,
+		`\aad_attest`:             AAD_ATTEST,
+		`\corrupt_aad_env`:        CORRUPT_AAD_ENV,
 	}
 	for k, v := range kwFallbacks {
 		m[k] = v

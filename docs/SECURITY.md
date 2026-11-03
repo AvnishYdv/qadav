@@ -382,6 +382,22 @@ By eliminating `<stdio.h>`, `<stdlib.h>`, `<string.h>`, and `<math.h>`:
 5. **Gated Test Corruptions**:
    - The `corrupt_eea` statement is strictly gated by compiler `--test` flag. Production builds reject corrupt statements during semantic type checking.
 
+---
+
+## 28. Attested Adaptive Decoder Security (AAD — Invention #22)
+
+1. **Decoder Operating Envelope Containment**:
+   - Machine-learned or adaptive syndrome decoders operating on physical quantum hardware are vulnerable to out-of-distribution syndrome bursts and adversarial poisoning. AAD encloses all decoder inferences inside an 88-byte root certificate (`aad_training_cert`) and a 92-byte runtime operating envelope (`aad_decode_envelope`).
+2. **Dual-Tier Calibrated Abstention vs Tamper Defense**:
+   - **Out-of-Distribution Abstention (-3):** When incoming syndrome defect weights exceed `max_syn_weight` or correction distances exceed `max_corr_dist`, `aad_wrap_decode` returns `-3` (abstention). No physical corrections are applied, and no decoherence is triggered, ensuring graceful degradation under physical burst errors.
+   - **Envelope Tampering & Forgery (0xDEADBEEF):** If any memory manipulation or adversarial modification alters the syndrome hash, measured defect count, correction distance, confidence, or root certificate hash, `aad_verify_envelope` fails during constant-time SHA3 comparison. In `aad_attest_envelope`, this instantly triggers active quantum decoherence (`qadav_qeeh_trigger_decoherence(0)`) and immediate process termination via `ExitProcess(0xDEADBEEF)`.
+3. **Continual Adaptation Lineage Binding**:
+   - Online meta-learning steps (`meta_adapt`) maintain a cryptographic hash chain ($\text{chain}_{k+1} = \text{SHA3-256}(\text{chain}_k \mathbin{\Vert} \text{envelope\_hash})$), anchored irrevocably to the initial certified training baseline.
+4. **Deterministic Preimage Packing**:
+   - Zero struct padding in both certificate (88 bytes) and envelope (92 bytes) preimages guarantees absolute reproducibility across memory relocations, ASLR addresses, and compiler versions.
+5. **Gated Test Corruptions**:
+   - The `corrupt_aad_env` statement is strictly gated by the compiler `--test` flag. In standard builds, the type checker rejects any attempt to inject envelope corruption.
+
 
 
 
