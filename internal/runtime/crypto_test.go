@@ -70,6 +70,8 @@ func runCryptoTestHarness(t *testing.T, testName string) string {
 #include "qadav_cdaga.h"
 #include "qadav_distributed.h"
 #include "qadav_barat.h"
+#include "qadav_qhal.h"
+#include "qadav_sea.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -1963,6 +1965,217 @@ int main(void) {
         qadav_write_raw("BARAT_ASLR_DETERMINISM_OK\n", 26);
         return 0;
     }
+    if (qadav_streq(req, "qhal_create")) {
+        qhal_circuit* c = qhal_create(2, QHAL_BACKEND_LOCAL_SIM);
+        if (!c || c->n_qubits != 2 || c->n_ops != 0 || c->backend != QHAL_BACKEND_LOCAL_SIM) return 1;
+        qhal_shutdown(c);
+        qadav_write_raw("QHAL_CREATE_OK\n", 15);
+        return 0;
+    }
+    if (qadav_streq(req, "qhal_add_ops")) {
+        qhal_circuit* c = qhal_create(2, QHAL_BACKEND_LOCAL_SIM);
+        if (qhal_add_op(c, QHAL_OP_H, 0, 0) != 0) return 1;
+        if (qhal_add_op(c, QHAL_OP_CNOT, 0, 1) != 0) return 2;
+        if (c->n_ops != 2) return 3;
+        qhal_shutdown(c);
+        qadav_write_raw("QHAL_ADD_OPS_OK\n", 16);
+        return 0;
+    }
+    if (qadav_streq(req, "qhal_export_qasm3")) {
+        qhal_circuit* c = qhal_create(2, QHAL_BACKEND_LOCAL_SIM);
+        qhal_add_op(c, QHAL_OP_H, 0, 0);
+        qhal_add_op(c, QHAL_OP_CNOT, 0, 1);
+        char buf[512];
+        unsigned long long written = 0;
+        if (qhal_export_qasm3(c, buf, sizeof(buf), &written) != 0) return 1;
+        if (written == 0 || buf[0] == '\0') return 2;
+        qhal_shutdown(c);
+        qadav_write_raw(buf, written);
+        return 0;
+    }
+    if (qadav_streq(req, "qhal_hash_circuit")) {
+        qhal_circuit* c1 = qhal_create(2, QHAL_BACKEND_LOCAL_SIM);
+        qhal_circuit* c2 = qhal_create(2, QHAL_BACKEND_LOCAL_SIM);
+        qhal_add_op(c1, QHAL_OP_H, 0, 0);
+        qhal_add_op(c1, QHAL_OP_CNOT, 0, 1);
+        qhal_add_op(c2, QHAL_OP_H, 0, 0);
+        qhal_add_op(c2, QHAL_OP_CNOT, 0, 1);
+        qhal_hash_circuit(c1);
+        qhal_hash_circuit(c2);
+        if (qadav_sha3_ct_compare(c1->circuit_hash, c2->circuit_hash, 32) != 0) return 1;
+        qhal_shutdown(c1);
+        qhal_shutdown(c2);
+        qadav_write_raw("QHAL_HASH_CIRCUIT_OK\n", 21);
+        return 0;
+    }
+    if (qadav_streq(req, "qhal_backend_stub")) {
+        qhal_circuit* c = qhal_create(3, QHAL_BACKEND_IBMQ);
+        qhal_add_op(c, QHAL_OP_X, 1, 0);
+        char buf[512];
+        unsigned long long written = 0;
+        if (qhal_export_qasm3(c, buf, sizeof(buf), &written) != 0) return 1;
+        if (c->backend != QHAL_BACKEND_IBMQ) return 2;
+        qhal_shutdown(c);
+        qadav_write_raw("QHAL_BACKEND_STUB_OK\n", 21);
+        return 0;
+    }
+    if (qadav_streq(req, "qhal_bounds_check")) {
+        qhal_circuit* c = qhal_create(2, QHAL_BACKEND_LOCAL_SIM);
+        for (int i = 0; i < 256; i++) {
+            if (qhal_add_op(c, QHAL_OP_H, 0, 0) != 0) return 1;
+        }
+        if (qhal_add_op(c, QHAL_OP_H, 0, 0) != -2) return 2;
+        qhal_shutdown(c);
+        qadav_write_raw("QHAL_BOUNDS_CHECK_OK\n", 21);
+        return 0;
+    }
+    if (qadav_streq(req, "sea_create")) {
+        sea_history* h = sea_create();
+        if (!h || h->count != 0) return 1;
+        sea_free(h);
+        qadav_write_raw("SEA_CREATE_OK\n", 14);
+        return 0;
+    }
+    if (qadav_streq(req, "sea_propose_valid")) {
+        sea_history* h = sea_create();
+        unsigned char from[32], to[32], reason[32];
+        for (int i = 0; i < 32; i++) {
+            from[i] = (unsigned char)(i + 1);
+            to[i] = (unsigned char)(i + 2);
+            reason[i] = (unsigned char)(i + 3);
+        }
+        sea_proposal* p = 0;
+        int r = sea_propose(h, from, to, reason, &p);
+        if (r != 0 || !p || h->count != 1) return 1;
+        if (p->step_index != 1) return 2;
+        sea_free(h);
+        qadav_write_raw("SEA_PROPOSE_VALID_OK\n", 21);
+        return 0;
+    }
+    if (qadav_streq(req, "sea_propose_invalid_hashes")) {
+        sea_history* h = sea_create();
+        unsigned char zero[32] = {0};
+        unsigned char valid[32];
+        for (int i = 0; i < 32; i++) valid[i] = (unsigned char)(i + 1);
+        sea_proposal* p = 0;
+        if (sea_propose(h, zero, valid, valid, &p) != -2) return 1;
+        if (sea_propose(h, valid, zero, valid, &p) != -2) return 2;
+        if (sea_propose(h, valid, valid, zero, &p) != -2) return 3;
+        sea_free(h);
+        qadav_write_raw("SEA_PROPOSE_INVALID_HASHES_OK\n", 30);
+        return 0;
+    }
+    if (qadav_streq(req, "sea_verify_valid")) {
+        sea_history* h = sea_create();
+        unsigned char from[32], to[32], reason[32];
+        for (int i = 0; i < 32; i++) {
+            from[i] = (unsigned char)(i + 1);
+            to[i] = (unsigned char)(i + 2);
+            reason[i] = (unsigned char)(i + 3);
+        }
+        sea_proposal* p = 0;
+        sea_propose(h, from, to, reason, &p);
+        if (!sea_verify_proposal(p, 0)) return 1;
+        if (!sea_verify_history(h)) return 2;
+        sea_free(h);
+        qadav_write_raw("SEA_VERIFY_VALID_OK\n", 20);
+        return 0;
+    }
+    if (qadav_streq(req, "sea_attest_success")) {
+        double pen = 1.0;
+        qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
+        qadav_reasoning_chain* chain = qadav_qera_create("sea_chain", 10, auth);
+        sea_history* h = sea_create();
+        unsigned char from[32], to[32], reason[32];
+        for (int i = 0; i < 32; i++) {
+            from[i] = (unsigned char)(i + 10);
+            to[i] = (unsigned char)(i + 20);
+            reason[i] = (unsigned char)(i + 30);
+        }
+        sea_propose(h, from, to, reason, 0);
+        int r = sea_attest(h, chain);
+        if (r != 1) return 1;
+        if (chain->n_steps != 1) return 2;
+        sea_free(h);
+        qadav_qera_free(chain);
+        qadav_qeeh_free(auth);
+        qadav_write_raw("SEA_ATTEST_SUCCESS_OK\n", 22);
+        return 0;
+    }
+    if (qadav_streq(req, "sea_canonical_sort_determinism")) {
+        unsigned char hash1[32], hash2[32];
+        for (int iter = 0; iter < 100; iter++) {
+            sea_history* h = sea_create();
+            unsigned char from[32], to[32], reason[32];
+            for (int i = 0; i < 32; i++) {
+                from[i] = (unsigned char)(i + 5);
+                to[i] = (unsigned char)(i + 15);
+                reason[i] = (unsigned char)(i + 25);
+            }
+            sea_proposal* p = 0;
+            sea_propose(h, from, to, reason, &p);
+            if (iter == 0) {
+                qadav_copy_bytes(hash1, p->proposal_hash, 32);
+            } else {
+                qadav_copy_bytes(hash2, p->proposal_hash, 32);
+                if (qadav_sha3_ct_compare(hash1, hash2, 32) != 0) {
+                    sea_free(h);
+                    return 1;
+                }
+            }
+            sea_free(h);
+        }
+        qadav_write_raw("SEA_CANONICAL_SORT_DETERMINISM_OK\n", 34);
+        return 0;
+    }
+    if (qadav_streq(req, "sea_aslr_determinism")) {
+        unsigned char first_hash[32];
+        for (int iter = 0; iter < 100; iter++) {
+            void* pad = qadav_alloc((iter %% 13 + 1) * 48);
+            sea_history* h = sea_create();
+            unsigned char from[32], to[32], reason[32];
+            for (int i = 0; i < 32; i++) {
+                from[i] = (unsigned char)(i + 7);
+                to[i] = (unsigned char)(i + 17);
+                reason[i] = (unsigned char)(i + 27);
+            }
+            sea_proposal* p = 0;
+            sea_propose(h, from, to, reason, &p);
+            if (iter == 0) {
+                qadav_copy_bytes(first_hash, p->proposal_hash, 32);
+            } else {
+                if (qadav_sha3_ct_compare(first_hash, p->proposal_hash, 32) != 0) {
+                    sea_free(h);
+                    qadav_free(pad);
+                    return 1;
+                }
+            }
+            sea_free(h);
+            qadav_free(pad);
+        }
+        qadav_write_raw("SEA_ASLR_DETERMINISM_OK\n", 24);
+        return 0;
+    }
+    if (qadav_streq(req, "sea_lineage_chain")) {
+        sea_history* h = sea_create();
+        for (int step = 0; step < 3; step++) {
+            unsigned char from[32], to[32], reason[32];
+            for (int i = 0; i < 32; i++) {
+                from[i] = (unsigned char)(step * 10 + i + 1);
+                to[i] = (unsigned char)(step * 10 + i + 2);
+                reason[i] = (unsigned char)(step * 10 + i + 3);
+            }
+            sea_proposal* p = 0;
+            sea_propose(h, from, to, reason, &p);
+        }
+        if (h->count != 3) return 1;
+        if (qadav_sha3_ct_compare(h->proposals[1].prev_proposal_hash, h->proposals[0].proposal_hash, 32) != 0) return 2;
+        if (qadav_sha3_ct_compare(h->proposals[2].prev_proposal_hash, h->proposals[1].proposal_hash, 32) != 0) return 3;
+        if (!sea_verify_history(h)) return 4;
+        sea_free(h);
+        qadav_write_raw("SEA_LINEAGE_CHAIN_OK\n", 21);
+        return 0;
+    }
     if (qadav_streq(req, "integration_vault_reasoning")) {
         double pen = 1.0;
         qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
@@ -2175,6 +2388,8 @@ func runCryptoTestHarnessExpectExit(t *testing.T, testName string) (string, erro
 #include "qadav_cdaga.h"
 #include "qadav_distributed.h"
 #include "qadav_barat.h"
+#include "qadav_qhal.h"
+#include "qadav_sea.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -2235,6 +2450,37 @@ int main(void) {
         qadav_barat_aggregate(grp, out, sizeof(out), &cert);
         qadav_barat_corrupt(&cert, 16);
         qadav_barat_verify(&cert, out, sizeof(out));
+        return 0;
+    }
+    if (qadav_streq(req, "sea_verify_tampered")) {
+        sea_history* h = sea_create();
+        unsigned char from[32], to[32], reason[32];
+        for (int i = 0; i < 32; i++) {
+            from[i] = (unsigned char)(i + 1);
+            to[i] = (unsigned char)(i + 2);
+            reason[i] = (unsigned char)(i + 3);
+        }
+        sea_proposal* p = 0;
+        sea_propose(h, from, to, reason, &p);
+        sea_corrupt(p, 16);
+        sea_verify_proposal(p, 0);
+        return 0;
+    }
+    if (qadav_streq(req, "sea_attest_tampered")) {
+        double pen = 1.0;
+        qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
+        qadav_reasoning_chain* chain = qadav_qera_create("sea_tamper_chain", 10, auth);
+        sea_history* h = sea_create();
+        unsigned char from[32], to[32], reason[32];
+        for (int i = 0; i < 32; i++) {
+            from[i] = (unsigned char)(i + 10);
+            to[i] = (unsigned char)(i + 20);
+            reason[i] = (unsigned char)(i + 30);
+        }
+        sea_proposal* p = 0;
+        sea_propose(h, from, to, reason, &p);
+        sea_corrupt(p, 16);
+        sea_attest(h, chain);
         return 0;
     }
     return 0;
@@ -2771,9 +3017,3 @@ func TestAbstainRefuseMode(t *testing.T) {
 	}
 	t.Logf("Abstain refuse mode verified: %s", out)
 }
-
-
-
-
-
-

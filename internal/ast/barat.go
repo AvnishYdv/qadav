@@ -46,3 +46,4 @@ type CorruptBaratStmt struct {
 
 func (s *CorruptBaratStmt) Pos() Position { return s.Pos_ }
 func (s *CorruptBaratStmt) stmtNode()     {}
+

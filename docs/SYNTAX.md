@@ -255,6 +255,22 @@ BaratVerifyStmt     ::= "barat_verify" Ident ("into" Ident)? "·"
 CorruptBaratStmt    ::= "corrupt_barat" Ident "at" "↦" Expr "·"  // --test only
 ```
 
+### 26. Quantum Hardware Abstraction Layer (QHAL) Grammar (M7.1)
+OpenQASM 3.0 export and backend targeting:
+```bnf
+QASMExportStmt      ::= "qasm_export" "into" Ident ("with" "size" Expr)? "·"
+QHALBackendAnnot    ::= "@qhal_backend" (Ident | StringLit)
+```
+
+### 27. Self-Evolution Attestation (SEA) Grammar (M7.2)
+Invention #20 provides cryptographically-attested autonomous program mutation:
+```bnf
+EvolveStmt          ::= "evolve" "from" Expr "to" Expr "with" "reason" Expr "into" Ident "·"
+EvolveVerifyStmt    ::= "evolve_verify" Ident ("into" Ident)? "·"
+EvolveHistoryStmt   ::= "evolve_history" "to" Ident "·"
+CorruptEvolveStmt   ::= "corrupt_evolve" Ident "at" "↦" Expr "·"  // --test only
+```
+
 ### Compiler Testing Flags:
 - `--test`: Enables test-only AST statements (e.g. `corrupt_memory_share`, `corrupt_reasoning_step`, `corrupt_syndrome`) for cryptographic tamper resilience verification. In normal builds, test-only statements are rejected with a checker error.
 

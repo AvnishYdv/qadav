@@ -154,8 +154,11 @@ func (p *Parser) Parse() *ast.Program {
 			if decl != nil {
 				prog.Decls = append(prog.Decls, decl)
 			}
-		case token.DIST_INIT, token.AT_GPU, token.MULTI_DEVICE:
+		case token.DIST_INIT, token.AT_GPU, token.MULTI_DEVICE, token.QHAL_BACKEND:
 			p.nextToken()
+			if p.current.Type == token.IDENT {
+				p.nextToken()
+			}
 			continue
 		default:
 			p.errorf(p.curPos(), "unexpected top-level token: %s (%q)", p.current.Type, p.current.Literal)
@@ -592,6 +595,18 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseBaratVerifyStmt()
 	case p.current.Type == token.CORRUPT_BARAT:
 		return p.parseCorruptBaratStmt()
+	case p.current.Type == token.QHAL_BACKEND:
+		return p.parseQHALBackendAnnotation()
+	case p.current.Type == token.QASM_EXPORT:
+		return p.parseQASMExportStmt()
+	case p.current.Type == token.EVOLVE:
+		return p.parseEvolveStmt()
+	case p.current.Type == token.EVOLVE_VERIFY:
+		return p.parseEvolveVerifyStmt()
+	case p.current.Type == token.EVOLVE_HISTORY:
+		return p.parseEvolveHistoryStmt()
+	case p.current.Type == token.CORRUPT_EVOLVE:
+		return p.parseCorruptEvolveStmt()
 	case isTypeToken(p.current.Type):
 		return p.parseBindStmt()
 	case p.current.Type == token.EMIT:
@@ -1098,7 +1113,7 @@ func (p *Parser) parsePrefix() ast.Expr {
 		}
 		tokName := p.expect(token.IDENT).Literal
 		return &ast.ScopedRecallExpr{
-			Pos_:    pos,
+			Pos_:   pos,
 			Memory: &ast.Ident{Pos_: pos, Name: memName},
 			Key:    key,
 			Token:  &ast.Ident{Pos_: pos, Name: tokName},
@@ -2848,7 +2863,7 @@ func (p *Parser) parseRecallTokenDecl() *ast.RecallTokenDecl {
 	}
 
 	return &ast.RecallTokenDecl{
-		Pos_:       pos,
+		Pos_:      pos,
 		Name:      name,
 		Memory:    mem,
 		Recipient: recipient,
@@ -2870,7 +2885,7 @@ func (p *Parser) parseGrantStmt() *ast.GrantStmt {
 	p.expect(token.STMT_END)
 
 	return &ast.GrantStmt{
-		Pos_:       pos,
+		Pos_:      pos,
 		Token:     tok,
 		Recipient: recipient,
 	}
@@ -2884,7 +2899,7 @@ func (p *Parser) parseRevokeStmt() *ast.RevokeStmt {
 	p.expect(token.STMT_END)
 
 	return &ast.RevokeStmt{
-		Pos_:   pos,
+		Pos_:  pos,
 		Token: tok,
 	}
 }
@@ -2975,11 +2990,11 @@ func (p *Parser) parseToolCallStmt(target ast.Expr) *ast.ToolCallStmt {
 	p.expect(token.STMT_END)
 
 	return &ast.ToolCallStmt{
-		Pos_:      pos,
-		Target:    target,
-		ToolName:  name,
-		Args:      args,
-		Audit:     audit,
+		Pos_:     pos,
+		Target:   target,
+		ToolName: name,
+		Args:     args,
+		Audit:    audit,
 	}
 }
 
@@ -3574,10 +3589,10 @@ func (p *Parser) parsePipelineRunStmt() *ast.PipelineRunStmt {
 		p.nextToken()
 	}
 	return &ast.PipelineRunStmt{
-		Pos_:    pos,
-		Plan:    plan,
-		Input:   input,
-		Output:  output,
+		Pos_:   pos,
+		Plan:   plan,
+		Input:  input,
+		Output: output,
 	}
 }
 
@@ -3646,9 +3661,9 @@ func (p *Parser) parseCDAGAAttestStmt() *ast.CDAGAAttestStmt {
 		p.nextToken()
 	}
 	return &ast.CDAGAAttestStmt{
-		Pos_:    pos,
-		Record:  record,
-		Chain:   chain,
+		Pos_:   pos,
+		Record: record,
+		Chain:  chain,
 	}
 }
 
@@ -3673,9 +3688,9 @@ func (p *Parser) parseCDAGAVerifyStmt() *ast.CDAGAVerifyStmt {
 		p.nextToken()
 	}
 	return &ast.CDAGAVerifyStmt{
-		Pos_:    pos,
-		Record:  record,
-		Into:    into,
+		Pos_:   pos,
+		Record: record,
+		Into:   into,
 	}
 }
 
@@ -3699,9 +3714,9 @@ func (p *Parser) parseCorruptCDAGAStmt() *ast.CorruptCDAGAStmt {
 		p.nextToken()
 	}
 	return &ast.CorruptCDAGAStmt{
-		Pos_:    pos,
-		Record:  record,
-		Offset:  offset,
+		Pos_:   pos,
+		Record: record,
+		Offset: offset,
 	}
 }
 
@@ -3926,9 +3941,9 @@ func (p *Parser) parseBaratVerifyStmt() *ast.BaratVerifyStmt {
 	}
 
 	return &ast.BaratVerifyStmt{
-		Pos_:  pos,
-		Cert:  cert,
-		Into:  into,
+		Pos_: pos,
+		Cert: cert,
+		Into: into,
 	}
 }
 
@@ -3962,7 +3977,183 @@ func (p *Parser) parseCorruptBaratStmt() *ast.CorruptBaratStmt {
 	}
 }
 
+func (p *Parser) parseQHALBackendAnnotation() ast.Stmt {
+	pos := p.curPos()
+	p.nextToken() // consume '@qhal_backend'
+	kind := "sim"
+	if p.current.Type == token.IDENT {
+		kind = p.current.Literal
+		p.nextToken()
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+	return &ast.QHALBackendAnnotation{
+		Pos_: pos,
+		Kind: kind,
+	}
+}
 
+func (p *Parser) parseQASMExportStmt() *ast.QASMExportStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'qasm_export'
 
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
 
+	var bufLen ast.Expr
+	if p.current.Literal == "with" {
+		p.nextToken()
+		if p.current.Literal == "size" {
+			p.nextToken()
+		}
+		bufLen = p.parseExpression(LOWEST)
+	}
 
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.QASMExportStmt{
+		Pos_:   pos,
+		Into:   into,
+		BufLen: bufLen,
+	}
+}
+
+func (p *Parser) parseEvolveStmt() *ast.EvolveStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'evolve'
+
+	var fromState ast.Expr
+	if p.current.Literal == "from" {
+		p.nextToken()
+		fromState = p.parseExpression(LOWEST)
+	}
+
+	var toState ast.Expr
+	if p.current.Literal == "to" {
+		p.nextToken()
+		toState = p.parseExpression(LOWEST)
+	}
+
+	var reason ast.Expr
+	if p.current.Literal == "with" {
+		p.nextToken()
+		if p.current.Literal == "reason" {
+			p.nextToken()
+		}
+		reason = p.parseExpression(LOWEST)
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.EvolveStmt{
+		Pos_:      pos,
+		FromState: fromState,
+		ToState:   toState,
+		Reason:    reason,
+		Into:      into,
+	}
+}
+
+func (p *Parser) parseEvolveVerifyStmt() *ast.EvolveVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'evolve_verify'
+
+	prop := ""
+	if p.current.Type == token.IDENT {
+		prop = p.current.Literal
+		p.nextToken()
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.EvolveVerifyStmt{
+		Pos_:      pos,
+		Proposals: prop,
+		Into:      into,
+	}
+}
+
+func (p *Parser) parseEvolveHistoryStmt() *ast.EvolveHistoryStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'evolve_history'
+
+	if p.current.Literal == "to" {
+		p.nextToken()
+	}
+
+	chain := ""
+	if p.current.Type == token.IDENT {
+		chain = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.EvolveHistoryStmt{
+		Pos_:  pos,
+		Chain: chain,
+	}
+}
+
+func (p *Parser) parseCorruptEvolveStmt() *ast.CorruptEvolveStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_evolve'
+
+	prop := ""
+	if p.current.Type == token.IDENT {
+		prop = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Literal == "at" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+
+	offset := p.parseExpression(LOWEST)
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.CorruptEvolveStmt{
+		Pos_:     pos,
+		Proposal: prop,
+		Offset:   offset,
+	}
+}

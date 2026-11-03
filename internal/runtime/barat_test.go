@@ -63,3 +63,4 @@ func TestBaratASLRDeterminism(t *testing.T) {
 	}
 	t.Logf("barat_aslr_determinism verified: %s", out)
 }
+

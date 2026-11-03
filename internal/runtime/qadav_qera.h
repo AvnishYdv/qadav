@@ -12,6 +12,7 @@
 #define QADAV_OP_INDUCE  2
 #define QADAV_OP_ABDUCE  3
 #define QADAV_OP_VERIFY  4
+#define QADAV_OP_EVOLVE  5
 
 typedef struct qadav_reasoning_step {
     unsigned long long step_index;

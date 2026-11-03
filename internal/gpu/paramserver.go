@@ -144,3 +144,4 @@ func (p *ParameterServer) GetVersion() uint64 {
 	defer p.mu.Unlock()
 	return p.Version
 }
+

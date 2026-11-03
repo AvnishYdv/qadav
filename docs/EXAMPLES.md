@@ -1857,6 +1857,228 @@ CDAGA Cross-Device Attested Gradient Aggregation Verified
 ```
 Exit code: `0`
 
+---
+
+## 46. Distributed Training: Ring AllReduce & Parameter Server / वितरित प्रशिक्षण
+
+File: `examples/distributed_demo.ydv`
+
+```qadav
+@distributed
+process main⦅⦆ → int64 ⟦
+    pserver_init into ps with 4 workers ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w0 ↦ tensor⟬⟬0.1⸴ 0.2⟭⸴ ⟬0.3⸴ 0.4⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w1 ↦ tensor⟬⟬0.5⸴ 0.6⟭⸴ ⟬0.7⸴ 0.8⟭⟭ ·
+    all_reduce from ⟬grad_w0⸴ grad_w1⟭ into reduced_grad ·
+    pserver_aggregate ps ·
+    emit "Distributed Ring AllReduce and Parameter Server Completed" ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\distributed_demo.ydv
+```
+Output:
+```
+Distributed Ring AllReduce and Parameter Server Completed
+```
+Exit code: `0`
+
+---
+
+## 47. BARAT Robust Gradient Aggregation / बीजान्टिन-सुदृढ़ ग्रेडिएंट एकत्रीकरण
+
+File: `examples/barat_demo.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule execution_safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain training_log with auth ⟦ capacity ↦ 20 · ⟧
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w0 ↦ tensor⟬⟬0.01⸴ 0.02⟭⸴ ⟬0.03⸴ 0.04⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w1 ↦ tensor⟬⟬0.05⸴ 0.06⟭⸴ ⟬0.07⸴ 0.08⟭⟭ ·
+
+    barat_submit 0 into barat_grp with grad_w0 ·
+    barat_submit 1 into barat_grp with grad_w1 ·
+
+    barat_aggregate barat_grp into agg_grad cert into b_cert ·
+    barat_verify b_cert into is_valid ·
+
+    emit "BARAT Byzantine Robust Aggregation and Verification Success" ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\barat_demo.ydv
+```
+Output:
+```
+BARAT Byzantine Robust Aggregation and Verification Success
+```
+Exit code: `0`
+
+---
+
+## 48. BARAT Tamper Detection & Active Quantum Decoherence / बीजान्टिन छेड़छाड़ का पता लगाना
+
+File: `examples/barat_tamper.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule execution_safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain training_log with auth ⟦ capacity ↦ 20 · ⟧
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w0 ↦ tensor⟬⟬0.01⸴ 0.02⟭⸴ ⟬0.03⸴ 0.04⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w1 ↦ tensor⟬⟬0.05⸴ 0.06⟭⸴ ⟬0.07⸴ 0.08⟭⟭ ·
+
+    barat_submit 0 into barat_grp with grad_w0 ·
+    barat_submit 1 into barat_grp with grad_w1 ·
+
+    barat_aggregate barat_grp into agg_grad cert into b_cert ·
+    corrupt_barat b_cert at ↦ 16 ·
+    barat_verify b_cert into is_valid ·
+
+    emit "BARAT Tamper Test Completed" ·
+    yield 0 ·
+⟧
+```
+
+### Execution (Test Mode):
+```powershell
+qyn run --test examples\barat_tamper.ydv
+```
+Output: Process terminates immediately with catastrophic quantum decoherence (`0xDEADBEEF`).  
+Exit code: `0xdeadbeef` (`3735928559`)
+
+---
+
+## 49. QHAL OpenQASM 3.0 Export / क्वांटम हार्डवेयर एब्स्ट्रैक्शन ओपनकैज़म निर्यात
+
+File: `examples/qhal_demo.ydv`
+
+```qadav
+@qhal_backend "sim"
+process main⦅⦆ → int64 ⟦
+    qubit q0 ·
+    qubit q1 ·
+    superpose q0 ·
+    entangle q0⸴ q1 ·
+
+    text qasm_code ·
+    qasm_export into qasm_code with size 1024 ·
+
+    emit qasm_code ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\qhal_demo.ydv
+```
+Output:
+```
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[2] q;
+h q[0];
+cnot q[0], q[1];
+```
+Exit code: `0`
+
+---
+
+## 50. Self-Evolution Attestation (SEA) Demo / स्व-विकास प्रमाणीकरण डेमो
+
+File: `examples/sea_demo.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary evo_auth ⟦
+        rule evolution_safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain evo_log with evo_auth ⟦ capacity ↦ 30 · ⟧
+
+    text state_v1 ↦ "program: v1.0.0" ·
+    text state_v2 ↦ "program: v1.1.0-feature-x" ·
+    text evo_reason ↦ "adding quantum-attested memory replay" ·
+
+    evolve from state_v1 to state_v2 with reason evo_reason into proposal ·
+    evolve_history to evo_log ·
+    evolve_verify proposal into is_valid ·
+
+    emit "Self-evolution attested" ·
+    emit is_valid ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\sea_demo.ydv
+```
+Output:
+```
+Self-evolution attested
+affirm
+```
+Exit code: `0`
+
+---
+
+## 51. SEA Mutation Tamper Detection & Decoherence / स्व-विकास छेड़छाड़ पहचान
+
+File: `examples/sea_tamper.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary evo_auth ⟦
+        rule evolution_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain evo_log with evo_auth ⟦ capacity ↦ 30 · ⟧
+
+    text s1 ↦ "state_a" ·
+    text s2 ↦ "state_b" ·
+    text r ↦ "reason_x" ·
+
+    evolve from s1 to s2 with reason r into p ·
+    corrupt_evolve p at ↦ 16 ·
+    evolve_history to evo_log ·
+    emit "Unreachable" ·
+    yield 0 ·
+⟧
+```
+
+### Execution (Production Mode):
+```powershell
+qyn run examples\sea_tamper.ydv
+```
+Output:
+```
+qyn run: type errors in examples\sea_tamper.ydv:
+  examples\sea_tamper.ydv:12:5: corrupt_evolve is only permitted in test mode (--test)
+```
+Exit code: `1`
+
+### Execution (Test Mode):
+```powershell
+qyn run --test examples\sea_tamper.ydv
+```
+Output: Process terminates immediately with catastrophic quantum decoherence (`0xDEADBEEF`).  
+Exit code: `0xdeadbeef` (`3735928559`)
+
+
 
 
 

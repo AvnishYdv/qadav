@@ -1,0 +1,11 @@
+process main⦅⦆ → int64 ⟦
+    @qhal_backend sim
+    qubit q0 ⸴ q1 ·
+    superpose q0 ·
+    entangle q0 ⸴ q1 ·
+
+    text qasm ↦ "" ·
+    qasm_export into qasm with size 1024 ·
+    emit qasm ·
+    yield 0 ·
+⟧

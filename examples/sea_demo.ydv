@@ -1,0 +1,19 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary evo_auth ⟦
+        rule evolution_safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain evo_log with evo_auth ⟦ capacity ↦ 30 · ⟧
+
+    text state_v1 ↦ "program: v1.0.0" ·
+    text state_v2 ↦ "program: v1.1.0-feature-x" ·
+    text evo_reason ↦ "adding quantum-attested memory replay" ·
+
+    evolve from state_v1 to state_v2 with reason evo_reason into proposal ·
+    evolve_history to evo_log ·
+    evolve_verify proposal into is_valid ·
+
+    emit "Self-evolution attested" ·
+    emit is_valid ·
+    yield 0 ·
+⟧

@@ -425,6 +425,23 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 	header.WriteString("declare i32 @qadav_barat_attest(i8*, i8*, i8*, i64)\n")
 	header.WriteString("declare i32 @qadav_barat_corrupt(i8*, i32)\n\n")
 
+	// Quantum Hardware Abstraction Layer (QHAL — M7.1)
+	header.WriteString("declare i8* @qhal_create(i32, i32)\n")
+	header.WriteString("declare i32 @qhal_add_op(i8*, i8, i32, i32)\n")
+	header.WriteString("declare i32 @qhal_export_qasm3(i8*, i8*, i64, i64*)\n")
+	header.WriteString("declare i32 @qhal_hash_circuit(i8*)\n")
+	header.WriteString("declare void @qhal_shutdown(i8*)\n")
+
+	// Self-Evolution Attestation (SEA — Invention #20, M7.2)
+	header.WriteString("declare void @sea_hash_text(i8*, i8*)\n")
+	header.WriteString("declare i8* @sea_create()\n")
+	header.WriteString("declare i32 @sea_propose(i8*, i8*, i8*, i8*, i8**)\n")
+	header.WriteString("declare i32 @sea_verify_proposal(i8*, i8*)\n")
+	header.WriteString("declare i32 @sea_verify_history(i8*)\n")
+	header.WriteString("declare i32 @sea_attest(i8*, i8*)\n")
+	header.WriteString("declare i32 @sea_corrupt(i8*, i32)\n")
+	header.WriteString("declare void @sea_free(i8*)\n\n")
+
 	// Quantum global state
 	header.WriteString(g.generateQuantumGlobal())
 
@@ -899,6 +916,18 @@ func (g *Generator) genStmt(stmt ast.Stmt) {
 		g.genBaratVerifyStmt(s)
 	case *ast.CorruptBaratStmt:
 		g.genCorruptBaratStmt(s)
+	case *ast.QASMExportStmt:
+		g.genQASMExportStmt(s)
+	case *ast.EvolveStmt:
+		g.genEvolveStmt(s)
+	case *ast.EvolveVerifyStmt:
+		g.genEvolveVerifyStmt(s)
+	case *ast.EvolveHistoryStmt:
+		g.genEvolveHistoryStmt(s)
+	case *ast.CorruptEvolveStmt:
+		g.genCorruptEvolveStmt(s)
+	case *ast.QHALBackendAnnotation:
+		// No-op
 	case *ast.TileStmt, *ast.EnergyDecl:
 		// No-op
 	}

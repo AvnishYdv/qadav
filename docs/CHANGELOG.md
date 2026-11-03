@@ -5,6 +5,89 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M7.1 + M7.2] — Combined Milestone: Quantum Hardware Abstraction Layer (QHAL) + Self-Evolution Attestation (SEA — Invention #20, Patent Pending) (100% Complete)
+## [M7.1 + M7.2] — संयुक्त माइलस्टोन: क्वांटम हार्डवेयर एब्स्ट्रैक्शन लेयर (QHAL) + स्व-विकास प्रमाणीकरण (SEA — आविष्कार #20, पेटेंट लंबित) (100% पूर्ण)
+
+### Added / नया जोड़ा गया:
+- **Quantum Hardware Abstraction Layer (QHAL) (M7.1)**:
+  - Language tokens and annotations: `qasm_export`, `@qhal_backend`, and LaTeX fallbacks (`\qasm_export`, `\qhal_backend`).
+  - AST nodes in `internal/ast/qhal.go` (`QASMExportStmt`, `QHALBackendAnnotation`).
+  - Parser grammar extension in `internal/parser/parser.go`.
+  - Type-checking logic in `internal/checker/qhal_checker.go`.
+  - LLVM IR code generator in `internal/codegen/qhal_codegen.go` and `llvm.go`.
+  - Pure zero-libc C engine in `internal/runtime/qadav_qhal.c` and `qadav_qhal.h`:
+    - OpenQASM 3.0 text generation from Qadav quantum primitives (`qubit`, `superpose`, `entangle`, `collapse`).
+    - Backend stub markers for IBMQ, IonQ, and Rigetti (pure string stubs, strictly NO network calls).
+    - 32-byte SHA3-256 circuit hashing and bounds validation.
+  - Example: `examples/qhal_demo.ydv`.
+  - Unit tests in `internal/runtime/qhal_test.go` (6 tests: create, add ops, export qasm3, hash circuit, backend stub, bounds check).
+- **Self-Evolution Attestation (SEA — Invention #20, Patent Pending) (M7.2)**:
+  - Language tokens and statements: `evolve`, `evolve_verify`, `evolve_history`, `corrupt_evolve` (gated strictly by `--test`), plus LaTeX fallbacks.
+  - AST nodes in `internal/ast/sea.go` (`EvolveStmt`, `EvolveVerifyStmt`, `EvolveHistoryStmt`, `CorruptEvolveStmt`).
+  - Parser grammar extension in `internal/parser/parser.go`.
+  - Static type-checking in `internal/checker/sea_checker.go` enforcing compile-time `--test` gating for `corrupt_evolve`.
+  - LLVM IR code generator in `internal/codegen/sea_codegen.go` and `llvm.go`.
+  - Pure zero-libc C engine in `internal/runtime/qadav_sea.c` and `qadav_sea.h`:
+    - 144-byte binary preimage linking step index, timestamp, from state hash, to state hash, reason hash, and previous proposal hash.
+    - Cumulative Merkle lineage DAG root iteratively updated via SHA3-256.
+    - Epistemic QERA chain attestation under `QADAV_OP_EVOLVE = 5` bound to active ethical Hamiltonian boundary.
+    - Fail-stop quantum decoherence nullification (`ExitProcess(0xDEADBEEF)`) on any proposal tampering or invalid lineage.
+  - Specification: `docs/SEA_SPEC.md`.
+  - Examples: `examples/sea_demo.ydv`, `examples/sea_tamper.ydv`.
+  - Unit tests in `internal/runtime/sea_test.go` (10 tests: create, valid proposal, invalid hashes, verify valid, verify tampered, attest success, attest tampered, canonical sorting, ASLR determinism, lineage chain).
+- **Runtime Object Count Expansion**:
+  - Expanded zero-libc runtime objects from 34 to 36 (`qadav_qhal.o` and `qadav_sea.o`).
+  - Updated `internal/runtime/runtime.go` (`//go:embed`, `Hash()`, `Build()`, `modules` slice, returned object slice).
+  - Updated `internal/runtime/runtime_test.go` and `docs/SETUP.md`.
+
+---
+
+## [M6.5 + M6.6] — Combined Milestone: Distributed Training + Byzantine-Attested Robust Aggregation (BARAT — Invention #19, Patent Pending) (100% Complete)
+## [M6.5 + M6.6] — संयुक्त माइलस्टोन: वितरित प्रशिक्षण + बीजान्टिन-प्रमाणित सुदृढ़ एकत्रीकरण (BARAT — आविष्कार #19, पेटेंट लंबित) (100% पूर्ण)
+
+### Added / नया जोड़ा गया:
+- **Part 0 (F26–F28 Minor Fixes)**:
+  - F26: `TestCDAGACanonicalSort` implemented and verified (3 devices [0,1,2] vs [2,1,0] and 5 devices across 10 random permutations produce identical aggregation digest).
+  - F27: `TestCDAGAASLRDeterminism` implemented and verified (100 iterations with dynamic heap allocation offsets produce byte-for-byte identical record hash).
+  - F28: Runtime object naming verified and documented in `docs/SETUP.md` (30 → 32 and 32 → 34 transitions).
+- **Distributed Training: In-Process Ring AllReduce & Parameter Server (M6.5)**:
+  - Language tokens, annotations, and statements: `@distributed`, `all_reduce`, `pserver_init`, `pserver_aggregate`, plus LaTeX fallbacks (`\all_reduce`, `\pserver_init`, `\pserver_aggregate`, `\distributed`).
+  - AST nodes in `internal/ast/distributed.go` (`AllReduceStmt`, `PserverInitStmt`, `PserverAggregateStmt`).
+  - Parser integration in `internal/parser/parser.go`.
+  - Static type-checking in `internal/checker/distributed_checker.go`.
+  - LLVM IR code generator in `internal/codegen/distributed_codegen.go` and `llvm.go`.
+  - Go high-level distributed runtime in `internal/gpu/allreduce.go` (RingAllReduce, ScatterReduce, AllGather, bfloat16 compression) and `internal/gpu/paramserver.go` (ParameterServer push, pull, aggregate, versioning).
+  - Zero-libc in-process distributed C runtime in `internal/runtime/qadav_distributed.c` and `qadav_distributed.h`.
+  - Zero network sockets (no WinSock, no external C socket libraries); zero crash on single-worker fallback.
+  - Example: `examples/distributed_demo.ydv`.
+- **Byzantine-Attested Robust Aggregation (BARAT — Invention #19, Patent Pending) (M6.6)**:
+  - Language tokens and statements: `barat_submit`, `barat_aggregate`, `barat_verify`, `corrupt_barat` (gated strictly by `--test`), plus LaTeX fallbacks.
+  - AST nodes in `internal/ast/barat.go` (`BaratSubmitStmt`, `BaratAggregateStmt`, `BaratVerifyStmt`, `CorruptBaratStmt`).
+  - Parser integration in `internal/parser/parser.go`.
+  - Static type-checking in `internal/checker/barat_checker.go` enforcing compile-time `--test` gating.
+  - LLVM IR code generator in `internal/codegen/barat_codegen.go` and `llvm.go`.
+  - Zero-libc C engine in `internal/runtime/qadav_barat.c` and `qadav_barat.h`:
+    - Coordinate/norm-based trimmed-mean aggregation ($\alpha = 0.20$, dropping top 20% and bottom 20% outlier gradients).
+    - Deterministic canonical worker UUID sorting.
+    - 896-byte transparency certificate binding step index, inclusion mask, alpha, worker UUIDs, gradient digests, selection proof, and aggregated tensor hash.
+    - Zero-knowledge verifiable SHA3-256 selection proof.
+    - Host QERA reasoning chain attestation (`QADAV_OP_VERIFY`, confidence 1.0).
+    - Active fail-stop quantum decoherence (`ExitProcess(0xDEADBEEF)`) on certificate or gradient tampering.
+  - Examples: `examples/barat_demo.ydv` and `examples/barat_tamper.ydv`.
+  - Specification: `docs/BARAT_SPEC.md`.
+- **Runtime Module Count Expansion**:
+  - Embedded zero-libc runtime expanded to **34 modular compiled C objects** (added `qadav_distributed.o` and `qadav_barat.o`).
+- **Full Coverage & Test Verification**:
+  - Lexer: 97.4% ($\ge 96.1\%$)
+  - Parser: 88.6% ($\ge 86.2\%$)
+  - Checker: 84.1% ($\ge 83.8\%$)
+  - Runtime tests: `internal/runtime/distributed_test.go` and `internal/runtime/barat_test.go` (100% pass).
+  - GPU unit tests: `internal/gpu/allreduce_test.go` (100% pass).
+- **Patent Portfolio Strategy**:
+  - Portfolio expanded to **19 total innovations** (13 patent-pending commercial inventions #7–#19 + 6 defensive open publications #1–#6).
+
+---
+
 ## [M6.3 + M6.4] — Combined Milestone: Multi-GPU Pipeline Parallelism + Cross-Device Attested Gradient Aggregation (CDAGA — Invention #18, Patent Pending) (100% Complete)
 ## [M6.3 + M6.4] — संयुक्त माइलस्टोन: मल्टी-जीपीयू पाइपलाइन समानांतरता + क्रॉस-डिवाइस प्रमाणित ग्रेडिएंट एकत्रीकरण (CDAGA — आविष्कार #18, पेटेंट लंबित) (100% पूर्ण)
 

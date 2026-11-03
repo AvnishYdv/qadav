@@ -1026,6 +1026,69 @@ process main ⦅ ⦆ → int64 ⟦
 ⟧
 ```
 
+---
+
+## 36. Quantum Hardware Abstraction Layer (QHAL)
+
+QHAL translates Qadav high-level quantum operations (`qubit`, `superpose`, `entangle`, `collapse`) into standard OpenQASM 3.0 representations and provides verified hardware target routing stubs.
+
+### Key Features:
+1. **OpenQASM 3.0 Export:** Automatically generates standards-compliant OpenQASM text strings with header `OPENQASM 3.0;`, include `stdgates.inc;`, qubit registers, Hadamard gates (`h`), and CNOT operations (`cnot`).
+2. **Deterministic Circuit Hashing:** Calculates a 32-byte SHA3-256 digest over the circuit state to guarantee reproducibility.
+3. **Hardware Backend Stubs:** Provides pluggable target annotations (`@qhal_backend "ibmq"`, `"ionq"`, `"rigetti"`, `"sim"`) returning pure-string stubs without invoking any third-party network or socket communication.
+
+### Syntax:
+```qadav
+@qhal_backend "sim"
+process main⦅⦆ → int64 ⟦
+    qubit q0 ·
+    qubit q1 ·
+    superpose q0 ·
+    entangle q0⸴ q1 ·
+
+    text qasm_code ·
+    qasm_export into qasm_code with size 1024 ·
+
+    emit qasm_code ·
+    yield 0 ·
+⟧
+```
+
+---
+
+## 37. Self-Evolution Attestation (SEA — Invention #20)
+
+SEA (Invention #20, Patent Pending) provides a secure, cryptographically-attested framework for autonomous agent self-modification.
+
+### Key Features:
+1. **144-Byte Mutation Preimage:** Encapsulates sequence index, timestamp, `from_state_hash`, `to_state_hash`, epistemic `reason_hash`, and predecessor proposal hash into an immutable SHA3-256 proposal digest.
+2. **Cumulative Merkle Lineage DAG:** Continuously updates a global lineage DAG root across recursive self-modification steps.
+3. **QERA Coupling:** Binds self-evolution proposals to the host reasoning chain under operation `QADAV_OP_EVOLVE` (5) evaluated against active ethical boundary Hamiltonians.
+4. **Active Quantum Decoherence:** Tampered proposals trigger zero-libc quantum register nullification and process termination (`ExitProcess(0xDEADBEEF)`).
+
+### Syntax:
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary evo_auth ⟦
+        rule evolution_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain evo_log with evo_auth ⟦ capacity ↦ 30 · ⟧
+
+    text state_v1 ↦ "agent_logic_v1.0" ·
+    text state_v2 ↦ "agent_logic_v1.1_optimized" ·
+    text reason_doc ↦ "self-optimization based on verified benchmark feedback" ·
+
+    evolve from state_v1 to state_v2 with reason reason_doc into proposal ·
+    evolve_history to evo_log ·
+    evolve_verify proposal into is_valid ·
+
+    emit "Self-evolution attested" ·
+    emit is_valid ·
+    yield 0 ·
+⟧
+```
+
+
 
 
 

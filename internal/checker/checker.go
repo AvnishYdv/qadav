@@ -654,6 +654,24 @@ func (c *Checker) checkStmt(stmt ast.Stmt) {
 	case *ast.CorruptBaratStmt:
 		c.checkCorruptBaratStmt(s)
 
+	case *ast.QHALBackendAnnotation:
+		c.checkQHALBackendAnnotation(s)
+
+	case *ast.QASMExportStmt:
+		c.checkQASMExportStmt(s)
+
+	case *ast.EvolveStmt:
+		c.checkEvolveStmt(s)
+
+	case *ast.EvolveVerifyStmt:
+		c.checkEvolveVerifyStmt(s)
+
+	case *ast.EvolveHistoryStmt:
+		c.checkEvolveHistoryStmt(s)
+
+	case *ast.CorruptEvolveStmt:
+		c.checkCorruptEvolveStmt(s)
+
 	case *ast.ExprStmt:
 		c.checkExpr(s.Expr)
 

@@ -429,9 +429,16 @@ const (
 	BARAT_AGGREGATE Type = "BARAT_AGGREGATE"
 	BARAT_VERIFY    Type = "BARAT_VERIFY"
 	CORRUPT_BARAT   Type = "CORRUPT_BARAT"
+
+	// M7.1: Quantum Hardware Abstraction Layer (QHAL) Keywords
+	QASM_EXPORT  Type = "QASM_EXPORT"
+	QHAL_BACKEND Type = "QHAL_BACKEND"
+
+	// M7.2: SEA (Invention #20: Self-Evolution Attestation) Keywords
+	EVOLVE_VERIFY  Type = "EVOLVE_VERIFY"
+	EVOLVE_HISTORY Type = "EVOLVE_HISTORY"
+	CORRUPT_EVOLVE Type = "CORRUPT_EVOLVE"
 )
-
-
 
 // Quasinary Keywords & Literals
 const (
@@ -854,6 +861,15 @@ var keywords = map[string]Type{
 	"barat_verify":    BARAT_VERIFY,
 	"corrupt_barat":   CORRUPT_BARAT,
 
+	// M7.1: Quantum Hardware Abstraction Layer (QHAL)
+	"qasm_export":   QASM_EXPORT,
+	"@qhal_backend": QHAL_BACKEND,
+
+	// M7.2: SEA (Invention #20)
+	"evolve_verify":  EVOLVE_VERIFY,
+	"evolve_history": EVOLVE_HISTORY,
+	"corrupt_evolve": CORRUPT_EVOLVE,
+
 	// Cryptography
 	"sign":    SIGN,
 	"verify":  VERIFY,
@@ -878,57 +894,57 @@ var fallbacks = func() map[string]Type {
 		m[op.Fallback] = op.Type
 	}
 	kwFallbacks := map[string]Type{
-		`\dataset`:              DATASET,
-		`\load`:                 LOAD,
-		`\normalize`:            NORMALIZE,
-		`\minmax`:               MINMAX,
-		`\zscore`:               ZSCORE,
-		`\shuffle`:              SHUFFLE,
-		`\batch`:                BATCH,
-		`\quasi`:                QUASI,
-		`\qneg`:                 QUASI_NEG,
-		`\qzero`:                QUASI_ZERO,
-		`\qpos`:                 QUASI_POS,
-		`\energy`:               ENERGY,
-		`\minimize`:             MINIMIZE,
-		`\tile`:                 TILE,
-		`\infer`:                INFER,
-		`\assert`:               ASSERT,
-		`\propagate`:            PROPAGATE,
-		`\epistemic`:            EPISTEMIC,
-		`\unknown`:              UNKNOWN,
-		`\known`:                KNOWN,
-		`\memory`:               MEMORY,
-		`\graph`:                GRAPH,
-		`\procedure`:            PROCEDURE,
-		`\recall`:               RECALL,
-		`\remember`:             REMEMBER,
-		`\link`:                 LINK,
-		`\node`:                 NODE,
-		`\trace`:                TRACE,
-		`\execute`:              EXECUTE,
-		`\ethical`:              ETHICAL_BOUNDARY,
-		`\enforce`:              ENFORCE,
-		`\decoherence`:          DECOHERENCE,
-		`\hamiltonian`:          HAMILTONIAN,
-		`\rule`:                 RULE,
-		`\vault`:                VAULT,
-		`\seal`:                 SEAL,
-		`\unseal`:               UNSEAL,
-		`\wipe`:                 WIPE,
-		`\provenance`:           PROVENANCE,
-		`\certify`:              CERTIFY,
-		`\verify_training`:      VERIFY_TRAIN,
-		`\memory_prov`:          MEMORY_PROV,
-		`\verify_memory`:        VERIFY_MEMORY,
-		`\audit_memory`:         AUDIT_MEMORY,
-		`\corrupt_share`:        CORRUPT_SHARE,
-		`\corrupt_memory_share`: CORRUPT_SHARE,
-		`\license`:              LICENSE,
-		`\transfer`:             TRANSFER,
-		`\distill`:              DISTILL,
-		`\teacher`:              TEACHER,
-		`\student`:              STUDENT,
+		`\dataset`:                DATASET,
+		`\load`:                   LOAD,
+		`\normalize`:              NORMALIZE,
+		`\minmax`:                 MINMAX,
+		`\zscore`:                 ZSCORE,
+		`\shuffle`:                SHUFFLE,
+		`\batch`:                  BATCH,
+		`\quasi`:                  QUASI,
+		`\qneg`:                   QUASI_NEG,
+		`\qzero`:                  QUASI_ZERO,
+		`\qpos`:                   QUASI_POS,
+		`\energy`:                 ENERGY,
+		`\minimize`:               MINIMIZE,
+		`\tile`:                   TILE,
+		`\infer`:                  INFER,
+		`\assert`:                 ASSERT,
+		`\propagate`:              PROPAGATE,
+		`\epistemic`:              EPISTEMIC,
+		`\unknown`:                UNKNOWN,
+		`\known`:                  KNOWN,
+		`\memory`:                 MEMORY,
+		`\graph`:                  GRAPH,
+		`\procedure`:              PROCEDURE,
+		`\recall`:                 RECALL,
+		`\remember`:               REMEMBER,
+		`\link`:                   LINK,
+		`\node`:                   NODE,
+		`\trace`:                  TRACE,
+		`\execute`:                EXECUTE,
+		`\ethical`:                ETHICAL_BOUNDARY,
+		`\enforce`:                ENFORCE,
+		`\decoherence`:            DECOHERENCE,
+		`\hamiltonian`:            HAMILTONIAN,
+		`\rule`:                   RULE,
+		`\vault`:                  VAULT,
+		`\seal`:                   SEAL,
+		`\unseal`:                 UNSEAL,
+		`\wipe`:                   WIPE,
+		`\provenance`:             PROVENANCE,
+		`\certify`:                CERTIFY,
+		`\verify_training`:        VERIFY_TRAIN,
+		`\memory_prov`:            MEMORY_PROV,
+		`\verify_memory`:          VERIFY_MEMORY,
+		`\audit_memory`:           AUDIT_MEMORY,
+		`\corrupt_share`:          CORRUPT_SHARE,
+		`\corrupt_memory_share`:   CORRUPT_SHARE,
+		`\license`:                LICENSE,
+		`\transfer`:               TRANSFER,
+		`\distill`:                DISTILL,
+		`\teacher`:                TEACHER,
+		`\student`:                STUDENT,
 		`\reasoning_chain`:        REASONING_CHAIN,
 		`\reason`:                 REASON,
 		`\deduce`:                 DEDUCE,
@@ -993,14 +1009,20 @@ var fallbacks = func() map[string]Type {
 		`\cdaga_attest`:           CDAGA_ATTEST,
 		`\cdaga_verify`:           CDAGA_VERIFY,
 		`\corrupt_cdaga`:          CORRUPT_CDAGA,
-		`\all_reduce`:              ALL_REDUCE,
-		`\pserver_init`:            PSERVER_INIT,
-		`\pserver_aggregate`:       PSERVER_AGG,
+		`\all_reduce`:             ALL_REDUCE,
+		`\pserver_init`:           PSERVER_INIT,
+		`\pserver_aggregate`:      PSERVER_AGG,
 		`\distributed`:            DIST_INIT,
 		`\barat_submit`:           BARAT_SUBMIT,
 		`\barat_aggregate`:        BARAT_AGGREGATE,
 		`\barat_verify`:           BARAT_VERIFY,
 		`\corrupt_barat`:          CORRUPT_BARAT,
+		`\qasm_export`:            QASM_EXPORT,
+		`\qhal_backend`:           QHAL_BACKEND,
+		`\evolve`:                 EVOLVE,
+		`\evolve_verify`:          EVOLVE_VERIFY,
+		`\evolve_history`:         EVOLVE_HISTORY,
+		`\corrupt_evolve`:         CORRUPT_EVOLVE,
 	}
 	for k, v := range kwFallbacks {
 		m[k] = v

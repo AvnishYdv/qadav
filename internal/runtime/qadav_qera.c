@@ -111,7 +111,7 @@ int qadav_qera_reason(qadav_reasoning_chain* chain,
         }
     }
 
-    if (operation < 1 || operation > 4) return -2;
+    if (operation < 1 || operation > 5) return -2;
     if (confidence < 0.0 || confidence > 1.0) return -3;
 
     int idx = chain->n_steps;
@@ -260,7 +260,7 @@ int qadav_qera_audit(qadav_reasoning_chain* chain) {
     qadav_emit_int((long long)chain->n_steps);
     qadav_write_raw("\n", 1);
 
-    const char* op_names[] = {"none", "deduce", "induce", "abduce", "verify"};
+    const char* op_names[] = {"none", "deduce", "induce", "abduce", "verify", "evolve"};
 
     for (int i = 0; i < chain->n_steps; i++) {
         qadav_reasoning_step* s = &chain->steps[i];
@@ -268,7 +268,7 @@ int qadav_qera_audit(qadav_reasoning_chain* chain) {
         qadav_emit_int((long long)i);
         qadav_write_raw("] op=", 5);
         int op = (int)s->operation;
-        if (op >= 1 && op <= 4) {
+        if (op >= 1 && op <= 5) {
             qadav_write_raw(op_names[op], qera_strlen(op_names[op]));
         } else {
             qadav_write_raw("unknown", 7);

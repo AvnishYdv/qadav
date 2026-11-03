@@ -1,0 +1,16 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary evo_auth ⟦
+        rule evolution_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain evo_log with evo_auth ⟦ capacity ↦ 30 · ⟧
+
+    text s1 ↦ "state_a" ·
+    text s2 ↦ "state_b" ·
+    text r ↦ "reason_x" ·
+
+    evolve from s1 to s2 with reason r into p ·
+    corrupt_evolve p at ↦ 16 ·
+    evolve_history to evo_log ·
+    emit "Unreachable" ·
+    yield 0 ·
+⟧

@@ -17,3 +17,4 @@ process main⦅⦆ → int64 ⟦
     emit "BARAT Byzantine Robust Aggregation and Verification Success" ·
     yield 0 ·
 ⟧
+

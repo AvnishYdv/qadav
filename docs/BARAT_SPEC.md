@@ -131,3 +131,4 @@ corrupt_barat b_cert at ↦ 16 ·
 ```
 
 Attempting to compile `corrupt_barat` without `--test` generates a compile-time static rejection: `corrupt_barat is only permitted in test mode (--test)`.
+

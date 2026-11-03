@@ -152,6 +152,15 @@ func (l *Lexer) NextToken() token.Token {
 					File:    l.file,
 				}
 			}
+			if id == "qhal_backend" {
+				return token.Token{
+					Type:    token.QHAL_BACKEND,
+					Literal: "@qhal_backend",
+					Line:    startLine,
+					Col:     startCol,
+					File:    l.file,
+				}
+			}
 			return token.Token{
 				Type:    token.ILLEGAL,
 				Literal: "@" + id,

@@ -14,7 +14,7 @@ import (
 	"github.com/qadav-lang/qadav/internal/llvm"
 )
 
-//go:embed qadav_rt.c qadav_rt_linux.c qadav_tensor.c qadav_tensor.h qadav_nn.c qadav_nn.h qadav_quantum.c qadav_quantum.h qadav_prime.c qadav_prime.h qadav_io.c qadav_io.h qadav_dataset.c qadav_dataset.h qadav_quasinary.c qadav_quasinary.h qadav_cir.c qadav_cir.h qadav_agi.c qadav_agi.h qadav_sha3.c qadav_sha3.h qadav_merkle.c qadav_merkle.h qadav_lamport.c qadav_lamport.h qadav_selfcheck.c qadav_selfcheck.h qadav_qeeh.c qadav_qeeh.h qadav_qemwv.c qadav_qemwv.h qadav_mctp.c qadav_mctp.h qadav_qemp.c qadav_qemp.h qadav_qecmt.c qadav_qecmt.h qadav_qera.c qadav_qera.h qadav_qecma.c qadav_qecma.h qadav_qec.c qadav_qec.h qadav_consolidate.c qadav_consolidate.h qadav_scoped.c qadav_scoped.h qadav_tools.c qadav_tools.h qadav_certificate.c qadav_certificate.h qadav_abstain.c qadav_abstain.h qadav_sandbox.c qadav_sandbox.h qadav_gpu.c qadav_gpu.h qadav_agke.c qadav_agke.h qadav_multigpu.c qadav_multigpu.h qadav_cdaga.c qadav_cdaga.h qadav_distributed.c qadav_distributed.h qadav_barat.c qadav_barat.h
+//go:embed qadav_rt.c qadav_rt_linux.c qadav_tensor.c qadav_tensor.h qadav_nn.c qadav_nn.h qadav_quantum.c qadav_quantum.h qadav_prime.c qadav_prime.h qadav_io.c qadav_io.h qadav_dataset.c qadav_dataset.h qadav_quasinary.c qadav_quasinary.h qadav_cir.c qadav_cir.h qadav_agi.c qadav_agi.h qadav_sha3.c qadav_sha3.h qadav_merkle.c qadav_merkle.h qadav_lamport.c qadav_lamport.h qadav_selfcheck.c qadav_selfcheck.h qadav_qeeh.c qadav_qeeh.h qadav_qemwv.c qadav_qemwv.h qadav_mctp.c qadav_mctp.h qadav_qemp.c qadav_qemp.h qadav_qecmt.c qadav_qecmt.h qadav_qera.c qadav_qera.h qadav_qecma.c qadav_qecma.h qadav_qec.c qadav_qec.h qadav_consolidate.c qadav_consolidate.h qadav_scoped.c qadav_scoped.h qadav_tools.c qadav_tools.h qadav_certificate.c qadav_certificate.h qadav_abstain.c qadav_abstain.h qadav_sandbox.c qadav_sandbox.h qadav_gpu.c qadav_gpu.h qadav_agke.c qadav_agke.h qadav_multigpu.c qadav_multigpu.h qadav_cdaga.c qadav_cdaga.h qadav_distributed.c qadav_distributed.h qadav_barat.c qadav_barat.h qadav_qhal.c qadav_qhal.h qadav_sea.c qadav_sea.h
 var srcFiles embed.FS
 
 // Sources returns the primary runtime C source file name and content for the current platform.
@@ -108,6 +108,10 @@ func Hash() string {
 	distH, _ := srcFiles.ReadFile("qadav_distributed.h")
 	baratC, _ := srcFiles.ReadFile("qadav_barat.c")
 	baratH, _ := srcFiles.ReadFile("qadav_barat.h")
+	qhalC, _ := srcFiles.ReadFile("qadav_qhal.c")
+	qhalH, _ := srcFiles.ReadFile("qadav_qhal.h")
+	seaC, _ := srcFiles.ReadFile("qadav_sea.c")
+	seaH, _ := srcFiles.ReadFile("qadav_sea.h")
 
 	h := sha256.New()
 	h.Write(content)
@@ -177,6 +181,10 @@ func Hash() string {
 	h.Write(distH)
 	h.Write(baratC)
 	h.Write(baratH)
+	h.Write(qhalC)
+	h.Write(qhalH)
+	h.Write(seaC)
+	h.Write(seaH)
 	sum := h.Sum(nil)
 	return hex.EncodeToString(sum)[:16]
 }
@@ -244,6 +252,8 @@ func Build(tc *llvm.Toolchain, cacheDir string) ([]string, error) {
 	cdagaObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_cdaga_%s.o", hashStr))
 	distObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_distributed_%s.o", hashStr))
 	baratObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_barat_%s.o", hashStr))
+	qhalObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_qhal_%s.o", hashStr))
+	seaObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_sea_%s.o", hashStr))
 
 	if entries, err := srcFiles.ReadDir("."); err == nil {
 		for _, entry := range entries {
@@ -335,6 +345,8 @@ func Build(tc *llvm.Toolchain, cacheDir string) ([]string, error) {
 		{"qadav_cdaga", cdagaObjPath},
 		{"qadav_distributed", distObjPath},
 		{"qadav_barat", baratObjPath},
+		{"qadav_qhal", qhalObjPath},
+		{"qadav_sea", seaObjPath},
 	}
 
 	for _, m := range modules {
@@ -351,6 +363,7 @@ func Build(tc *llvm.Toolchain, cacheDir string) ([]string, error) {
 		qecmaObjPath, qecObjPath, consObjPath, scopedObjPath, toolsObjPath,
 		certObjPath, abstainObjPath, sbObjPath, gpuObjPath, agkeObjPath,
 		mgpuObjPath, cdagaObjPath, distObjPath, baratObjPath,
+		qhalObjPath, seaObjPath,
 	}, nil
 }
 

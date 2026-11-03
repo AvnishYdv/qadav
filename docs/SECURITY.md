@@ -336,6 +336,37 @@ By eliminating `<stdio.h>`, `<stdlib.h>`, `<string.h>`, and `<math.h>`:
 5. **Fail-Stop Quantum Decoherence**:
    - Any corruption in the 468-byte contiguous record or gradient digest triggers quantum wavefunction collapse (`qadav_qeeh_trigger_decoherence`) and terminates the host process immediately with status `0xDEADBEEF`.
 
+---
+
+## 25. Byzantine-Attested Robust Aggregation Security (BARAT — Invention #19)
+
+1. **Byzantine Fault Tolerance via Robust Trimmed-Mean**:
+   - Byzantine workers injecting malicious gradient deltas, backdoor triggers, or extreme gradient explosions are automatically filtered out using coordinate/norm-based trimmed-mean selection ($\alpha = 0.20$). Top and bottom 20% outlier workers are discarded, neutralizing up to 20% Byzantine nodes per training round.
+2. **Transparent Verifiable Selection Proofs**:
+   - Aggregators cannot secretly censor honest workers or manipulate inclusion sets without detection. The 32-byte `selection_proof` cryptographically commits to the exact inclusion bitmask, trimmed alpha, canonical worker UUIDs, and input digests via SHA3-256.
+3. **Canonical Deterministic Ordering**:
+   - Worker UUIDs are sorted in strict lexicographical order prior to selection calculations, ensuring that ASLR, memory layout variations, and network arrival jitter produce byte-for-byte identical certificates.
+4. **Zero Permanent Heap Footprint**:
+   - In-process gradient buffers are allocated, aggregated, attested, and freed synchronously, maintaining a zero permanent heap footprint across multi-step training loops.
+5. **Fail-Stop Active Decoherence**:
+   - Any falsification of the 896-byte certificate preimage, tampered inclusion mask, or corrupted gradient vector causes verification failure and triggers catastrophic process termination (`ExitProcess(0xDEADBEEF)`).
+
+---
+
+## 26. Self-Evolution Attestation Security (SEA — Invention #20)
+
+1. **Autonomous Self-Mutation Containment**:
+   - In recursive self-modifying agents, uncontrolled code or parameter self-modification poses catastrophic risk of misalignment, trojan insertion, and unconstrained reward hacking. SEA enforces a cryptographic gate requiring every proposed self-mutation to be encapsulated in a verified 144-byte binary preimage.
+2. **Epistemic Justification Binding**:
+   - Program mutations cannot occur silently or anonymously. SEA strictly requires a non-zero `reason_hash`, binding the cognitive explanation or mathematical proof justifying the mutation directly to the mutation proposal digest.
+3. **Cumulative Merkle Lineage DAG**:
+   - Each approved proposal updates a rolling 32-byte `lineage_root` via SHA3-256. Any historical modification of earlier proposals breaks the Merkle tree DAG commitment, rendering rogue mutations immediately detectable.
+4. **Ethical Boundary Hamiltonian Gating**:
+   - When proposals are attested to the host QERA reasoning chain (`QADAV_OP_EVOLVE = 5`), the transition is evaluated against active ethical Hamiltonian boundary penalties. Unaligned mutations with excessive Hamiltonian energy violate boundary invariants.
+5. **Fail-Stop Quantum Decoherence Nullification**:
+   - Any tampering with proposal state hashes, lineage linkages, or timestamps invokes zero-libc quantum register zeroing and immediate process termination (`ExitProcess(0xDEADBEEF)`). Test corruptions (`corrupt_evolve`) are strictly rejected by the type checker unless explicit `--test` compilation mode is active.
+
+
 
 
 

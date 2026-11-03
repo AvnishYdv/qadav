@@ -345,6 +345,43 @@ Conventional frameworks (PyTorch, TensorFlow, ONNX Runtime) depend on multi-giga
 4. Epistemic QERA chain attestation: registering multi-device gradient consensus records as verified reasoning steps in host cognitive chains.
 5. Catastrophic quantum decoherence protection: terminating host process (`0xDEADBEEF`) upon detection of unauthorized gradient manipulation or device spoofing.
 
+---
+
+## 19. Invention #19: Byzantine-Attested Robust Aggregation with Transparent Selection (BARAT)
+## आविष्कार #19: बीजान्टिन-प्रमाणित सुदृढ़ एकत्रीकरण पारदर्शी चयन (BARAT)
+
+- **Status / स्थिति:** PROPRIETARY (Patent Pending / पेटेंट लंबित)
+- **First disclosed / प्रथम प्रकटीकरण:** 2026-11-03
+- **Mechanism / कार्यप्रणाली:** A cryptographically provable, hardware-anchored Byzantine fault-tolerant gradient aggregation protocol for distributed deep learning and AGI training. BARAT executes coordinate/norm-based trimmed-mean selection ($\alpha = 0.20$), rejecting extreme outlier worker gradients while producing an immutable 896-byte transparency certificate. The certificate binds canonical worker UUIDs, individual gradient digests, an inclusion bitmask, a SHA3-256 selection proof, the aggregated tensor hash, and lineage hash to previous steps. The certificate is verified and attested into host QERA chains, with any certificate forgery, gradient tampering, or mask falsification immediately triggering catastrophic quantum decoherence and process nullification (`ExitProcess(0xDEADBEEF)`).
+- **Novelty / नवीनता:** First distributed training system combining robust trimmed-mean outlier rejection with zero-knowledge-verifiable transparency certificates and active quantum decoherence against Byzantine poisoning and aggregator censorship.
+- **NOT open source / बंद स्रोत:** Proprietary Qadav feature.
+
+### Technical Claims / तकनीकी बिंदु:
+1. Verifiable trimmed-mean robust selection: combining coordinate-wise or norm-based trimmed-mean outlier filtration ($\alpha = 0.20$) with a non-interactive cryptographic selection certificate.
+2. Canonical worker ordering consensus: lexicographically sorting 16-byte worker UUIDs to ensure deterministic inclusion masks and selection proofs invariant of network transmission order.
+3. Cryptographic transparency certificate: structuring an 896-byte contiguous preimage linking worker count, inclusion bitmask, trimmed alpha, worker UUIDs, gradient digests, selection proof, aggregated tensor digest, and previous record hash.
+4. Zero-knowledge verifiable selection proof: evaluating SHA3-256 commitments over inclusion decisions, enabling external auditors to mathematically prove that excluded gradients were legitimate statistical outliers according to the fixed protocol.
+5. QERA reasoning chain anchoring & decoherence: binding robust gradient aggregation certificates into host QERA chains with fail-stop catastrophic quantum decoherence (`ExitProcess(0xDEADBEEF)`) upon any data corruption.
+
+---
+
+## 20. Invention #20: Self-Evolution Attestation (SEA)
+## आविष्कार #20: स्व-विकास प्रमाणीकरण (SEA)
+
+- **Status / स्थिति:** PROPRIETARY (Patent Pending / पेटेंट लंबित)
+- **First disclosed / प्रथम प्रकटीकरण:** 2026-11-03
+- **Mechanism / कार्यप्रणाली:** A cryptographically-attested program self-modification protocol governing autonomous agent evolution. When an agent mutates its executable logic, heuristics, or weights, SEA structures a canonical 144-byte binary preimage binding predecessor state digest (`from_state_hash`), successor state digest (`to_state_hash`), epistemic justification digest (`reason_hash`), step sequence index, timestamp, and previous proposal hash into an immutable proposal digest. Successive mutations update a cumulative Merkle lineage root. Proposals are verified and attested into host QERA chains under operation code `QADAV_OP_EVOLVE` (5) evaluated against active ethical Hamiltonian boundaries. Any proposal tampering or unauthorized mutation triggers zero-libc quantum register nullification and process termination (`ExitProcess(0xDEADBEEF)`).
+- **Novelty / नवीनता:** First cognitive self-modification architecture establishing cryptographically-bound provenance and reason-attested lineage DAGs for recursive self-evolution coupled directly with active quantum decoherence containment.
+- **NOT open source / बंद स्रोत:** Proprietary Qadav feature.
+
+### Technical Claims / तकनीकी बिंदु:
+1. Immutable 144-byte mutation preimage: structuring monotonic sequence index, execution timestamp, predecessor state SHA3-256 digest, successor state SHA3-256 digest, epistemic justification reason digest, and predecessor proposal hash into a canonical non-padded binary preimage.
+2. Cumulative Merkle lineage DAG root: iteratively updating a 32-byte global lineage root upon every verified self-mutation proposal, ensuring verifiable evolutionary history across process restarts.
+3. Epistemic justification requirement: enforcing non-zero reason hash commitments for every proposed self-modification, mathematically preventing ungrounded or silent program logic mutation.
+4. QERA reasoning chain coupling: appending verified self-evolution proposals into host Quantum Epistemic Reasoning Attestation chains as specialized evolution operations (`QADAV_OP_EVOLVE = 5`) evaluated against ethical Hamiltonian boundary commitments.
+5. Quantum fail-stop containment: executing zero-libc register zeroing and immediate process termination (`ExitProcess(0xDEADBEEF)`) upon detection of proposal tampering, lineage invalidation, or unauthorized self-modification.
+
+
 
 
 

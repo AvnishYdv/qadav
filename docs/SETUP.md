@@ -159,7 +159,7 @@ Qadav provides native cryptographic tamper simulation statements (such as `corru
 In standard builds without `--test`, any test-only statement produces a compile-time type-checker error.
 
 ### Runtime Modules
-Qadav features 34 modular zero-libc runtime objects compiled on demand (expanded from 30 in M6.3+M6.4 and 32 in M6.5+M6.6):
+Qadav features 36 modular zero-libc runtime objects compiled on demand (expanded from 30 in M6.3+M6.4, 32 in M6.5+M6.6, and 34 in M7.1+M7.2):
 1. `qadav_alloc` (Zero-libc arena & page allocator)
 2. `qadav_sha3` (Keccak-f1600 / SHA3-256 cryptographic sponge)
 3. `qadav_merkle` (Merkle tree builder & root authentication)
@@ -194,10 +194,13 @@ Qadav features 34 modular zero-libc runtime objects compiled on demand (expanded
 32. `qadav_cdaga` (Cross-Device Attested Gradient Aggregation - Invention #18, added in M6.4)
 33. `qadav_distributed` (In-process Ring AllReduce & Parameter Server, added in M6.5)
 34. `qadav_barat` (Byzantine-Attested Robust Aggregation with Transparent selection - Invention #19, added in M6.6)
+35. `qadav_qhal` (Quantum Hardware Abstraction Layer & OpenQASM 3.0 export, added in M7.1)
+36. `qadav_sea` (Self-Evolution Attestation & lineage chain - Invention #20, added in M7.2)
 
 *Transition Notes:*
 - *30 → 32 (M6.3 + M6.4):* Added `qadav_multigpu.c` (DXGI device topology & pipeline execution) and `qadav_cdaga.c` (canonical device-sorted gradient aggregation attestation).
 - *32 → 34 (M6.5 + M6.6):* Added `qadav_distributed.c` (in-process zero-socket ring allreduce and parameter server) and `qadav_barat.c` (Byzantine-attested robust trimmed-mean aggregation with transparency certificate and catastrophic decoherence).
+- *34 → 36 (M7.1 + M7.2):* Added `qadav_qhal.c` (OpenQASM 3.0 export & backend stub abstraction) and `qadav_sea.c` (Self-Evolution Attestation proposal verification, Merkle lineage DAG, and QERA coupling).
 
 ### Standard Library Management:
 ```powershell
