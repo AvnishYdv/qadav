@@ -33,6 +33,8 @@ type Checker struct {
 	recallTokens         map[string]*RecallTokenInfo
 	tools                map[string]*ToolInfo
 	sandboxes            map[string]*SandboxInfo
+	recordDecls          map[string]*ast.RecordDeclStmt
+	variantDecls         map[string]*ast.VariantDeclStmt
 }
 
 // New creates an initialized Checker.
@@ -47,12 +49,24 @@ func New() *Checker {
 		recallTokens:      make(map[string]*RecallTokenInfo),
 		tools:             make(map[string]*ToolInfo),
 		sandboxes:         make(map[string]*SandboxInfo),
+		recordDecls:       make(map[string]*ast.RecordDeclStmt),
+		variantDecls:      make(map[string]*ast.VariantDeclStmt),
 	}
 }
 
 // Networks returns all checked network metadata.
 func (c *Checker) Networks() map[string]*NetworkInfo {
 	return c.networks
+}
+
+// RecordDecls returns all checked record declarations.
+func (c *Checker) RecordDecls() map[string]*ast.RecordDeclStmt {
+	return c.recordDecls
+}
+
+// VariantDecls returns all checked variant declarations.
+func (c *Checker) VariantDecls() map[string]*ast.VariantDeclStmt {
+	return c.variantDecls
 }
 
 // ExprType returns the deduced type for an expression node.
@@ -93,12 +107,16 @@ func (c *Checker) Check(prog *ast.Program) []Error {
 		return nil
 	}
 
-	// First pass: register top-level process signatures and networks
+	// First pass: register top-level process signatures, networks, records, and variants
 	for _, decl := range prog.Decls {
 		if proc, ok := decl.(*ast.ProcessDecl); ok {
 			c.registerProcessSignature(proc)
 		} else if net, ok := decl.(*ast.NetworkDecl); ok {
 			c.registerNetworkSignature(net)
+		} else if rec, ok := decl.(*ast.RecordDeclStmt); ok {
+			c.checkRecordDecl(rec)
+		} else if v, ok := decl.(*ast.VariantDeclStmt); ok {
+			c.checkVariantDecl(v)
 		}
 	}
 
@@ -175,6 +193,15 @@ func (c *Checker) resolveType(t ast.Type) *types.Type {
 		if pt := types.FromPrimitiveName(node.Name); pt != nil {
 			return pt
 		}
+		if _, exists := c.recordDecls[node.Name]; exists {
+			return &types.Type{Kind: types.KindRecord, Name: node.Name}
+		}
+		if _, exists := c.variantDecls[node.Name]; exists {
+			return &types.Type{Kind: types.KindVariant, Name: node.Name}
+		}
+		if sym, ok := c.globalScope.Lookup(node.Name); ok {
+			return sym.Type
+		}
 		if strings.HasPrefix(node.Name, "confident⟨") {
 			return types.ConfidentOf(types.Float64, 0.95)
 		}
@@ -215,6 +242,10 @@ func (c *Checker) checkDecl(decl ast.Decl) {
 		c.checkToolRegisterDecl(d)
 	case *ast.AbstainThresholdDecl:
 		c.checkAbstainThresholdDecl(d)
+	case *ast.RecordDeclStmt:
+		c.checkRecordDecl(d)
+	case *ast.VariantDeclStmt:
+		c.checkVariantDecl(d)
 	case *ast.AccessDecl, *ast.ExposeDecl:
 		// Module operations - acknowledged
 	}
@@ -714,6 +745,24 @@ func (c *Checker) checkStmt(stmt ast.Stmt) {
 	case *ast.CorruptAADEnvStmt:
 		c.checkCorruptAADEnvStmt(s)
 
+	case *ast.RecordDeclStmt:
+		c.checkRecordDecl(s)
+
+	case *ast.VariantDeclStmt:
+		c.checkVariantDecl(s)
+
+	case *ast.MatchStmt:
+		c.checkMatchStmt(s)
+
+	case *ast.RSCAAttestStmt:
+		c.checkRSCAAttestStmt(s)
+
+	case *ast.RSCAVerifyStmt:
+		c.checkRSCAVerifyStmt(s)
+
+	case *ast.CorruptRSCAStmt:
+		c.checkCorruptRSCAStmt(s)
+
 	case *ast.ExprStmt:
 		c.checkExpr(s.Expr)
 
@@ -1008,6 +1057,15 @@ func (c *Checker) checkExpr(expr ast.Expr) *types.Type {
 
 	case *ast.AGKEVerifyExpr:
 		result = c.checkAGKEVerifyExpr(e)
+
+	case *ast.RecordInitExpr:
+		result = c.checkRecordInitExpr(e)
+
+	case *ast.VariantInitExpr:
+		result = c.checkVariantInitExpr(e)
+
+	case *ast.FieldAccessExpr:
+		result = c.checkFieldAccessExpr(e)
 
 	default:
 		result = types.Void

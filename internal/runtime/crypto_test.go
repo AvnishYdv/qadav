@@ -76,6 +76,9 @@ func runCryptoTestHarness(t *testing.T, testName string) string {
 #include "qadav_eea.h"
 #include "qadav_qecdecoder.h"
 #include "qadav_aad.h"
+#include "qadav_record.h"
+#include "qadav_variant.h"
+#include "qadav_rsca.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -617,7 +620,7 @@ int main(void) {
         }
         return 2;
     }
-    if (req[0] == 'v') { // vectors
+    if (qadav_streq(req, "vectors")) { // vectors
         unsigned char out[32];
         // SHA3-256("")
         qadav_sha3_256((const unsigned char*)"", 0, out);
@@ -2680,6 +2683,63 @@ int main(void) {
         qadav_write_raw("AAD_ASLR_DETERMINISM_OK\n", 24);
         return 0;
     }
+    if (qadav_streq(req, "record_alloc_and_fields")) {
+        unsigned int sizes[3] = {8, 8, 8};
+        void* rec = qadav_record_alloc(0x12345678ULL, 3, sizes);
+        if (!rec) return 1;
+        if (qadav_record_get_field_count(rec) != 3) return 2;
+        if (qadav_record_get_type_hash(rec) != 0x12345678ULL) return 3;
+        qadav_record_set_field_i64(rec, 0, 42);
+        qadav_record_set_field_i64(rec, 1, 100);
+        qadav_record_set_field_i64(rec, 2, 999);
+        if (qadav_record_get_field_i64(rec, 0) != 42) return 4;
+        if (qadav_record_get_field_i64(rec, 1) != 100) return 5;
+        if (qadav_record_get_field_i64(rec, 2) != 999) return 6;
+        qadav_record_free(rec);
+        qadav_write_raw("RECORD_ALLOC_AND_FIELDS_OK\n", 27);
+        return 0;
+    }
+    if (qadav_streq(req, "variant_create_and_match")) {
+        qadav_variant* v = qadav_variant_create_i64(0xABCDULL, 1, 777);
+        if (!v) return 1;
+        if (qadav_variant_get_tag(v) != 1) return 2;
+        if (qadav_variant_match(v, 1) != 1) return 3;
+        if (qadav_variant_match(v, 0) != 0) return 4;
+        if (qadav_variant_get_payload_i64(v) != 777) return 5;
+        qadav_variant_free(v);
+        qadav_write_raw("VARIANT_CREATE_AND_MATCH_OK\n", 28);
+        return 0;
+    }
+    if (qadav_streq(req, "rsca_record_and_attest")) {
+        qadav_rsca_reset();
+        unsigned char s_hash[32] = {1, 2, 3};
+        unsigned char c_hash[32] = {4, 5, 6};
+        unsigned char out1[32] = {7, 8, 9};
+        unsigned char out2[32] = {7, 8, 9};
+        int idx0 = qadav_rsca_record_stage(0, s_hash, c_hash, out1);
+        if (idx0 != 0) return 1;
+        int idx1 = qadav_rsca_record_stage(1, s_hash, c_hash, out1);
+        if (idx1 != 1) return 2;
+        int idx2 = qadav_rsca_record_stage(2, s_hash, c_hash, out2);
+        if (idx2 != 2) return 3;
+        if (!qadav_rsca_verify_record(0)) return 4;
+        if (!qadav_rsca_verify_record(1)) return 5;
+        if (!qadav_rsca_verify_record(2)) return 6;
+        if (!qadav_rsca_compare_outputs(1, 2)) return 7;
+        if (!qadav_rsca_attest_chain()) return 8;
+        qadav_write_raw("RSCA_RECORD_AND_ATTEST_OK\n", 26);
+        return 0;
+    }
+    if (qadav_streq(req, "rsca_aslr_determinism")) {
+        qadav_rsca_reset();
+        unsigned char s[32] = {0xAA};
+        unsigned char c[32] = {0xBB};
+        unsigned char o[32] = {0xCC};
+        qadav_rsca_record_stage(0, s, c, o);
+        if (qadav_rsca_get_record_count() != 1) return 1;
+        qadav_write_raw("RSCA_ASLR_DETERMINISM_OK\n", 25);
+        return 0;
+    }
     if (qadav_streq(req, "integration_vault_reasoning")) {
         double pen = 1.0;
         qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
@@ -2898,6 +2958,9 @@ func runCryptoTestHarnessExpectExit(t *testing.T, testName string) (string, erro
 #include "qadav_eea.h"
 #include "qadav_qecdecoder.h"
 #include "qadav_aad.h"
+#include "qadav_record.h"
+#include "qadav_variant.h"
+#include "qadav_rsca.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -3023,6 +3086,16 @@ int main(void) {
         aad_wrap_decode(cert, dec, syn, 1, &env);
         aad_corrupt_envelope(&env, 16);
         aad_attest_envelope(&env, chain);
+        return 0;
+    }
+    if (qadav_streq(req, "rsca_tamper_detection")) {
+        qadav_rsca_reset();
+        unsigned char s[32] = {1, 2, 3};
+        unsigned char c[32] = {4, 5, 6};
+        unsigned char o[32] = {7, 8, 9};
+        qadav_rsca_record_stage(0, s, c, o);
+        qadav_rsca_corrupt_record(0, 0);
+        qadav_rsca_verify_record(0);
         return 0;
     }
     return 0;

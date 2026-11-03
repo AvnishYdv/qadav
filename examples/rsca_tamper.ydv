@@ -1,0 +1,7 @@
+process main⦅⦆ → int64 ⟦
+    rsca_attest stage ↦ 0 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/qyn" output ↦ "bin/stage1_qyn" into rec0 ·
+    corrupt_rsca rec0 at ↦ 16 ·
+    rsca_verify rec0 into v0 ·
+    emit v0 ·
+    yield 0 ·
+⟧

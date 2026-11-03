@@ -1,0 +1,10 @@
+process main⦅⦆ → int64 ⟦
+    rsca_attest stage ↦ 0 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/qyn" output ↦ "bin/stage1_qyn" into rec0 ·
+    rsca_attest stage ↦ 1 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/stage1_qyn" output ↦ "bin/stage2_qyn" into rec1 ·
+    rsca_verify rec0 into v0 ·
+    rsca_verify rec1 into v1 ·
+    emit "RSCA chain verified" ·
+    emit v0 ·
+    emit v1 ·
+    yield 0 ·
+⟧

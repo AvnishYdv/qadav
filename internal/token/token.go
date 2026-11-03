@@ -461,6 +461,21 @@ const (
 	AAD_CERT        Type = "AAD_CERT"
 	AAD_ATTEST      Type = "AAD_ATTEST"
 	CORRUPT_AAD_ENV Type = "CORRUPT_AAD_ENV"
+
+	// M8.1: Qadav-Native Data Structures
+	RECORD       Type = "RECORD"
+	MATCH        Type = "MATCH"
+	ERROR_T      Type = "ERROR_T"
+	RESULT_T     Type = "RESULT_T"
+	RECORD_INIT  Type = "RECORD_INIT"
+	VARIANT_INIT Type = "VARIANT_INIT"
+	PIPE         Type = "PIPE"
+	DOT          Type = "DOT"
+
+	// M8.2: RSCA (Invention #23)
+	RSCA_ATTEST  Type = "RSCA_ATTEST"
+	RSCA_VERIFY  Type = "RSCA_VERIFY"
+	CORRUPT_RSCA Type = "CORRUPT_RSCA"
 )
 
 // Quasinary Keywords & Literals
@@ -549,8 +564,9 @@ func AllOperators() []OpInfo {
 		{BIND, "↦", `\bind`, "Immutable binding"},
 		{ASSIGN, "←", `\assign`, "Mutable assignment"},
 		{YIELDS, "→", `\yields`, "Yield / return value"},
-		{IMPLIES, "⇒", `\implies`, "Implies (for lambdas)"},
-		{PIPELINE, "↝", `\pipe`, "Pipeline operator"},
+		{IMPLIES, "⟹", `\implies`, "Implies (for match arms)"},
+		{PIPELINE, "↝", `\pipeline`, "Pipeline operator"},
+		{PIPE, "|", `\pipe`, "Variant/match pipe delimiter"},
 
 		// Compound Assignment
 		{BIND_ADD, "↦⊕", `\bindplus`, "bind-add"},
@@ -916,6 +932,19 @@ var keywords = map[string]Type{
 	"aad_attest":      AAD_ATTEST,
 	"corrupt_aad_env": CORRUPT_AAD_ENV,
 
+	// M8.1: Qadav-Native Data Structures
+	"record":       RECORD,
+	"match":        MATCH,
+	"error":        ERROR_T,
+	"result":       RESULT_T,
+	"record_init":  RECORD_INIT,
+	"variant_init": VARIANT_INIT,
+
+	// M8.2: RSCA (Invention #23)
+	"rsca_attest":  RSCA_ATTEST,
+	"rsca_verify":  RSCA_VERIFY,
+	"corrupt_rsca": CORRUPT_RSCA,
+
 	// Cryptography
 	"sign":    SIGN,
 	"verify":  VERIFY,
@@ -1084,6 +1113,17 @@ var fallbacks = func() map[string]Type {
 		`\aad_cert`:               AAD_CERT,
 		`\aad_attest`:             AAD_ATTEST,
 		`\corrupt_aad_env`:        CORRUPT_AAD_ENV,
+		`\record`:                 RECORD,
+		`\variant`:                VARIANT,
+		`\match`:                  MATCH,
+		`\otherwise`:              OTHERWISE,
+		`\error`:                  ERROR_T,
+		`\result`:                 RESULT_T,
+		`\record_init`:            RECORD_INIT,
+		`\variant_init`:           VARIANT_INIT,
+		`\rsca_attest`:            RSCA_ATTEST,
+		`\rsca_verify`:            RSCA_VERIFY,
+		`\corrupt_rsca`:           CORRUPT_RSCA,
 	}
 	for k, v := range kwFallbacks {
 		m[k] = v
@@ -1097,6 +1137,7 @@ var unicodeOps = func() map[string]Type {
 	for _, op := range AllOperators() {
 		m[op.Unicode] = op.Type
 	}
+	m["⇒"] = IMPLIES
 	return m
 }()
 

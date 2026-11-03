@@ -1,0 +1,9 @@
+record Token ⟦ kind ↦ text · value ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+process main⦅⦆ → int64 ⟦
+    Token tok ↦ record_init Token ⟦ kind ↦ "IDENT" ⸴ value ↦ "hello" ⸴ line ↦ 42 ⸴ col ↦ 1 · ⟧ ·
+    emit tok.kind ·
+    emit tok.value ·
+    emit tok.line ·
+    yield 0 ·
+⟧

@@ -1090,6 +1090,78 @@ process main⦅⦆ → int64 ⟦
 
 ---
 
+## 42. Qadav-Native Records & Member Access (M8.1)
+
+Phase 8 introduces first-class record data structures to support writing complex compiler frontends natively in Qadav without foreign runtime dependencies.
+
+- **`record Name ⟦ field ↦ type · ... ⟧`**: Defines a typed composite record layout with unique field names.
+- **`record_init Name ⟦ field ↦ val ⸴ ... · ⟧`**: Dynamically allocates zero-libc heap records with field name hashing.
+- **`object.field` or `object∸field`**: Provides type-safe member access into record fields.
+
+```qadav
+record Token ⟦ kind ↦ text · value ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+process main⦅⦆ → int64 ⟦
+    Token tok ↦ record_init Token ⟦ kind ↦ "IDENT" ⸴ value ↦ "hello" ⸴ line ↦ 42 ⸴ col ↦ 1 · ⟧ ·
+    emit tok.kind ·
+    emit tok.value ·
+    emit tok.line ·
+    yield 0 ·
+⟧
+```
+
+---
+
+## 43. Tagged Variants & Exhaustive Pattern Matching (M8.1)
+
+Variants enable type-safe tagged unions with compile-time exhaustiveness checking.
+
+- **`variant Name ⟦ | Case1(fields) · | Case2(fields) · ⟧`**: Declares a tagged sum type with distinct case variants.
+- **`variant_init Name ⦅Case ↦ val⦆`**: Instantiates a variant case holding primitive or composite values.
+- **`match expr ⟦ | Case(bindings) ⟹ stmts · otherwise ⟹ stmts · ⟧`**: Evaluates variant tags and binds payload values into lexical scope, enforcing that all declared cases are handled.
+
+```qadav
+variant Expr ⟦
+    | Num(val ↦ int64) ·
+    | Identifier(name ↦ text) ·
+⟧
+
+process classify⦅Expr e⦆ → int64 ⟦
+    int64 result ↦ 0 ·
+    match e ⟦
+        | Num(n) ⟹ result ← n ·
+        | Identifier(s) ⟹ result ← 0 ·
+    ⟧
+    yield result ·
+⟧
+```
+
+---
+
+## 44. Recursive Self-Compilation Attestation (RSCA — Invention #23) (M8.2)
+
+RSCA (Invention #23, Patent Pending) guarantees compiler integrity against Ken Thompson Trusting Trust backdoors and compilation drift during the 3-stage self-hosting bootstrap pipeline.
+
+- **`rsca_attest stage ↦ S from source ↦ SRC compiler ↦ CMP output ↦ OUT into REC ·`**: Produces a 144-byte cryptographic preimage binding stage index, source hash, compiler hash, output binary hash, monotonic timestamp, and preceding stage digest.
+- **`rsca_verify REC into RES ·`**: Validates stage preimage integrity and outputs a boolean status flag.
+- **Constant-Time Output Comparison**: Enforces bit-for-bit binary identity across Stage 1 and Stage 2 outputs.
+- **Active Quantum Decoherence (`0xDEADBEEF`)**: Any record modification, bit flip, or output divergence triggers immediate hardware wavefunction collapse and process termination.
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    rsca_attest stage ↦ 0 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/qyn" output ↦ "bin/stage1_qyn" into rec0 ·
+    rsca_attest stage ↦ 1 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/stage1_qyn" output ↦ "bin/stage2_qyn" into rec1 ·
+    rsca_verify rec0 into v0 ·
+    rsca_verify rec1 into v1 ·
+    emit "RSCA chain verified" ·
+    emit v0 ·
+    emit v1 ·
+    yield 0 ·
+⟧
+```
+
+---
+
 ## 38. Hardware Target Transpilation (M7.3)
 
 Qadav includes a zero-libc, direct text transpiler that translates QHAL high-level quantum circuits into target-native code for major quantum computing frameworks:
@@ -1156,6 +1228,78 @@ process main⦅⦆ → int64 ⟦
 
 ---
 
+## 42. Qadav-Native Records & Member Access (M8.1)
+
+Phase 8 introduces first-class record data structures to support writing complex compiler frontends natively in Qadav without foreign runtime dependencies.
+
+- **`record Name ⟦ field ↦ type · ... ⟧`**: Defines a typed composite record layout with unique field names.
+- **`record_init Name ⟦ field ↦ val ⸴ ... · ⟧`**: Dynamically allocates zero-libc heap records with field name hashing.
+- **`object.field` or `object∸field`**: Provides type-safe member access into record fields.
+
+```qadav
+record Token ⟦ kind ↦ text · value ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+process main⦅⦆ → int64 ⟦
+    Token tok ↦ record_init Token ⟦ kind ↦ "IDENT" ⸴ value ↦ "hello" ⸴ line ↦ 42 ⸴ col ↦ 1 · ⟧ ·
+    emit tok.kind ·
+    emit tok.value ·
+    emit tok.line ·
+    yield 0 ·
+⟧
+```
+
+---
+
+## 43. Tagged Variants & Exhaustive Pattern Matching (M8.1)
+
+Variants enable type-safe tagged unions with compile-time exhaustiveness checking.
+
+- **`variant Name ⟦ | Case1(fields) · | Case2(fields) · ⟧`**: Declares a tagged sum type with distinct case variants.
+- **`variant_init Name ⦅Case ↦ val⦆`**: Instantiates a variant case holding primitive or composite values.
+- **`match expr ⟦ | Case(bindings) ⟹ stmts · otherwise ⟹ stmts · ⟧`**: Evaluates variant tags and binds payload values into lexical scope, enforcing that all declared cases are handled.
+
+```qadav
+variant Expr ⟦
+    | Num(val ↦ int64) ·
+    | Identifier(name ↦ text) ·
+⟧
+
+process classify⦅Expr e⦆ → int64 ⟦
+    int64 result ↦ 0 ·
+    match e ⟦
+        | Num(n) ⟹ result ← n ·
+        | Identifier(s) ⟹ result ← 0 ·
+    ⟧
+    yield result ·
+⟧
+```
+
+---
+
+## 44. Recursive Self-Compilation Attestation (RSCA — Invention #23) (M8.2)
+
+RSCA (Invention #23, Patent Pending) guarantees compiler integrity against Ken Thompson Trusting Trust backdoors and compilation drift during the 3-stage self-hosting bootstrap pipeline.
+
+- **`rsca_attest stage ↦ S from source ↦ SRC compiler ↦ CMP output ↦ OUT into REC ·`**: Produces a 144-byte cryptographic preimage binding stage index, source hash, compiler hash, output binary hash, monotonic timestamp, and preceding stage digest.
+- **`rsca_verify REC into RES ·`**: Validates stage preimage integrity and outputs a boolean status flag.
+- **Constant-Time Output Comparison**: Enforces bit-for-bit binary identity across Stage 1 and Stage 2 outputs.
+- **Active Quantum Decoherence (`0xDEADBEEF`)**: Any record modification, bit flip, or output divergence triggers immediate hardware wavefunction collapse and process termination.
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    rsca_attest stage ↦ 0 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/qyn" output ↦ "bin/stage1_qyn" into rec0 ·
+    rsca_attest stage ↦ 1 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/stage1_qyn" output ↦ "bin/stage2_qyn" into rec1 ·
+    rsca_verify rec0 into v0 ·
+    rsca_verify rec1 into v1 ·
+    emit "RSCA chain verified" ·
+    emit v0 ·
+    emit v1 ·
+    yield 0 ·
+⟧
+```
+
+---
+
 ## 40. Real QEC Decoder (M7.5)
 
 Qadav includes a zero-libc planar surface code syndrome decoder for distances $d \in \{3, 5, 7\}$. Given raw stabilizer syndrome defect bytes extracted from physical or simulated qubits, `qecd_decode` applies greedy minimum-weight matching to compute optimal Pauli corrections and binds them into a SHA3-256 attestation digest:
@@ -1214,6 +1358,78 @@ process main⦅⦆ → int64 ⟦
     meta_verify meta_state into is_valid ·
 
     emit is_valid ·
+    yield 0 ·
+⟧
+```
+
+---
+
+## 42. Qadav-Native Records & Member Access (M8.1)
+
+Phase 8 introduces first-class record data structures to support writing complex compiler frontends natively in Qadav without foreign runtime dependencies.
+
+- **`record Name ⟦ field ↦ type · ... ⟧`**: Defines a typed composite record layout with unique field names.
+- **`record_init Name ⟦ field ↦ val ⸴ ... · ⟧`**: Dynamically allocates zero-libc heap records with field name hashing.
+- **`object.field` or `object∸field`**: Provides type-safe member access into record fields.
+
+```qadav
+record Token ⟦ kind ↦ text · value ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+process main⦅⦆ → int64 ⟦
+    Token tok ↦ record_init Token ⟦ kind ↦ "IDENT" ⸴ value ↦ "hello" ⸴ line ↦ 42 ⸴ col ↦ 1 · ⟧ ·
+    emit tok.kind ·
+    emit tok.value ·
+    emit tok.line ·
+    yield 0 ·
+⟧
+```
+
+---
+
+## 43. Tagged Variants & Exhaustive Pattern Matching (M8.1)
+
+Variants enable type-safe tagged unions with compile-time exhaustiveness checking.
+
+- **`variant Name ⟦ | Case1(fields) · | Case2(fields) · ⟧`**: Declares a tagged sum type with distinct case variants.
+- **`variant_init Name ⦅Case ↦ val⦆`**: Instantiates a variant case holding primitive or composite values.
+- **`match expr ⟦ | Case(bindings) ⟹ stmts · otherwise ⟹ stmts · ⟧`**: Evaluates variant tags and binds payload values into lexical scope, enforcing that all declared cases are handled.
+
+```qadav
+variant Expr ⟦
+    | Num(val ↦ int64) ·
+    | Identifier(name ↦ text) ·
+⟧
+
+process classify⦅Expr e⦆ → int64 ⟦
+    int64 result ↦ 0 ·
+    match e ⟦
+        | Num(n) ⟹ result ← n ·
+        | Identifier(s) ⟹ result ← 0 ·
+    ⟧
+    yield result ·
+⟧
+```
+
+---
+
+## 44. Recursive Self-Compilation Attestation (RSCA — Invention #23) (M8.2)
+
+RSCA (Invention #23, Patent Pending) guarantees compiler integrity against Ken Thompson Trusting Trust backdoors and compilation drift during the 3-stage self-hosting bootstrap pipeline.
+
+- **`rsca_attest stage ↦ S from source ↦ SRC compiler ↦ CMP output ↦ OUT into REC ·`**: Produces a 144-byte cryptographic preimage binding stage index, source hash, compiler hash, output binary hash, monotonic timestamp, and preceding stage digest.
+- **`rsca_verify REC into RES ·`**: Validates stage preimage integrity and outputs a boolean status flag.
+- **Constant-Time Output Comparison**: Enforces bit-for-bit binary identity across Stage 1 and Stage 2 outputs.
+- **Active Quantum Decoherence (`0xDEADBEEF`)**: Any record modification, bit flip, or output divergence triggers immediate hardware wavefunction collapse and process termination.
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    rsca_attest stage ↦ 0 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/qyn" output ↦ "bin/stage1_qyn" into rec0 ·
+    rsca_attest stage ↦ 1 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/stage1_qyn" output ↦ "bin/stage2_qyn" into rec1 ·
+    rsca_verify rec0 into v0 ·
+    rsca_verify rec1 into v1 ·
+    emit "RSCA chain verified" ·
+    emit v0 ·
+    emit v1 ·
     yield 0 ·
 ⟧
 ```

@@ -46,6 +46,7 @@ var precedences = map[token.Type]int{
 	token.GROUP_OPEN:    CALL_PREC,
 	token.INDEX_OPEN:    INDEX_PREC,
 	token.MEMBER_ACCESS: MEMBER_PREC,
+	token.DOT:           MEMBER_PREC,
 	token.RANGE:         RANGE_PREC,
 	token.ANNOT:         LESSGREATER,
 }

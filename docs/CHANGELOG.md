@@ -5,6 +5,44 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M8.1 + M8.2] — Combined Milestone: Qadav-Native Data Structures (Records, Variants, Match) + Phase 8 Self-Hosting Kickoff + Recursive Self-Compilation Attestation (RSCA — Invention #23, Patent Pending) (100% Complete)
+## [M8.1 + M8.2] — संयुक्त माइलस्टोन: कादव-नेटिव डेटा संरचनाएं (रिकॉर्ड्स, वेरिएंट्स, मैच) + चरण 8 स्व-होस्टिंग किकऑफ़ + पुनरावर्ती स्व-संकलन प्रमाणीकरण (RSCA — आविष्कार #23, पेटेंट लंबित) (100% पूर्ण)
+
+### Added / नया जोड़ा गया:
+- **Qadav-Native Data Structures (M8.1)**:
+  - Tokens and operators: `RECORD`, `VARIANT`, `MATCH`, `OTHERWISE`, `ERROR_T`, `RESULT_T`, `RECORD_INIT`, `VARIANT_INIT`, `PIPE` (`|`), `DOT` (`.`), `IMPLIES` (`⟹` / `⇒`), with LaTeX fallbacks.
+  - AST definitions in `internal/ast/record.go`: `RecordDeclStmt`, `FieldDecl`, `VariantDeclStmt`, `VariantCase`, `MatchStmt`, `MatchArm`, `RecordInitExpr`, `VariantInitExpr`, `FieldAccessExpr`.
+  - Parser support for top-level record and variant declarations, member access (`.` / `∸`), `record_init`, `variant_init`, and pattern matching statements.
+  - Semantic checking in `internal/checker/record_checker.go`: field uniqueness, valid field type resolution, variant case uniqueness, exhaustive pattern matching, and binding count validation.
+  - LLVM IR code generator in `internal/codegen/record_codegen.go` and `llvm.go`: dynamic record allocation, field hashing, member access, tagged variant creation, and branchless match dispatch.
+  - Zero-libc C runtime in `internal/runtime/qadav_record.c`, `qadav_record.h`, `qadav_variant.c`, `qadav_variant.h`.
+  - Examples: `examples/record_demo.ydv`, `examples/variant_match_demo.ydv`.
+  - Tests: `internal/parser/record_test.go`, `internal/checker/record_checker_test.go`, `internal/runtime/record_test.go`, `internal/runtime/variant_test.go`.
+- **Phase 8 Kickoff & Invention #23: Recursive Self-Compilation Attestation (RSCA) (M8.2)**:
+  - 144-byte immutable binary preimage binding stage index (8 bytes), source digest (32 bytes), compiler digest (32 bytes), output binary digest (32 bytes), timestamp (8 bytes), and predecessor stage digest (32 bytes).
+  - 3-stage recursive bootstrap fixed-point verification: validating deterministic fixed-point convergence across Stage 0 (Go reference), Stage 1 (Qadav-compiled compiler), and Stage 2 (self-compiled compiler).
+  - Constant-time output comparison eliminating side-channel timing disclosures.
+  - Active quantum decoherence fail-stop: any hash mismatch, bit flip, or unauthorized modification triggers immediate process termination via `ExitProcess(0xDEADBEEF)`.
+  - Language tokens and statements: `rsca_attest`, `rsca_verify`, `corrupt_rsca` (strictly gated by `--test`).
+  - AST nodes in `internal/ast/rsca.go` (`RSCAAttestStmt`, `RSCAVerifyStmt`, `CorruptRSCAStmt`).
+  - Semantic checking in `internal/checker/rsca_checker.go` enforcing compile-time `--test` gating for `corrupt_rsca`, stage validity (0, 1, 2), and scope safety.
+  - Zero-libc C runtime engine in `internal/runtime/qadav_rsca.c` and `qadav_rsca.h`.
+  - Examples: `examples/rsca_demo.ydv`, `examples/rsca_tamper.ydv`.
+  - Self-hosted seed modules: `selfhost/lexer.ydv`, `selfhost/parser.ydv`, `selfhost/README.md`.
+  - Bootstrap verification script: `scripts/selfhost-verify.ps1`.
+- **Runtime Expansion**:
+  - Expanded modular zero-libc runtime from 40 to **43 runtime objects** (`+qadav_record.o`, `+qadav_variant.o`, `+qadav_rsca.o`).
+  - Embedded sources and headers in `internal/runtime/runtime.go`.
+  - Updated runtime test suite `internal/runtime/runtime_test.go` verifying all 43 objects.
+- **Specification and Patent Documentation**:
+  - Created `docs/RSCA_SPEC.md` with complete 10-section formal specification.
+  - Created `docs/PHASE8_ROADMAP.md` defining the self-hosting compiler roadmap.
+  - Added Invention #23 (RSCA) to `docs/PATENTS.md` with 5 technical claims.
+  - Updated `docs/PATENTS_STRATEGY.md` (23 total: 17 pending + 6 defensive).
+  - Updated `docs/GUIDE.md` (Sections 42, 43, 44), `docs/SYNTAX.md` (Sections 32, 33, 34, 35), `docs/EXAMPLES.md` (Sections 58, 59, 60, 61), `docs/SECURITY.md` (Section 29), and `docs/SETUP.md`.
+
+---
+
 ## [M7.5 + M7.6] — Combined Milestone: Real QEC Surface Code Decoder + Meta-Learning Primitives + Attested Adaptive Decoder (AAD — Invention #22, Patent Pending) (100% Complete)
 ## [M7.5 + M7.6] — संयुक्त माइलस्टोन: वास्तविक क्यूईसी सतह कोड विसंकेतक + मेटा-लर्निंग + साक्ष्यांकित अनुकूली विसंकेतक (AAD — आविष्कार #22, पेटेंट लंबित) (100% पूर्ण)
 

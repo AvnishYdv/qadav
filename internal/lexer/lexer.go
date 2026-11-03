@@ -72,6 +72,19 @@ func (l *Lexer) NextToken() token.Token {
 		return l.readFallback()
 	}
 
+	// 1b. Check for legacy double pipe: ||
+	if l.peek() == '|' && l.peekNext() == '|' {
+		l.advance()
+		l.advance()
+		return token.Token{
+			Type:    token.ILLEGAL,
+			Literal: "||",
+			Line:    startLine,
+			Col:     startCol,
+			File:    l.file,
+		}
+	}
+
 	// 2. Check 2-rune compound operators (longest match first)
 	if l.position+1 < len(l.input) {
 		twoRune := string(l.input[l.position : l.position+2])
@@ -172,6 +185,40 @@ func (l *Lexer) NextToken() token.Token {
 		return token.Token{
 			Type:    token.ILLEGAL,
 			Literal: "@",
+			Line:    startLine,
+			Col:     startCol,
+			File:    l.file,
+		}
+	}
+
+	// 6c. Dot for record member access: t.kind
+	if ch == '.' {
+		l.advance()
+		return token.Token{
+			Type:    token.DOT,
+			Literal: ".",
+			Line:    startLine,
+			Col:     startCol,
+			File:    l.file,
+		}
+	}
+
+	// 6d. Group open/close aliases: ( and )
+	if ch == '(' {
+		l.advance()
+		return token.Token{
+			Type:    token.GROUP_OPEN,
+			Literal: "(",
+			Line:    startLine,
+			Col:     startCol,
+			File:    l.file,
+		}
+	}
+	if ch == ')' {
+		l.advance()
+		return token.Token{
+			Type:    token.GROUP_CLOSE,
+			Literal: ")",
 			Line:    startLine,
 			Col:     startCol,
 			File:    l.file,

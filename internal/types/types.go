@@ -49,6 +49,8 @@ const (
 	KindModality        // QECMA multimodal input binding
 	KindQECMemory       // QEC-QEMP quantum error-corrected memory handle
 	KindSyndrome        // QEC syndrome handle
+	KindRecord          // User-defined composite record type
+	KindVariant         // User-defined tagged union variant type
 )
 
 // Type represents a concrete Qadav type.
@@ -313,6 +315,8 @@ func (t *Type) Equal(other *Type) bool {
 			}
 		}
 		return true
+	case KindRecord, KindVariant:
+		return t.Name == other.Name
 	default:
 		return true
 	}

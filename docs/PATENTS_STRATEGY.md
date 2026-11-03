@@ -3,9 +3,9 @@
 ## Executive Summary
 The Qadav intellectual property portfolio follows a dual-track strategy designed to secure foundational research innovations while establishing proprietary commercial advantages in quantum-safe AI systems.
 
-Total Innovations: 22
+Total Innovations: 23
 - **Patent-Free Defensive Publications (6)**: Established in Phase 2 & Phase 3 as prior art to prevent third-party patent trolling and guarantee universal developer access to core runtime primitives.
-- **Patent-Pending Commercial Inventions (16)**: Developed in Phase 4, Phase 5, Phase 6, and Phase 7, providing proprietary cryptographic security for enterprise AI model protection, training provenance, memory integrity, parameter transfer, reasoning attestation, cross-modal attestation, quantum error-corrected memory provenance, cross-boundary privacy-preserving semantic recall, type-tagged proof-carrying reasoning, quantum-entangled sandbox isolation, attested GPU kernel execution, cross-device attested gradient aggregation, Byzantine-attested robust aggregation with transparent selection, self-evolution attestation, evolution envelope attestation, and attested adaptive decoders.
+- **Patent-Pending Commercial Inventions (17)**: Developed in Phase 4, Phase 5, Phase 6, Phase 7, and Phase 8, providing proprietary cryptographic security for enterprise AI model protection, training provenance, memory integrity, parameter transfer, reasoning attestation, cross-modal attestation, quantum error-corrected memory provenance, cross-boundary privacy-preserving semantic recall, type-tagged proof-carrying reasoning, quantum-entangled sandbox isolation, attested GPU kernel execution, cross-device attested gradient aggregation, Byzantine-attested robust aggregation with transparent selection, self-evolution attestation, evolution envelope attestation, attested adaptive decoders, and recursive self-compilation attestation.
 
 ---
 
@@ -42,11 +42,12 @@ Total Innovations: 22
 | #20 | Self-Evolution Attestation (SEA) | Phase 7 (M7.2) | Program mutation provenance, 144-byte mutation preimage, cumulative Merkle lineage DAG root, epistemic justification binding, QERA evolution attestation (QADAV_OP_EVOLVE), and active decoherence on tamper. |
 | #21 | Evolution Envelope Attestation (EEA) | Phase 7 (M7.4) | Bounded mutation rate governance, 187-byte envelope preimage, popcount Hamming difference measurement, policy schedule verification, and active decoherence on envelope tampering. |
 | #22 | Attested Adaptive Decoder (AAD) | Phase 7 (M7.6) | Cryptographic decoder operating envelopes, 88-byte training cert & 92-byte decode envelope preimages, bound-exceeded calibrated abstention (-3), online meta-learning lineage tracking, and active quantum fail-stop on tamper. |
+| #23 | Recursive Self-Compilation Attestation (RSCA) | Phase 8 (M8.2) | Trust-rooting for self-hosted compilers, 144-byte preimage, 3-stage bootstrap fixed-point verification, constant-time output comparison, and active quantum fail-stop (0xDEADBEEF) on compiler backdoor injection or divergence. |
 
 ---
 
 ## 3. Prosecution & Enforcement Strategy
 1. **Prior Art Anchoring**: All 6 defensive publications are cross-referenced across public documentation, formal grammar specifications, and reproducible test suites to defeat rival patent claims.
-2. **Deterministic Claims**: Patent-pending inventions (#7–#22) emphasize ASLR-independent deterministic serialization, eliminating hardware-specific variability and establishing reproducible patent claim verification.
+2. **Deterministic Claims**: Patent-pending inventions (#7–#23) emphasize ASLR-independent deterministic serialization, eliminating hardware-specific variability and establishing reproducible patent claim verification.
 3. **Hardware Coupling**: Active quantum wavefunction decoherence and CPU-level zeroing enforce rights directly at the hardware runtime level rather than relying solely on post-hoc legal remedies.
 

@@ -398,6 +398,21 @@ By eliminating `<stdio.h>`, `<stdlib.h>`, `<string.h>`, and `<math.h>`:
 5. **Gated Test Corruptions**:
    - The `corrupt_aad_env` statement is strictly gated by the compiler `--test` flag. In standard builds, the type checker rejects any attempt to inject envelope corruption.
 
+---
+
+## 29. Recursive Self-Compilation Attestation Security (RSCA — Invention #23)
+
+1. **Ken Thompson "Trusting Trust" Backdoor Resistance**:
+   - In self-hosting compilers, undetected backdoors can theoretically be injected by a malicious parent compiler into generated binaries. RSCA prevents this via a 3-stage bootstrap fixed-point verification where the output binary of Stage 1 (compiled by Stage 0 Go reference) must match the output binary of Stage 2 (self-compiled by Stage 1) byte-for-byte in constant time ($\mathcal{H}(\text{Output}_1) \equiv \mathcal{H}(\text{Output}_2)$).
+2. **Canonical 144-Byte Preimage Serialization**:
+   - Each bootstrap generation records an immutable 144-byte binary preimage: stage index (8 bytes), source code digest (32 bytes), executing compiler digest (32 bytes), output binary digest (32 bytes), monotonic timestamp (8 bytes), and predecessor stage digest (32 bytes). This eliminates ASLR variability and guarantees bit-level reproducibility.
+3. **Constant-Time Side-Channel Immunity**:
+   - Output hash comparisons and stage digests are evaluated using bitwise accumulator operations (`diff |= (a[i] ^ b[i])`) across all 32 bytes, guaranteeing zero timing leakage to external observers.
+4. **Active Quantum Fail-Stop Decoherence (`0xDEADBEEF`)**:
+   - Any corruption in stage records, output divergence, or unauthorized source mutation triggers immediate hardware wavefunction collapse and unrecoverable process termination via `ExitProcess(0xDEADBEEF)`. No exceptions or fallbacks are caught.
+5. **Gated Tamper Primitives**:
+   - The `corrupt_rsca` statement is strictly forbidden in production mode and causes compile-time rejection unless the `--test` flag is explicitly passed to `qyn`.
+
 
 
 

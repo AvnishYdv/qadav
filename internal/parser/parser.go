@@ -84,6 +84,16 @@ func (p *Parser) Parse() *ast.Program {
 
 	for p.current.Type != token.EOF {
 		switch p.current.Type {
+		case token.RECORD:
+			decl := p.parseRecordDecl()
+			if decl != nil {
+				prog.Decls = append(prog.Decls, decl)
+			}
+		case token.VARIANT:
+			decl := p.parseVariantDecl()
+			if decl != nil {
+				prog.Decls = append(prog.Decls, decl)
+			}
 		case token.PROCESS:
 			decl := p.parseProcessDecl()
 			if decl != nil {
@@ -214,7 +224,7 @@ func (p *Parser) parseProcessDecl() *ast.ProcessDecl {
 
 func (p *Parser) parseParam() *ast.Param {
 	pos := p.curPos()
-	if isTypeToken(p.current.Type) {
+	if isTypeToken(p.current.Type) || (p.current.Type == token.IDENT && p.peeked.Type == token.IDENT) {
 		ptype := p.parseType()
 		nameTok := p.expect(token.IDENT)
 		return &ast.Param{
@@ -635,7 +645,19 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseMetaVerifyStmt()
 	case p.current.Type == token.CORRUPT_AAD_ENV:
 		return p.parseCorruptAADEnvStmt()
-	case isTypeToken(p.current.Type):
+	case p.current.Type == token.RECORD:
+		return p.parseRecordDecl()
+	case p.current.Type == token.VARIANT:
+		return p.parseVariantDecl()
+	case p.current.Type == token.MATCH:
+		return p.parseMatchStmt()
+	case p.current.Type == token.RSCA_ATTEST:
+		return p.parseRSCAAttestStmt()
+	case p.current.Type == token.RSCA_VERIFY:
+		return p.parseRSCAVerifyStmt()
+	case p.current.Type == token.CORRUPT_RSCA:
+		return p.parseCorruptRSCAStmt()
+	case isTypeToken(p.current.Type) || (p.current.Type == token.IDENT && p.peeked.Type == token.IDENT):
 		return p.parseBindStmt()
 	case p.current.Type == token.EMIT:
 		return p.parseEmitStmt()
@@ -689,7 +711,8 @@ func (p *Parser) parseStatement() ast.Stmt {
 func (p *Parser) parseBindStmt() *ast.BindStmt {
 	pos := p.curPos()
 	btype := p.parseType()
-	nameTok := p.expect(token.IDENT)
+	name := p.current.Literal
+	p.nextToken()
 	p.expect(token.BIND)
 	val := p.parseExpression(LOWEST)
 	p.expect(token.STMT_END)
@@ -697,7 +720,7 @@ func (p *Parser) parseBindStmt() *ast.BindStmt {
 	return &ast.BindStmt{
 		Pos_:  pos,
 		Type:  btype,
-		Name:  nameTok.Literal,
+		Name:  name,
 		Value: val,
 	}
 }
@@ -1023,7 +1046,7 @@ func (p *Parser) parseExpression(precedence int) ast.Expr {
 			left = p.parseCall(left)
 		case token.INDEX_OPEN:
 			left = p.parseIndex(left)
-		case token.MEMBER_ACCESS:
+		case token.MEMBER_ACCESS, token.DOT:
 			left = p.parseMember(left)
 		case token.RANGE:
 			pos := p.curPos()
@@ -1045,7 +1068,7 @@ func (p *Parser) parseExpression(precedence int) ast.Expr {
 func (p *Parser) parsePrefix() ast.Expr {
 	pos := p.curPos()
 	switch p.current.Type {
-	case token.IDENT, token.AFFIRM, token.DENY, token.TOP, token.BOTTOM, token.LOGIC:
+	case token.IDENT, token.AFFIRM, token.DENY, token.TOP, token.BOTTOM, token.LOGIC, token.RESULT_T, token.ERROR_T:
 		lit := p.current.Literal
 		p.nextToken()
 		return &ast.Ident{Pos_: pos, Name: lit}
@@ -1082,6 +1105,10 @@ func (p *Parser) parsePrefix() ast.Expr {
 			Pos_:  pos,
 			Inner: inner,
 		}
+	case token.RECORD_INIT:
+		return p.parseRecordInitExpr()
+	case token.VARIANT_INIT:
+		return p.parseVariantInitExpr()
 	// collapse as expression: collapse q0  (returns int64 0 or 1)
 	case token.COLLAPSE:
 		p.nextToken()
@@ -1368,13 +1395,18 @@ func (p *Parser) parseIndex(obj ast.Expr) ast.Expr {
 
 func (p *Parser) parseMember(obj ast.Expr) ast.Expr {
 	pos := p.curPos()
-	p.expect(token.MEMBER_ACCESS) // ∸
-	memTok := p.expect(token.IDENT)
+	if p.current.Type == token.DOT {
+		p.expect(token.DOT)
+	} else {
+		p.expect(token.MEMBER_ACCESS) // ∸
+	}
+	memName := p.current.Literal
+	p.nextToken()
 
-	return &ast.MemberExpr{
+	return &ast.FieldAccessExpr{
 		Pos_:   pos,
 		Object: obj,
-		Member: memTok.Literal,
+		Field:  memName,
 	}
 }
 
@@ -1536,7 +1568,8 @@ func isTypeToken(t token.Type) bool {
 		token.FLOAT32, token.FLOAT64, token.COMPLEX64, token.COMPLEX128,
 		token.LOGIC, token.TEXT, token.TENSOR, token.QUBIT, token.NEURON,
 		token.CONFIDENT, token.EXPLORE, token.CONCEPT, token.QUASI,
-		token.MEMORY, token.GRAPH, token.PROCEDURE:
+		token.MEMORY, token.GRAPH, token.PROCEDURE,
+		token.ERROR_T, token.RESULT_T:
 		return true
 	default:
 		return false
@@ -4792,6 +4825,434 @@ func (p *Parser) parseCorruptAADEnvStmt() *ast.CorruptAADEnvStmt {
 	return &ast.CorruptAADEnvStmt{
 		Pos_:   pos,
 		Env:    env,
+		Offset: offset,
+	}
+}
+
+// ---------------------------------------------------------------------
+// M8.1: Record, Variant, Match & M8.2: RSCA Parsers
+// ---------------------------------------------------------------------
+
+func (p *Parser) parseRecordDecl() *ast.RecordDeclStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'record'
+
+	name := ""
+	if p.current.Type == token.IDENT {
+		name = p.current.Literal
+		p.nextToken()
+	}
+
+	p.expect(token.BLOCK_OPEN) // ⟦
+	var fields []*ast.FieldDecl
+	for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+		if p.current.Type == token.BLOCK_CLOSE || p.current.Type == token.EOF {
+			break
+		}
+		fPos := p.curPos()
+		fName := p.current.Literal
+		p.nextToken()
+
+		if p.current.Type == token.BIND {
+			p.nextToken() // ↦
+		}
+		fType := "text"
+		if p.current.Type != token.STMT_END && p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+			fType = p.current.Literal
+			p.nextToken()
+		}
+		if p.current.Type == token.STMT_END {
+			p.nextToken()
+		}
+		fields = append(fields, &ast.FieldDecl{
+			Pos_: fPos,
+			Name: fName,
+			Type: fType,
+		})
+	}
+	p.expect(token.BLOCK_CLOSE) // ⟧
+
+	return &ast.RecordDeclStmt{
+		Pos_:   pos,
+		Name:   name,
+		Fields: fields,
+	}
+}
+
+func (p *Parser) parseVariantDecl() *ast.VariantDeclStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'variant'
+
+	name := ""
+	if p.current.Type == token.IDENT {
+		name = p.current.Literal
+		p.nextToken()
+	}
+
+	p.expect(token.BLOCK_OPEN) // ⟦
+	var cases []*ast.VariantCase
+	for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+		if p.current.Type == token.PIPE {
+			p.nextToken() // consume |
+		}
+		if p.current.Type == token.BLOCK_CLOSE || p.current.Type == token.EOF {
+			break
+		}
+		cPos := p.curPos()
+		cName := p.current.Literal
+		p.nextToken()
+
+		var fields []*ast.FieldDecl
+		if p.current.Type == token.GROUP_OPEN {
+			p.nextToken() // consume ( or ⦅
+			for p.current.Type != token.GROUP_CLOSE && p.current.Type != token.EOF {
+				fPos := p.curPos()
+				fName := p.current.Literal
+				p.nextToken()
+
+				if p.current.Type == token.BIND {
+					p.nextToken() // ↦
+				}
+				fType := "text"
+				if p.current.Type != token.SEP && p.current.Type != token.GROUP_CLOSE && p.current.Type != token.EOF {
+					fType = p.current.Literal
+					p.nextToken()
+				}
+				fields = append(fields, &ast.FieldDecl{
+					Pos_: fPos,
+					Name: fName,
+					Type: fType,
+				})
+				if p.current.Type == token.SEP {
+					p.nextToken() // consume ⸴
+				} else {
+					break
+				}
+			}
+			p.expect(token.GROUP_CLOSE) // ) or ⦆
+		}
+		if p.current.Type == token.STMT_END {
+			p.nextToken()
+		}
+
+		cases = append(cases, &ast.VariantCase{
+			Pos_:   cPos,
+			Name:   cName,
+			Fields: fields,
+		})
+	}
+	p.expect(token.BLOCK_CLOSE) // ⟧
+
+	return &ast.VariantDeclStmt{
+		Pos_:  pos,
+		Name:  name,
+		Cases: cases,
+	}
+}
+
+func (p *Parser) parseMatchStmt() *ast.MatchStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'match'
+
+	subj := p.parseExpression(LOWEST)
+
+	p.expect(token.BLOCK_OPEN) // ⟦
+	var arms []*ast.MatchArm
+	var otherwiseBlock *ast.Block
+
+	for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+		if p.current.Type == token.OTHERWISE {
+			p.nextToken() // consume 'otherwise'
+			if p.current.Type == token.IMPLIES {
+				p.nextToken() // consume ⟹ or ⇒
+			}
+			var stmts []ast.Stmt
+			for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF && p.current.Type != token.PIPE {
+				stmt := p.parseStatement()
+				if stmt != nil {
+					stmts = append(stmts, stmt)
+				}
+			}
+			otherwiseBlock = &ast.Block{
+				Pos_:       p.curPos(),
+				Statements: stmts,
+			}
+			continue
+		}
+
+		if p.current.Type == token.PIPE {
+			p.nextToken() // consume |
+		}
+		if p.current.Type == token.BLOCK_CLOSE || p.current.Type == token.EOF {
+			break
+		}
+
+		aPos := p.curPos()
+		cName := p.current.Literal
+		p.nextToken()
+
+		var bindings []string
+		if p.current.Type == token.GROUP_OPEN {
+			p.nextToken() // consume ( or ⦅
+			for p.current.Type != token.GROUP_CLOSE && p.current.Type != token.EOF {
+				if p.current.Type == token.IDENT {
+					bindings = append(bindings, p.current.Literal)
+					p.nextToken()
+				}
+				if p.current.Type == token.SEP {
+					p.nextToken() // consume ⸴
+				} else {
+					break
+				}
+			}
+			p.expect(token.GROUP_CLOSE) // ) or ⦆
+		}
+
+		if p.current.Type == token.IMPLIES {
+			p.nextToken() // consume ⟹ or ⇒
+		}
+
+		var armStmts []ast.Stmt
+		for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF && p.current.Type != token.PIPE && p.current.Type != token.OTHERWISE {
+			stmt := p.parseStatement()
+			if stmt != nil {
+				armStmts = append(armStmts, stmt)
+			}
+		}
+
+		arms = append(arms, &ast.MatchArm{
+			Pos_:     aPos,
+			CaseName: cName,
+			Bindings: bindings,
+			Body: &ast.Block{
+				Pos_:       aPos,
+				Statements: armStmts,
+			},
+		})
+	}
+	p.expect(token.BLOCK_CLOSE) // ⟧
+
+	return &ast.MatchStmt{
+		Pos_:      pos,
+		Subject:   subj,
+		Arms:      arms,
+		Otherwise: otherwiseBlock,
+	}
+}
+
+func (p *Parser) parseRecordInitExpr() *ast.RecordInitExpr {
+	pos := p.curPos()
+	p.nextToken() // consume 'record_init'
+
+	recName := ""
+	if p.current.Type == token.IDENT {
+		recName = p.current.Literal
+		p.nextToken()
+	}
+
+	p.expect(token.BLOCK_OPEN) // ⟦
+	var fields []*ast.RecordFieldInit
+	for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+		if p.current.Type == token.BLOCK_CLOSE || p.current.Type == token.EOF {
+			break
+		}
+		fPos := p.curPos()
+		fName := p.current.Literal
+		p.nextToken()
+
+		if p.current.Type == token.BIND {
+			p.nextToken() // ↦
+		}
+		val := p.parseExpression(LOWEST)
+		fields = append(fields, &ast.RecordFieldInit{
+			Pos_:  fPos,
+			Field: fName,
+			Value: val,
+		})
+		if p.current.Type == token.SEP || p.current.Type == token.STMT_END {
+			p.nextToken()
+		}
+	}
+	p.expect(token.BLOCK_CLOSE) // ⟧
+
+	return &ast.RecordInitExpr{
+		Pos_:       pos,
+		RecordName: recName,
+		Fields:     fields,
+	}
+}
+
+func (p *Parser) parseVariantInitExpr() *ast.VariantInitExpr {
+	pos := p.curPos()
+	p.nextToken() // consume 'variant_init'
+
+	vName := ""
+	if p.current.Type == token.IDENT {
+		vName = p.current.Literal
+		p.nextToken()
+	}
+
+	p.expect(token.GROUP_OPEN) // ⦅
+	cName := ""
+	if p.current.Type != token.GROUP_CLOSE && p.current.Type != token.BIND {
+		cName = p.current.Literal
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken() // ↦
+	}
+	val := p.parseExpression(LOWEST)
+	var values []ast.Expr
+	if val != nil {
+		values = append(values, val)
+	}
+	for p.current.Type == token.SEP {
+		p.nextToken()
+		v := p.parseExpression(LOWEST)
+		if v != nil {
+			values = append(values, v)
+		}
+	}
+	p.expect(token.GROUP_CLOSE) // ⦆
+
+	return &ast.VariantInitExpr{
+		Pos_:        pos,
+		VariantName: vName,
+		CaseName:    cName,
+		Value:       val,
+		Values:      values,
+	}
+}
+
+func (p *Parser) parseRSCAAttestStmt() *ast.RSCAAttestStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'rsca_attest'
+
+	stage := 0
+	source := ""
+	compiler := ""
+	output := ""
+	into := ""
+
+	for p.current.Type != token.STMT_END && p.current.Type != token.EOF {
+		lit := p.current.Literal
+		if lit == "stage" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.INT {
+				stage = int(parseIntLiteral(p.current.Literal))
+				p.nextToken()
+			}
+		} else if lit == "from" {
+			p.nextToken()
+		} else if lit == "source" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT || p.current.Type == token.STRING {
+				source = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "compiler" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT || p.current.Type == token.STRING {
+				compiler = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "output" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT || p.current.Type == token.STRING {
+				output = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "into" {
+			p.nextToken()
+			if p.current.Type == token.IDENT {
+				into = p.current.Literal
+				p.nextToken()
+			}
+		} else {
+			p.nextToken()
+		}
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.RSCAAttestStmt{
+		Pos_:     pos,
+		Stage:    stage,
+		Source:   source,
+		Compiler: compiler,
+		Output:   output,
+		Into:     into,
+	}
+}
+
+func (p *Parser) parseRSCAVerifyStmt() *ast.RSCAVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'rsca_verify'
+
+	rec := ""
+	if p.current.Type == token.IDENT {
+		rec = p.current.Literal
+		p.nextToken()
+	}
+
+	into := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.RSCAVerifyStmt{
+		Pos_:   pos,
+		Record: rec,
+		Into:   into,
+	}
+}
+
+func (p *Parser) parseCorruptRSCAStmt() *ast.CorruptRSCAStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_rsca'
+
+	rec := ""
+	if p.current.Type == token.IDENT {
+		rec = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Literal == "at" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+
+	offset := p.parseExpression(LOWEST)
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.CorruptRSCAStmt{
+		Pos_:   pos,
+		Record: rec,
 		Offset: offset,
 	}
 }

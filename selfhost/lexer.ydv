@@ -1,0 +1,17 @@
+record Token ⟦ kind ↦ text · value ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+variant LexItem ⟦
+    | Tok(tok ↦ text) ·
+    | End(code ↦ int64) ·
+⟧
+
+process tokenize_sample⦅text src⦆ → text ⟦
+    Token t ↦ record_init Token ⟦ kind ↦ "IDENT" ⸴ value ↦ src ⸴ line ↦ 1 ⸴ col ↦ 1 · ⟧ ·
+    yield t.kind ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    text k ↦ tokenize_sample⦅"process"⦆ ·
+    emit k ·
+    yield 0 ·
+⟧

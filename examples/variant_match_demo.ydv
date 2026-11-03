@@ -1,0 +1,11 @@
+variant Expr ⟦ | Num(val ↦ int64) · | Identifier(name ↦ text) · ⟧
+
+process main⦅⦆ → int64 ⟦
+    Expr e ↦ variant_init Expr ⦅Num ↦ 42⦆ ·
+    match e ⟦
+        | Num(x) ⟹ emit "num" · emit x ·
+        | Identifier(s) ⟹ emit "ident" · emit s ·
+        otherwise ⟹ emit "unknown" ·
+    ⟧
+    yield 0 ·
+⟧

@@ -23,6 +23,10 @@ bin/
 # Coverage artifacts
 checker_cov
 checker_cov.out
+lexer_cov
+lexer_cov.out
+parser_cov
+parser_cov.out
 coverage
 *.out
 *.cov

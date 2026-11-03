@@ -1,0 +1,23 @@
+record ASTNode ⟦ kind ↦ text · name ↦ text · count ↦ int64 · ⟧
+
+variant ParseResult ⟦
+    | Valid(val ↦ int64) ·
+    | Invalid(err ↦ int64) ·
+⟧
+
+process parse_node⦅text node_name⦆ → int64 ⟦
+    ASTNode item ↦ record_init ASTNode ⟦ kind ↦ "PROCESS_DECL" ⸴ name ↦ node_name ⸴ count ↦ 1 · ⟧ ·
+    ParseResult res ↦ variant_init ParseResult ⦅Valid ↦ item.count⦆ ·
+    int64 out ↦ 0 ·
+    match res ⟦
+        | Valid(v) ⟹ out ← v ·
+        | Invalid(e) ⟹ out ← e ·
+    ⟧
+    yield out ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    int64 status ↦ parse_node⦅"main"⦆ ·
+    emit status ·
+    yield 0 ·
+⟧

@@ -2338,6 +2338,140 @@ qyn run --test examples\aad_tamper.ydv
 Output: Active quantum decoherence nullifies register and terminates process immediately (`0xDEADBEEF`).  
 Exit code: `0xdeadbeef` (`-559038737`)
 
+---
+
+## 58. Record Data Structure & Field Member Access / रिकॉर्ड संरचना और फ़ील्ड अभिगम
+
+File: `examples/record_demo.ydv`
+
+```qadav
+record Token ⟦ kind ↦ text · value ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+process main⦅⦆ → int64 ⟦
+    Token tok ↦ record_init Token ⟦ kind ↦ "IDENT" ⸴ value ↦ "hello" ⸴ line ↦ 42 ⸴ col ↦ 1 · ⟧ ·
+    emit tok.kind ·
+    emit tok.value ·
+    emit tok.line ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\record_demo.ydv
+```
+Output:
+```
+IDENT
+hello
+42
+```
+Exit code: `0`
+
+---
+
+## 59. Tagged Variant & Exhaustive Match Statement / टैग किया गया संस्करण और व्यापक मिलान
+
+File: `examples/variant_match_demo.ydv`
+
+```qadav
+variant Expr ⟦
+    | Num(val ↦ int64) ·
+    | Identifier(name ↦ text) ·
+⟧
+
+process classify⦅Expr e⦆ → int64 ⟦
+    int64 result ↦ 0 ·
+    match e ⟦
+        | Num(n) ⟹ emit "num" · result ← n ·
+        | Identifier(s) ⟹ emit "ident" · result ← 0 ·
+    ⟧
+    yield result ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    Expr e ↦ variant_init Expr ⦅Num ↦ 42⦆ ·
+    int64 res ↦ classify⦅e⦆ ·
+    emit res ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\variant_match_demo.ydv
+```
+Output:
+```
+num
+42
+```
+Exit code: `0`
+
+---
+
+## 60. Recursive Self-Compilation Attestation (RSCA) Demo / पुनरावर्ती स्व-संकलन प्रमाणीकरण डेमो
+
+File: `examples/rsca_demo.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    rsca_attest stage ↦ 0 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/qyn" output ↦ "bin/stage1_qyn" into rec0 ·
+    rsca_attest stage ↦ 1 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/stage1_qyn" output ↦ "bin/stage2_qyn" into rec1 ·
+    rsca_verify rec0 into v0 ·
+    rsca_verify rec1 into v1 ·
+    emit "RSCA chain verified" ·
+    emit v0 ·
+    emit v1 ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\rsca_demo.ydv
+```
+Output:
+```
+RSCA chain verified
+affirm
+affirm
+```
+Exit code: `0`
+
+---
+
+## 61. RSCA Tamper Detection & Decoherence / आरएससीए छेड़छाड़ पहचान और डिकोहेरेंस
+
+File: `examples/rsca_tamper.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    rsca_attest stage ↦ 0 from source ↦ "selfhost/lexer.ydv" compiler ↦ "bin/qyn" output ↦ "bin/stage1_qyn" into rec0 ·
+    corrupt_rsca rec0 at ↦ 16 ·
+    rsca_verify rec0 into v0 ·
+    yield 0 ·
+⟧
+```
+
+### Execution (Production Mode):
+```powershell
+qyn run examples\rsca_tamper.ydv
+```
+Output:
+```
+qyn run: type errors in examples/rsca_tamper.ydv:
+  examples/rsca_tamper.ydv:3:5: corrupt_rsca is only permitted in test mode (--test)
+```
+Exit code: `1`
+
+### Execution (Test Mode):
+```powershell
+qyn run --test examples\rsca_tamper.ydv
+```
+Output: Active quantum decoherence nullifies register and terminates process immediately (`0xDEADBEEF`).  
+Exit code: `0xdeadbeef` (`-559038737`)
+
 
 
 

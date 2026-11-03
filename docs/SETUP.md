@@ -159,7 +159,7 @@ Qadav provides native cryptographic tamper simulation statements (such as `corru
 In standard builds without `--test`, any test-only statement produces a compile-time type-checker error.
 
 ### Runtime Modules
-Qadav features 40 modular zero-libc runtime objects compiled on demand (expanded from 30 in M6.3+M6.4, 32 in M6.5+M6.6, 34 in M7.1+M7.2, 36 in M7.3+M7.4, and 38 in M7.5+M7.6):
+Qadav features 43 modular zero-libc runtime objects compiled on demand (expanded from 30 in M6.3+M6.4, 32 in M6.5+M6.6, 34 in M7.1+M7.2, 36 in M7.3+M7.4, 38 in M7.5+M7.6, and 40 in M7.5+M7.6):
 1. `qadav_alloc` (Zero-libc arena & page allocator)
 2. `qadav_sha3` (Keccak-f1600 / SHA3-256 cryptographic sponge)
 3. `qadav_merkle` (Merkle tree builder & root authentication)
@@ -200,14 +200,17 @@ Qadav features 40 modular zero-libc runtime objects compiled on demand (expanded
 38. `qadav_eea` (Evolution Envelope Attestation bound enforcement & tamper decoherence - Invention #21, added in M7.4)
 39. `qadav_qecdecoder` (Real surface code greedy min-weight syndrome decoder, d=3/5/7, added in M7.5)
 40. `qadav_aad` (Attested Adaptive Decoder operating envelope & meta-learning lineage - Invention #22, added in M7.6)
+41. `qadav_record` (Qadav-native heap record structures, field hashing, and member access, added in M8.1)
+42. `qadav_variant` (Tagged union variant storage, payload access, and match dispatch, added in M8.1)
+43. `qadav_rsca` (Recursive Self-Compilation Attestation, 144-byte preimage, fixed-point verification, and active decoherence on tamper - Invention #23, added in M8.2)
 
 *Transition Notes:*
 - *30 → 32 (M6.3 + M6.4):* Added `qadav_multigpu.c` (DXGI device topology & pipeline execution) and `qadav_cdaga.c` (canonical device-sorted gradient aggregation attestation).
 - *32 → 34 (M6.5 + M6.6):* Added `qadav_distributed.c` (in-process zero-socket ring allreduce and parameter server) and `qadav_barat.c` (Byzantine-attested robust trimmed-mean aggregation with transparency certificate and catastrophic decoherence).
 - *34 → 36 (M7.1 + M7.2):* Added `qadav_qhal.c` (OpenQASM 3.0 export & backend stub abstraction) and `qadav_sea.c` (Self-Evolution Attestation proposal verification, Merkle lineage DAG, and QERA coupling).
-- *36 → 38 (M7.3 + M7.4):* Added `qadav_transpile.c` (circuit transpilation to external quantum target syntaxes) and `qadav_eea.c` (Evolution Envelope Attestation bounds enforcement and quantum fail-stop).
-- *38 → 40 (M7.5 + M7.6):* Added `qadav_qecdecoder.c` (zero-libc real syndrome decoder for surface codes d=3/5/7) and `qadav_aad.c` (Invention #22: Attested Adaptive Decoder operating envelope, out-of-bounds abstention, and active quantum fail-stop).
 - *36 → 38 (M7.3 + M7.4):* Added `qadav_transpile.c` (Qiskit/Cirq/IonQ/QASM3 direct transpilation with idempotent gate cancellation) and `qadav_eea.c` (deterministic 187-byte envelope packing, bound enforcement, and active quantum decoherence).
+- *38 → 40 (M7.5 + M7.6):* Added `qadav_qecdecoder.c` (zero-libc real syndrome decoder for surface codes d=3/5/7) and `qadav_aad.c` (Invention #22: Attested Adaptive Decoder operating envelope, out-of-bounds abstention, and active quantum fail-stop).
+- *40 → 43 (M8.1 + M8.2):* Added `qadav_record.c` (heap record allocation and member access), `qadav_variant.c` (tagged union variant creation and match dispatch), and `qadav_rsca.c` (Invention #23: Recursive Self-Compilation Attestation 144-byte preimage, 3-stage bootstrap fixed-point verification, and active quantum decoherence 0xDEADBEEF).
 
 ### Standard Library Management:
 ```powershell

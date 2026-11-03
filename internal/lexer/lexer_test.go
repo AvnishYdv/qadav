@@ -361,6 +361,37 @@ func TestAtAnnotationEdgeCases(t *testing.T) {
 	l4.advance()
 }
 
+func TestLexerCoverageEdgeCases(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected []token.Type
+	}{
+		{"@gpu @multi_device @distributed @qhal_backend", []token.Type{token.AT_GPU, token.MULTI_DEVICE, token.DIST_INIT, token.QHAL_BACKEND, token.EOF}},
+		{"| ||", []token.Type{token.PIPE, token.ILLEGAL, token.EOF}},
+		{". ( )", []token.Type{token.DOT, token.GROUP_OPEN, token.GROUP_CLOSE, token.EOF}},
+		{"⟹ ⇒ \\implies", []token.Type{token.IMPLIES, token.IMPLIES, token.IMPLIES, token.EOF}},
+		{"\\pipe \\record \\variant \\match \\otherwise", []token.Type{token.PIPE, token.RECORD, token.VARIANT, token.MATCH, token.OTHERWISE, token.EOF}},
+		{"/* unterminated comment", []token.Type{token.EOF}},
+		{"\"unterminated string", []token.Type{token.ILLEGAL, token.EOF}},
+		{"\"valid \\n \\t \\r \\\\ \\\" string\"", []token.Type{token.STRING, token.EOF}},
+		{"\"bad escape \\z \"", []token.Type{token.STRING, token.EOF}},
+		{"0b101 0x1f 1.25e+2 3.4E-1", []token.Type{token.INT, token.INT, token.FLOAT, token.FLOAT, token.EOF}},
+		{"\r\n\t  \r", []token.Type{token.EOF}},
+		{"// line comment\n42", []token.Type{token.INT, token.EOF}},
+		{"@123", []token.Type{token.ILLEGAL, token.INT, token.EOF}},
+	}
+
+	for _, tc := range cases {
+		l := New(tc.input, "test.ydv")
+		for _, exp := range tc.expected {
+			tok := l.NextToken()
+			if tok.Type != exp {
+				t.Fatalf("for input %q expected %v, got %v (%s)", tc.input, exp, tok.Type, tok.Literal)
+			}
+		}
+	}
+}
+
 func BenchmarkLexer(b *testing.B) {
 	// Construct ~1KB sample of quantum-native Qadav code
 	line := "int32 res ↦ a ⊕ b ⊗ c ⊘ d ⊙ e ↑ f·\n"

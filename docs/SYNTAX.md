@@ -303,6 +303,24 @@ MetaFitStmt         ::= "meta_fit" "into" Ident "cert" "↦" Ident "·"
 MetaAdaptStmt       ::= "meta_adapt" Ident "with" Ident "into" Ident "·"
 MetaVerifyStmt      ::= "meta_verify" Ident "into" Ident "·"
 CorruptAADEnvStmt   ::= "corrupt_aad_env" Ident "at" "↦" Expr "·"  // --test only
+
+## 32. Record Declaration & Initialization Grammar (M8.1)
+RecordDeclStmt      ::= "record" Ident "⟦" (Ident "↦" Type "·")* "⟧"
+RecordInitExpr      ::= "record_init" Ident "⟦" (Ident "↦" Expr "⸴"?)* "·" "⟧"
+FieldAccessExpr     ::= Expr ("." | "∸") Ident
+
+## 33. Variant Declaration & Initialization Grammar (M8.1)
+VariantDeclStmt     ::= "variant" Ident "⟦" ("|" Ident "(" (Ident "↦" Type "⸴"?)* ")" "·")* "⟧"
+VariantInitExpr     ::= "variant_init" Ident "⦅" Ident "↦" Expr "⦆"
+
+## 34. Match Statement Grammar (M8.1)
+MatchStmt           ::= "match" Expr "⟦" MatchArm* ("otherwise" "⟹" StmtList "·")? "⟧"
+MatchArm            ::= "|" Ident "(" (Ident "⸴"?)* ")" "⟹" StmtList "·"
+
+## 35. Recursive Self-Compilation Attestation (RSCA) Grammar (M8.2 — Invention #23)
+RSCAAttestStmt      ::= "rsca_attest" "stage" "↦" Expr "from" "source" "↦" Expr "compiler" "↦" Expr "output" "↦" Expr "into" Ident "·"
+RSCAVerifyStmt      ::= "rsca_verify" Ident "into" Ident "·"
+CorruptRSCAStmt     ::= "corrupt_rsca" Ident "at" "↦" Expr "·"  // --test only
 ```
 
 ### Compiler Testing Flags:

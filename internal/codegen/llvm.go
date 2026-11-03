@@ -474,6 +474,31 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 	header.WriteString("declare void @aad_free_training_cert(i8*)\n")
 	header.WriteString("declare void @aad_free_meta_state(i8*)\n\n")
 
+	// Records & Variants (M8.1)
+	header.WriteString("declare i8* @qadav_record_alloc(i64, i32, i32*)\n")
+	header.WriteString("declare i32 @qadav_record_set_field(i8*, i32, i8*, i32)\n")
+	header.WriteString("declare i8* @qadav_record_get_field(i8*, i32)\n")
+	header.WriteString("declare i64 @qadav_record_get_field_i64(i8*, i32)\n")
+	header.WriteString("declare void @qadav_record_set_field_i64(i8*, i32, i64)\n")
+	header.WriteString("declare i8* @qadav_record_get_field_ptr(i8*, i32)\n")
+	header.WriteString("declare void @qadav_record_set_field_ptr(i8*, i32, i8*)\n")
+	header.WriteString("declare void @qadav_record_free(i8*)\n")
+
+	header.WriteString("declare i8* @qadav_variant_create(i64, i32, i32, i8*)\n")
+	header.WriteString("declare i8* @qadav_variant_create_i64(i64, i32, i64)\n")
+	header.WriteString("declare i32 @qadav_variant_get_tag(i8*)\n")
+	header.WriteString("declare i8* @qadav_variant_get_payload(i8*)\n")
+	header.WriteString("declare i64 @qadav_variant_get_payload_i64(i8*)\n")
+	header.WriteString("declare i32 @qadav_variant_match(i8*, i32)\n")
+	header.WriteString("declare void @qadav_variant_free(i8*)\n")
+
+	// RSCA (M8.2 - Invention #23)
+	header.WriteString("declare i32 @qadav_rsca_record_stage(i64, i8*, i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_rsca_verify_record(i32)\n")
+	header.WriteString("declare i32 @qadav_rsca_compare_outputs(i32, i32)\n")
+	header.WriteString("declare i32 @qadav_rsca_attest_chain()\n")
+	header.WriteString("declare i32 @qadav_rsca_corrupt_record(i32, i32)\n\n")
+
 	// Quantum global state
 	header.WriteString(g.generateQuantumGlobal())
 
@@ -986,6 +1011,16 @@ func (g *Generator) genStmt(stmt ast.Stmt) {
 		g.genMetaVerifyStmt(s)
 	case *ast.CorruptAADEnvStmt:
 		g.genCorruptAADEnvStmt(s)
+	case *ast.RecordDeclStmt, *ast.VariantDeclStmt:
+		// Metadata declarations
+	case *ast.MatchStmt:
+		g.genMatchStmt(s)
+	case *ast.RSCAAttestStmt:
+		g.genRSCAAttestStmt(s)
+	case *ast.RSCAVerifyStmt:
+		g.genRSCAVerifyStmt(s)
+	case *ast.CorruptRSCAStmt:
+		g.genCorruptRSCAStmt(s)
 	case *ast.QHALBackendAnnotation:
 		// No-op
 	case *ast.TileStmt, *ast.EnergyDecl:
@@ -1590,6 +1625,12 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 		return g.genGPULayernormExpr(e)
 	case *ast.AGKEVerifyExpr:
 		return g.genAGKEVerifyExpr(e)
+	case *ast.RecordInitExpr:
+		return g.genRecordInitExpr(e)
+	case *ast.VariantInitExpr:
+		return g.genVariantInitExpr(e)
+	case *ast.FieldAccessExpr:
+		return g.genFieldAccessExpr(e)
 
 	case *ast.CallExpr:
 		if ident, ok := e.Func.(*ast.Ident); ok {
@@ -1650,6 +1691,16 @@ func (g *Generator) resolveType(t ast.Type) *types.Type {
 		if pt := types.FromPrimitiveName(node.Name); pt != nil {
 			return pt
 		}
+		if g.checker != nil && g.checker.RecordDecls() != nil {
+			if _, ok := g.checker.RecordDecls()[node.Name]; ok {
+				return &types.Type{Kind: types.KindRecord, Name: node.Name}
+			}
+		}
+		if g.checker != nil && g.checker.VariantDecls() != nil {
+			if _, ok := g.checker.VariantDecls()[node.Name]; ok {
+				return &types.Type{Kind: types.KindVariant, Name: node.Name}
+			}
+		}
 		if strings.HasPrefix(node.Name, "confident⟨") {
 			return types.ConfidentOf(types.Float64, 0.95)
 		}
@@ -1681,7 +1732,7 @@ func (g *Generator) llvmType(t *types.Type) string {
 		return "double"
 	case types.KindLogic:
 		return "i1"
-	case types.KindText, types.KindTensor, types.KindQubitState, types.KindDataset, types.KindMemory, types.KindGraph, types.KindProcedure, types.KindConfident, types.KindExplore:
+	case types.KindText, types.KindTensor, types.KindQubitState, types.KindDataset, types.KindMemory, types.KindGraph, types.KindProcedure, types.KindConfident, types.KindExplore, types.KindRecord, types.KindVariant:
 		return "i8*"
 	case types.KindQubit:
 		return "i32" // qubit ID

@@ -199,20 +199,36 @@ func TestParseIndexExpr(t *testing.T) {
 
 func TestParseMemberExpr(t *testing.T) {
 	expr := parseExpr(t, "obj∸field")
-	mem, ok := expr.(*ast.MemberExpr)
-	if !ok || mem.Member != "field" {
-		t.Fatalf("expected MemberExpr with field, got %+v", expr)
+	if fa, ok := expr.(*ast.FieldAccessExpr); ok {
+		if fa.Field != "field" {
+			t.Fatalf("expected FieldAccessExpr with field, got %+v", expr)
+		}
+	} else if mem, ok := expr.(*ast.MemberExpr); ok {
+		if mem.Member != "field" {
+			t.Fatalf("expected MemberExpr with field, got %+v", expr)
+		}
+	} else {
+		t.Fatalf("expected FieldAccessExpr or MemberExpr with field, got %+v", expr)
 	}
 
 	// a∸b∸c (left-assoc)
 	expr2 := parseExpr(t, "a∸b∸c")
-	mem2, ok := expr2.(*ast.MemberExpr)
-	if !ok || mem2.Member != "c" {
-		t.Fatalf("expected outer MemberExpr member 'c', got %+v", expr2)
-	}
-	innerMem, ok := mem2.Object.(*ast.MemberExpr)
-	if !ok || innerMem.Member != "b" {
-		t.Fatalf("expected inner MemberExpr member 'b', got %+v", mem2.Object)
+	if fa2, ok := expr2.(*ast.FieldAccessExpr); ok {
+		if fa2.Field != "c" {
+			t.Fatalf("expected outer FieldAccessExpr member 'c', got %+v", expr2)
+		}
+		innerFa, ok := fa2.Object.(*ast.FieldAccessExpr)
+		if !ok || innerFa.Field != "b" {
+			t.Fatalf("expected inner FieldAccessExpr member 'b', got %+v", fa2.Object)
+		}
+	} else if mem2, ok := expr2.(*ast.MemberExpr); ok {
+		if mem2.Member != "c" {
+			t.Fatalf("expected outer MemberExpr member 'c', got %+v", expr2)
+		}
+		innerMem, ok := mem2.Object.(*ast.MemberExpr)
+		if !ok || innerMem.Member != "b" {
+			t.Fatalf("expected inner MemberExpr member 'b', got %+v", mem2.Object)
+		}
 	}
 }
 
