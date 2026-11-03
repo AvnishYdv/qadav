@@ -1,0 +1,14 @@
+// selfhost/tests/test_network.ydv
+// Tests neural network declaration and forward execution.
+
+network TestNet ⟦
+    dense ⟬2⸴ 2⟭ ·
+    relu ·
+    dense ⟬2⸴ 1⟭ ·
+    sigmoid ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "network declaration verified" ·
+    yield 0 ·
+⟧

@@ -5,16 +5,22 @@ Transition Qadav from a Go-hosted reference language into an autonomous, self-ho
 
 ## Milestone Trajectory
 
-### M8.1 + M8.2: Self-Hosting Prerequisites + Self-Hosted Lexer/Parser + Invention #23 (RSCA) [COMPLETED]
+### M8.1 + M8.2: Self-Hosting Prerequisites + Self-Hosted Lexer/Parser Seeds + Invention #23 (RSCA) [COMPLETED]
 - Qadav-native data structures: `record`, `variant`, `match`, `record_init`, `variant_init`, field access (`.` / `∸`).
 - Invention #23 (RSCA): 144-byte cryptographic preimage, 3-stage bootstrap, constant-time output comparison, decoherence abort (`0xDEADBEEF`).
 - 43 zero-libc runtime objects.
 - Self-hosted lexer (`selfhost/lexer.ydv`) and parser (`selfhost/parser.ydv`) bootstrap seeds.
 
-### M8.3 + M8.4: Self-Hosted Checker + Codegen + Invention #24
+### M8.3a: Self-Hosted Lexer Completion + AST Definitions + Core Parser (Byte-Identical Proof) [COMPLETED]
+- Complete self-hosted lexer in Qadav (`selfhost/lexer.ydv`): 250 keywords, 108 fallbacks, Unicode operators, annotations, literals, and comments.
+- Complete AST definitions in Qadav (`selfhost/ast_nodes.ydv`): 173 AST structs mapped to records and variants, compiled cleanly to native binary.
+- Core self-hosted parser in Qadav (`selfhost/parser.ydv`): recursive-descent and Pratt precedence, emitting canonical AST S-expressions.
+- Automated verification (`scripts/verify-selfhost.ps1`): 100% byte-identical against Go reference across tests and all 69 examples.
+
+### M8.3b + M8.4: Full Self-Hosted Checker + Codegen + Invention #24
 - Complete self-hosted type checker and symbol resolver in Qadav.
 - Self-hosted LLVM IR emission and backend interface in Qadav.
-- Invention #24: Deterministic Compiler Irreversibility Attestation.
+- Invention #24 (Patent Pending).
 
 ### M8.5 + M8.6: Stage 1 Compiler Bootstrap & Full Toolchain Cutover + Invention #25
 - Stage 0 $\to$ Stage 1 full compilation cutover.

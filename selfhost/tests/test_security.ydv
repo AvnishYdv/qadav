@@ -1,0 +1,10 @@
+// selfhost/tests/test_security.ydv
+// Tests Invention #23: Recursive Self-Compilation Attestation (RSCA).
+
+process main⦅⦆ → int64 ⟦
+    rsca_attest stage ↦ 0 from source ↦ "selfhost/ast_nodes.ydv" compiler ↦ "bin/qyn" output ↦ "bin/stage1_qyn" into rec0 ·
+    rsca_verify rec0 into v0 ·
+    emit "RSCA verified" ·
+    emit v0 ·
+    yield 0 ·
+⟧

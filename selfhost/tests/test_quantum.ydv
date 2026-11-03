@@ -1,0 +1,13 @@
+// selfhost/tests/test_quantum.ydv
+// Tests quantum declarations, superposition, entanglement, and collapse.
+
+process main⦅⦆ → int64 ⟦
+    qubit q0 ⸴ q1 ·
+    superpose q0 ·
+    entangle q0 ⸴ q1 ·
+    int64 m0 ↦ collapse q0 ·
+    int64 m1 ↦ collapse q1 ·
+    emit m0 ·
+    emit m1 ·
+    yield 0 ·
+⟧

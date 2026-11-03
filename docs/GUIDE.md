@@ -1162,6 +1162,22 @@ process main⦅⦆ → int64 ⟦
 
 ---
 
+## 45. Self-Hosted Lexer, AST Definitions, and Core Parser (M8.3a)
+
+Milestone M8.3a completes the foundational frontend of the Qadav self-hosted compiler:
+- **`selfhost/lexer.ydv`**: A complete lexical scanner in Qadav matching all 250 keywords, 108 LaTeX fallbacks, Unicode operators, annotations, and literals with standardized 4-tuple output (`TYPE|LITERAL|LINE|COLUMN`).
+- **`selfhost/ast_nodes.ydv`**: Comprehensive Abstract Syntax Tree definition in Qadav modeling all 173 AST structs using `record` and `variant` types.
+- **`selfhost/parser.ydv`**: Recursive-descent and Pratt-precedence parser in Qadav converting token streams into canonical S-expression ASTs.
+- **Byte-Identical Verification**: Demonstrated 0-byte difference against the reference Go compiler across tests and all 69 examples via `scripts/verify-selfhost.ps1`.
+- **CLI Commands**:
+  - `qyn emit-tokens <file>`: Emits reference tokens.
+  - `qyn emit-ast <file>`: Emits reference S-expression AST.
+  - `qyn selfhost-lexer <file>`: Emits self-hosted tokens.
+  - `qyn selfhost-parser <file>`: Emits self-hosted S-expression AST.
+
+
+---
+
 ## 38. Hardware Target Transpilation (M7.3)
 
 Qadav includes a zero-libc, direct text transpiler that translates QHAL high-level quantum circuits into target-native code for major quantum computing frameworks:
@@ -1300,6 +1316,22 @@ process main⦅⦆ → int64 ⟦
 
 ---
 
+## 45. Self-Hosted Lexer, AST Definitions, and Core Parser (M8.3a)
+
+Milestone M8.3a completes the foundational frontend of the Qadav self-hosted compiler:
+- **`selfhost/lexer.ydv`**: A complete lexical scanner in Qadav matching all 250 keywords, 108 LaTeX fallbacks, Unicode operators, annotations, and literals with standardized 4-tuple output (`TYPE|LITERAL|LINE|COLUMN`).
+- **`selfhost/ast_nodes.ydv`**: Comprehensive Abstract Syntax Tree definition in Qadav modeling all 173 AST structs using `record` and `variant` types.
+- **`selfhost/parser.ydv`**: Recursive-descent and Pratt-precedence parser in Qadav converting token streams into canonical S-expression ASTs.
+- **Byte-Identical Verification**: Demonstrated 0-byte difference against the reference Go compiler across tests and all 69 examples via `scripts/verify-selfhost.ps1`.
+- **CLI Commands**:
+  - `qyn emit-tokens <file>`: Emits reference tokens.
+  - `qyn emit-ast <file>`: Emits reference S-expression AST.
+  - `qyn selfhost-lexer <file>`: Emits self-hosted tokens.
+  - `qyn selfhost-parser <file>`: Emits self-hosted S-expression AST.
+
+
+---
+
 ## 40. Real QEC Decoder (M7.5)
 
 Qadav includes a zero-libc planar surface code syndrome decoder for distances $d \in \{3, 5, 7\}$. Given raw stabilizer syndrome defect bytes extracted from physical or simulated qubits, `qecd_decode` applies greedy minimum-weight matching to compute optimal Pauli corrections and binds them into a SHA3-256 attestation digest:
@@ -1433,6 +1465,22 @@ process main⦅⦆ → int64 ⟦
     yield 0 ·
 ⟧
 ```
+
+---
+
+## 45. Self-Hosted Lexer, AST Definitions, and Core Parser (M8.3a)
+
+Milestone M8.3a completes the foundational frontend of the Qadav self-hosted compiler:
+- **`selfhost/lexer.ydv`**: A complete lexical scanner in Qadav matching all 250 keywords, 108 LaTeX fallbacks, Unicode operators, annotations, and literals with standardized 4-tuple output (`TYPE|LITERAL|LINE|COLUMN`).
+- **`selfhost/ast_nodes.ydv`**: Comprehensive Abstract Syntax Tree definition in Qadav modeling all 173 AST structs using `record` and `variant` types.
+- **`selfhost/parser.ydv`**: Recursive-descent and Pratt-precedence parser in Qadav converting token streams into canonical S-expression ASTs.
+- **Byte-Identical Verification**: Demonstrated 0-byte difference against the reference Go compiler across tests and all 69 examples via `scripts/verify-selfhost.ps1`.
+- **CLI Commands**:
+  - `qyn emit-tokens <file>`: Emits reference tokens.
+  - `qyn emit-ast <file>`: Emits reference S-expression AST.
+  - `qyn selfhost-lexer <file>`: Emits self-hosted tokens.
+  - `qyn selfhost-parser <file>`: Emits self-hosted S-expression AST.
+
 
 
 

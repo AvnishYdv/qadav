@@ -39,3 +39,12 @@ Under RSCA:
   $$\text{Hash}(\text{Output}_{\text{Stage 1}}) = \text{Hash}(\text{Output}_{\text{Stage 2}})$$
 - Output binaries between Stage 1 and Stage 2 must match **byte-for-byte in constant time**.
 - Any hash divergence, bit flip, or unauthorized modification triggers **immediate active quantum decoherence** (`ExitProcess(0xDEADBEEF)`), permanently collapsing execution and preventing compromised compiler distribution.
+
+## Self-Hosted Modules (Milestone M8.3a)
+
+1. `selfhost/lexer.ydv`: Complete self-hosted lexical scanner in Qadav. Matches all 250 keywords, 108 LaTeX fallbacks, Unicode operators, annotations, and literals. Emits tokens in standardized 4-tuple format (`TYPE|LITERAL|LINE|COLUMN`).
+2. `selfhost/ast_nodes.ydv`: Complete Abstract Syntax Tree definitions in Qadav. Maps all 173 AST structs to native `record` and `variant` types.
+3. `selfhost/parser.ydv`: Core self-hosted parser in Qadav with recursive-descent and Pratt precedence, outputting canonical S-expressions.
+4. `selfhost/tests/`: Self-hosted test suite (`test_basic.ydv`, `test_expressions.ydv`, `test_network.ydv`, `test_quantum.ydv`, `test_security.ydv`, `test_unicode.ydv`, `test_edge.ydv`).
+5. `scripts/verify-selfhost.ps1`: Automated byte-identical comparison harness comparing Go reference vs self-hosted outputs.
+

@@ -1,0 +1,14 @@
+// selfhost/tests/test_edge.ydv
+/* Multi-line block comment
+   testing edge cases for lexical scanner */
+
+process main⦅⦆ → int64 ⟦
+    // Hex and float numbers
+    int64 h ↦ 0x2A ·
+    float64 f ↦ 3.14159 ·
+    text s ↦ "hello\nworld" ·
+    emit h ·
+    emit f ·
+    emit s ·
+    yield 0 ·
+⟧

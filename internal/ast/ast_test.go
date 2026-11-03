@@ -178,3 +178,34 @@ func TestWalk(t *testing.T) {
 		t.Fatalf("expected at least 8 visited nodes, got %d", v.visited)
 	}
 }
+
+func TestToSExpr(t *testing.T) {
+	pos := Position{Line: 1, Col: 1, File: "test.ydv"}
+	prog := &Program{
+		Pos_: pos,
+		Decls: []Decl{
+			&ProcessDecl{
+				Pos_:    pos,
+				Name:    "main",
+				Params:  []*Param{{Pos_: pos, Name: "arg", Type: &NamedType{Pos_: pos, Name: "text"}}},
+				Returns: &PrimitiveType{Pos_: pos, Name: "int64"},
+				Body: &Block{
+					Pos_: pos,
+					Statements: []Stmt{
+						&YieldStmt{
+							Pos_:  pos,
+							Value: &IntLit{Pos_: pos, Value: 0},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	sexpr := ToSExpr(prog)
+	expected := `(Program (ProcessDecl "main" ((Param "arg" (NamedType "text"))) (PrimitiveType "int64") (Block (Yield (IntLit 0)))))`
+	if sexpr != expected {
+		t.Fatalf("ToSExpr mismatch:\n got: %s\nwant: %s", sexpr, expected)
+	}
+}
+

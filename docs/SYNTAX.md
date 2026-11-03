@@ -321,6 +321,12 @@ MatchArm            ::= "|" Ident "(" (Ident "⸴"?)* ")" "⟹" StmtList "·"
 RSCAAttestStmt      ::= "rsca_attest" "stage" "↦" Expr "from" "source" "↦" Expr "compiler" "↦" Expr "output" "↦" Expr "into" Ident "·"
 RSCAVerifyStmt      ::= "rsca_verify" Ident "into" Ident "·"
 CorruptRSCAStmt     ::= "corrupt_rsca" Ident "at" "↦" Expr "·"  // --test only
+
+## 36. Self-Hosted Serialization Grammar (M8.3a)
+TokenRecord         ::= TokenType "|" Literal "|" LineNumber "|" ColumnNumber
+SExprProgram        ::= "(" "Program" SExprDecl* ")"
+SExprProcess        ::= "(" "ProcessDecl" StringLit "(" SExprParam* ")" SExprType SExprBlock ")"
+SExprBlock          ::= "(" "Block" SExprStmt* ")"
 ```
 
 ### Compiler Testing Flags:

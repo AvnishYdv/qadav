@@ -34,6 +34,14 @@ func main() {
 		os.Exit(runVerifyTraining(os.Args[2:]))
 	case "stdlib":
 		os.Exit(runStdlib(os.Args[2:]))
+	case "emit-tokens":
+		os.Exit(runEmitTokens(os.Args[2:]))
+	case "emit-ast":
+		os.Exit(runEmitAst(os.Args[2:]))
+	case "selfhost-lexer":
+		os.Exit(runSelfhostLexer(os.Args[2:]))
+	case "selfhost-parser":
+		os.Exit(runSelfhostParser(os.Args[2:]))
 	case "help", "--help", "-h":
 		showUsage()
 		os.Exit(0)
@@ -58,6 +66,10 @@ Commands:
   dataset inspect <file.qds> Inspect a QDS binary dataset
   selfcheck <build|verify|strip> Binary integrity operations
   stdlib <list|build> Manage Qadav standard library modules
+  emit-tokens <file>  Emit standardized lexical tokens
+  emit-ast <file>     Emit canonical S-expression AST
+  selfhost-lexer <file> Run self-hosted lexical tokenizer
+  selfhost-parser <file> Run self-hosted parser AST generator
   doctor              Check environment health (LLVM, Go, etc.)
   version             Display version
   help                Show this message

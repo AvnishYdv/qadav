@@ -1,0 +1,13 @@
+// selfhost/tests/test_unicode.ydv
+// Tests Unicode mathematical and quantum operators with LaTeX fallbacks.
+
+process main⦅⦆ → int64 ⟦
+    int64 a ↦ 12 ·
+    int64 b ↦ 34 ·
+    int64 c ↦ a ⊕ b ·
+    int64 d ↦ a \otimes b ·
+    logic eq ↦ c ≡ d ·
+    emit c ·
+    emit d ·
+    yield 0 ·
+⟧

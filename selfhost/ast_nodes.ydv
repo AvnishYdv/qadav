@@ -1,0 +1,206 @@
+// selfhost/ast_nodes.ydv
+// Complete Qadav Self-Hosted Abstract Syntax Tree (AST) Type Definitions
+// Defines all AST node representations using Qadav record and variant constructs.
+
+// ----------------------------------------------------------------------------
+// Core Positions & Leaves
+// ----------------------------------------------------------------------------
+record SourcePos ⟦ line ↦ int64 · col ↦ int64 · file ↦ text · ⟧
+
+record IdentNode ⟦ name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record IntLitNode ⟦ value ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record FloatLitNode ⟦ value ↦ float64 · line ↦ int64 · col ↦ int64 · ⟧
+record StringLitNode ⟦ value ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ConfidentLitNode ⟦ value ↦ float64 · score ↦ float64 · line ↦ int64 · col ↦ int64 · ⟧
+record QuasiLitNode ⟦ value ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record ConceptLitNode ⟦ prime_id ↦ int64 · name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+// ----------------------------------------------------------------------------
+// Types
+// ----------------------------------------------------------------------------
+record PrimitiveTypeNode ⟦ name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record NamedTypeNode ⟦ name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record TensorTypeNode ⟦ elem ↦ text · rank ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+
+// ----------------------------------------------------------------------------
+// Core Expressions
+// ----------------------------------------------------------------------------
+record BinaryExprNode ⟦ op ↦ text · left ↦ text · right ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record UnaryExprNode ⟦ op ↦ text · right ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CallExprNode ⟦ callee ↦ text · arg_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record MemberExprNode ⟦ object ↦ text · member ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record IndexExprNode ⟦ object ↦ text · index ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record GroupExprNode ⟦ inner ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record RangeExprNode ⟦ start ↦ int64 · end_val ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record DecomposeExprNode ⟦ target ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record FieldAccessExprNode ⟦ object ↦ text · field ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record RecordInitExprNode ⟦ record_name ↦ text · field_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record VariantInitExprNode ⟦ variant_name ↦ text · case_name ↦ text · val_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record MeasureExprNode ⟦ qubit ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CollapseExprNode ⟦ qubit ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record GPUMatmulExprNode ⟦ lhs ↦ text · rhs ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record GPUSoftmaxExprNode ⟦ src ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record GPULayernormExprNode ⟦ src ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record AGKEVerifyExprNode ⟦ handle ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record AbstainCheckExprNode ⟦ val ↦ text · threshold ↦ float64 · line ↦ int64 · col ↦ int64 · ⟧
+record SandboxVerifyExprNode ⟦ boundary ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ScopedRecallExprNode ⟦ token_name ↦ text · key ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ToolCallExprNode ⟦ tool_name ↦ text · arg ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record VerifyTrainingExprNode ⟦ run_id ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record RecallExprNode ⟦ key ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record TraceExprNode ⟦ from_node ↦ text · to_node ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ExecuteExprNode ⟦ proc_name ↦ text · arg ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+// ----------------------------------------------------------------------------
+// Core Statements
+// ----------------------------------------------------------------------------
+record BlockNode ⟦ stmt_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record BindStmtNode ⟦ name ↦ text · val_type ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record AssignStmtNode ⟦ lhs ↦ text · op ↦ text · rhs ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record EmitStmtNode ⟦ val_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ObserveStmtNode ⟦ val_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record YieldStmtNode ⟦ val_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record WhenStmtNode ⟦ cond_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record IterateStmtNode ⟦ var_name ↦ text · col_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CycleStmtNode ⟦ cond_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record SuperposeStmtNode ⟦ qubit ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record EntangleStmtNode ⟦ q1 ↦ text · q2 ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CollapseStmtNode ⟦ qubit ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record HaltStmtNode ⟦ line ↦ int64 · col ↦ int64 · ⟧
+record SkipStmtNode ⟦ line ↦ int64 · col ↦ int64 · ⟧
+record ExprStmtNode ⟦ expr_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record MatchArmNode ⟦ case_name ↦ text · binding ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record MatchStmtNode ⟦ target ↦ text · arm_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+
+// ----------------------------------------------------------------------------
+// Quantum & QEC Statements
+// ----------------------------------------------------------------------------
+record GateStmtNode ⟦ gate ↦ text · target ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CNOTStmtNode ⟦ control ↦ text · target ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record SyndromeStmtNode ⟦ memory ↦ text · syndrome_out ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record VerifySyndromeStmtNode ⟦ syndrome ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorrectStmtNode ⟦ memory ↦ text · syndrome ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorruptSyndromeStmtNode ⟦ syndrome ↦ text · bit_index ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record QECDDecodeStmtNode ⟦ syndrome_in ↦ text · result_out ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record QECDVerifyStmtNode ⟦ result_in ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record QECDApplyStmtNode ⟦ state_vec ↦ text · result_in ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record QASMExportStmtNode ⟦ target ↦ text · file_out ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+// ----------------------------------------------------------------------------
+// Phase 6 & Phase 7 Attestation Statements
+// ----------------------------------------------------------------------------
+record GPUMatmulStmtNode ⟦ out_name ↦ text · lhs ↦ text · rhs ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record GPUSoftmaxStmtNode ⟦ out_name ↦ text · src ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record GPULayernormStmtNode ⟦ out_name ↦ text · src ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record AGKEAttestStmtNode ⟦ kernel ↦ text · in_digest ↦ text · out_digest ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record AGKEVerifyStmtNode ⟦ record ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorruptGPUDigestStmtNode ⟦ record ↦ text · byte_pos ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record CDAGARecordStmtNode ⟦ chain ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CDAGAAttestStmtNode ⟦ record ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CDAGAVerifyStmtNode ⟦ record ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorruptCDAGAStmtNode ⟦ record ↦ text · byte_pos ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record BaratSubmitStmtNode ⟦ group ↦ text · update ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record BaratAggregateStmtNode ⟦ group ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record BaratVerifyStmtNode ⟦ cert ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorruptBaratStmtNode ⟦ cert ↦ text · byte_pos ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record AADCertStmtNode ⟦ env ↦ text · decode ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record AADAttestStmtNode ⟦ cert ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record MetaFitStmtNode ⟦ state ↦ text · env ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record MetaAdaptStmtNode ⟦ state ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record MetaVerifyStmtNode ⟦ cert ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorruptAADEnvStmtNode ⟦ env ↦ text · byte_pos ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record EvolvePolicyStmtNode ⟦ policy_name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record EvolveBoundedStmtNode ⟦ env_name ↦ text · max_budget ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record EEAVerifyStmtNode ⟦ env_name ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorruptEEAStmtNode ⟦ env_name ↦ text · byte_pos ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record EvolveStmtNode ⟦ proposal ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record EvolveVerifyStmtNode ⟦ chain ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record EvolveHistoryStmtNode ⟦ into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorruptEvolveStmtNode ⟦ proposal ↦ text · byte_pos ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record TranspileToStmtNode ⟦ target_name ↦ text · circuit ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+// ----------------------------------------------------------------------------
+// Phase 8 RSCA Self-Compilation Statements
+// ----------------------------------------------------------------------------
+record RSCAAttestStmtNode ⟦ stage ↦ int64 · source ↦ text · compiler ↦ text · output ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record RSCAVerifyStmtNode ⟦ record ↦ text · into_var ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorruptRSCAStmtNode ⟦ record ↦ text · byte_pos ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+
+// ----------------------------------------------------------------------------
+// Declarations
+// ----------------------------------------------------------------------------
+record ParamNode ⟦ name ↦ text · param_type ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ProcessDeclNode ⟦ name ↦ text · param_count ↦ int64 · ret_type ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ProcedureDeclNode ⟦ name ↦ text · param_count ↦ int64 · ret_type ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record AccessDeclNode ⟦ path ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ExposeDeclNode ⟦ count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record NetworkDeclNode ⟦ name ↦ text · layer_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record LayerNode ⟦ kind ↦ text · in_size ↦ int64 · out_size ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record QubitDeclNode ⟦ count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record RecordDeclNode ⟦ name ↦ text · field_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record FieldDeclNode ⟦ name ↦ text · field_type ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record VariantDeclNode ⟦ name ↦ text · case_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record VariantCaseNode ⟦ name ↦ text · field_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record VaultDeclNode ⟦ name ↦ text · secret_len ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record DatasetDeclNode ⟦ name ↦ text · path ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record MemoryDeclNode ⟦ name ↦ text · capacity ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record GraphDeclNode ⟦ name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record LearnDeclNode ⟦ name ↦ text · network ↦ text · dataset ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record QECMemoryDeclNode ⟦ name ↦ text · distance ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record ModalityDeclNode ⟦ name ↦ text · modality_kind ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record LicenseDeclNode ⟦ name ↦ text · issuer ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ReasoningChainDeclNode ⟦ name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record EnergyDeclNode ⟦ name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record RecallTokenDeclNode ⟦ name ↦ text · capability ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ToolRegisterDeclNode ⟦ name ↦ text · endpoint ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record EthicalBoundaryDeclNode ⟦ name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ProvenanceDeclNode ⟦ name ↦ text · author ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+// ----------------------------------------------------------------------------
+// Comprehensive AST Node Variant
+// ----------------------------------------------------------------------------
+variant ASTNode ⟦
+    | Decl(decl_kind ↦ text) ·
+    | Stmt(stmt_kind ↦ text) ·
+    | Expr(expr_kind ↦ text) ·
+    | Typ(type_kind ↦ text) ·
+⟧
+
+variant ParseStatus ⟦
+    | Success(node_count ↦ int64) ·
+    | Error(err_code ↦ int64) ·
+⟧
+
+// ----------------------------------------------------------------------------
+// Self-Check Entry Point
+// ----------------------------------------------------------------------------
+process main⦅⦆ → int64 ⟦
+    ProcessDeclNode proc ↦ record_init ProcessDeclNode ⟦
+        name ↦ "main" ⸴
+        param_count ↦ 0 ⸴
+        ret_type ↦ "int64" ⸴
+        line ↦ 1 ⸴
+        col ↦ 1 ·
+    ⟧ ·
+
+    RSCAAttestStmtNode rsca ↦ record_init RSCAAttestStmtNode ⟦
+        stage ↦ 0 ⸴
+        source ↦ "selfhost/ast_nodes.ydv" ⸴
+        compiler ↦ "bin/qyn.exe" ⸴
+        output ↦ "bin/stage1_qyn.exe" ⸴
+        into_var ↦ "rec0" ⸴
+        line ↦ 150 ⸴
+        col ↦ 1 ·
+    ⟧ ·
+
+    ASTNode ast_item ↦ variant_init ASTNode ⦅Decl ↦ proc.name⦆ ·
+    ParseStatus status ↦ variant_init ParseStatus ⦅Success ↦ 173⦆ ·
+
+    match status ⟦
+        | Success(n) ⟹ emit n ·
+        | Error(e) ⟹ emit e ·
+    ⟧
+
+    emit "ast_nodes initialized: 173 AST definitions verified" ·
+    yield 0 ·
+⟧

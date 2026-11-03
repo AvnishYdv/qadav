@@ -1,0 +1,15 @@
+// selfhost/tests/test_expressions.ydv
+// Tests Pratt precedence and binary/unary expressions.
+
+process main⦅⦆ → int64 ⟦
+    int64 a ↦ 5 ·
+    int64 b ↦ 3 ·
+    int64 c ↦ 2 ·
+    int64 expr1 ↦ a ⊕ b ⊗ c ·
+    int64 expr2 ↦ ⦅a ⊕ b⦆ ⊗ c ·
+    int64 expr3 ↦ a ⊖ b ⊘ c ·
+    emit expr1 ·
+    emit expr2 ·
+    emit expr3 ·
+    yield 0 ·
+⟧

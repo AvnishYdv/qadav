@@ -127,12 +127,21 @@ func (g *Generator) genVariantInitExpr(e *ast.VariantInitExpr) Value {
 	}
 
 	valRef := "0"
+	valType := "i64"
 	if len(e.Values) > 0 {
 		v := g.genExpr(e.Values[0])
 		valRef = v.Ref
+		valType = v.Type
 	} else if e.Value != nil {
 		v := g.genExpr(e.Value)
 		valRef = v.Ref
+		valType = v.Type
+	}
+
+	if valType == "i8*" || valType == "ptr" {
+		convTemp := g.nextTemp()
+		fmt.Fprintf(&g.sb, "  %s = ptrtoint %s %s to i64\n", convTemp, valType, valRef)
+		valRef = convTemp
 	}
 
 	varTemp := g.nextTemp()

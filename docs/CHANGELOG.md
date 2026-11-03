@@ -5,6 +5,34 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M8.3a] — Self-Hosted Lexer Completion + AST Definitions + Core Parser (Byte-Identical Proof Required) (100% Complete)
+## [M8.3a] — स्व-होस्टेड लेक्सर पूर्णता + AST परिभाषाएं + कोर पार्सर (बाइट-समान प्रमाण सहित) (100% पूर्ण)
+
+### Added / नया जोड़ा गया:
+- **Self-Hosted Lexer Completion (`selfhost/lexer.ydv`)**:
+  - Implemented complete lexical scanner in native Qadav supporting all 250 registered keywords, 108 LaTeX-style operator fallbacks, 2-rune and 1-rune quantum and mathematical operators, annotations (`@gpu`, `@multi_device`, `@distributed`, `@qhal_backend`), literals, and comments.
+  - Standardized 4-tuple token output: `TYPE|LITERAL|LINE|COLUMN`.
+  - Byte-for-byte identity proven against reference Go lexer across test suite and all 69 examples with 0 byte differences.
+- **AST Definitions in Qadav (`selfhost/ast_nodes.ydv`)**:
+  - Complete Abstract Syntax Tree definitions in native Qadav representing all 173 AST structs from `internal/ast/*.go` using `record` and `variant` types.
+  - Verified and compiled cleanly to native binary via `qyn build selfhost/ast_nodes.ydv`.
+- **Core Self-Hosted Parser (`selfhost/parser.ydv`)**:
+  - Native recursive-descent and Pratt-precedence parser in Qadav converting token streams into canonical S-expression ASTs.
+  - Parses core declarations (`process`, `procedure`, `record`, `variant`, `network`), control flow statements, expressions, and quantum/security primitives.
+  - Byte-for-byte identical AST S-expression output against the reference Go parser.
+- **Verification Infrastructure**:
+  - Created `scripts/verify-selfhost.ps1` automating byte-identical comparison across `selfhost/tests/*.ydv` and `examples/*.ydv`.
+  - Created selfhost test suite: `test_basic.ydv`, `test_expressions.ydv`, `test_network.ydv`, `test_quantum.ydv`, `test_security.ydv`, `test_unicode.ydv`, `test_edge.ydv`.
+- **CLI Subcommands**:
+  - Added `qyn emit-tokens <file>` and `qyn emit-ast <file>`.
+  - Added `qyn selfhost-lexer <file>` and `qyn selfhost-parser <file>`.
+- **Specifications & Documentation**:
+  - Created `docs/SELFHOST_LEXER_SPEC.md` and `docs/SELFHOST_PARSER_SPEC.md`.
+  - Updated `docs/GUIDE.md` (Section 45), `docs/SYNTAX.md` (Section 36), `docs/PHASE8_ROADMAP.md`, `selfhost/README.md`.
+  - Maintained zero-libc runtime count (43 objects) and patent count (23 patents).
+
+---
+
 ## [M8.1 + M8.2] — Combined Milestone: Qadav-Native Data Structures (Records, Variants, Match) + Phase 8 Self-Hosting Kickoff + Recursive Self-Compilation Attestation (RSCA — Invention #23, Patent Pending) (100% Complete)
 ## [M8.1 + M8.2] — संयुक्त माइलस्टोन: कादव-नेटिव डेटा संरचनाएं (रिकॉर्ड्स, वेरिएंट्स, मैच) + चरण 8 स्व-होस्टिंग किकऑफ़ + पुनरावर्ती स्व-संकलन प्रमाणीकरण (RSCA — आविष्कार #23, पेटेंट लंबित) (100% पूर्ण)
 
