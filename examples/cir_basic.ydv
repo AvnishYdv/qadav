@@ -1,0 +1,9 @@
+process main ⦅ ⦆ → int64 ⟦
+    confident⟨float64⟩ a ↦ 0.90 ∵ 10.0 ·
+    confident⟨float64⟩ b ↦ 0.80 ∵ 20.0 ·
+    confident⟨float64⟩ c ↦ a ⊗ b ·
+    emit c ·
+    assert c ≽ 0.70 ·
+    yield 0 ·
+⟧
+

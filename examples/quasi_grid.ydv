@@ -1,0 +1,10 @@
+process main⦅⦆ → int64 ⟦
+  tensor⟨quasi⟩ grid ↦ tensor⟬
+    ⟬ ► ⸴ ◄ ⸴ ► ⟭ ⸴
+    ⟬ ◄ ⸴ 〇 ⸴ ◄ ⟭ ⸴
+    ⟬ ► ⸴ ◄ ⸴ ► ⟭
+  ⟭ ·
+  minimize grid energy ising iterations ↦ 1000 ·
+  emit grid ·
+  yield 0 ·
+⟧

@@ -1,0 +1,16 @@
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary safety ⟦
+        rule human_harm ↦ 1.0 ·
+    ⟧
+
+    enforce safety on "help_user" ·
+    emit "Action allowed" ·
+
+    enforce safety on "harm_user" ·
+    emit "Action blocked" ·
+
+    decoherence ·
+    emit "Decoherence active" ·
+
+    yield 0 ·
+⟧

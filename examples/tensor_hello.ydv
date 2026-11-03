@@ -1,0 +1,6 @@
+process main⦅⦆ → int64 ⟦
+    tensor⟨float64⟩⟬3⟭ v ↦ tensor⟬1.0⸴ 2.0⸴ 3.0⟭ ·
+    emit v ·
+    yield 0 ·
+⟧
+

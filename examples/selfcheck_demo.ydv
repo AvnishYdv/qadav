@@ -1,0 +1,5 @@
+process main ⦅ ⦆ → int64 ⟦
+    emit "Self-check OK" ·
+    yield 0 ·
+⟧
+

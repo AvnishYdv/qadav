@@ -1,0 +1,9 @@
+process main⦅⦆ → int64 ⟦
+  dataset d ↦ load ⦅ "examples/data/train.qds" ⦆ ·
+  normalize d minmax ·
+  shuffle d ·
+  batch d 2 ⟦
+    emit d ·
+  ⟧
+  yield 0 ·
+⟧

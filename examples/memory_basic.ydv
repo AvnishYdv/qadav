@@ -1,0 +1,8 @@
+process main ⦅ ⦆ → int64 ⟦
+    memory mem ⟬ 100 ⟭ ·
+    remember mem⟬"agent_state"⟭ ↦ 42 ·
+    int64 recalled ↦ recall mem⟬"agent_state"⟭ ·
+    emit recalled ·
+    yield 0 ·
+⟧
+

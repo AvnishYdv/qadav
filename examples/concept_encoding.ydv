@@ -1,0 +1,9 @@
+process main⦅⦆ → int64 ⟦
+    concept consciousness ↦ 2 ·
+    concept genome ↦ 3 ·
+    concept human_scale ↦ 5 ·
+    concept complex ↦ consciousness ⊗ genome ⊗ human_scale ·
+    emit complex ·
+    yield 0 ·
+⟧
+

@@ -1,0 +1,7 @@
+process main⦅⦆ → int64 ⟦
+  quasi a ↦ ► ·
+  quasi b ↦ ◄ ·
+  quasi sum ↦ a ⊕ b ·
+  emit sum ·
+  yield 0 ·
+⟧

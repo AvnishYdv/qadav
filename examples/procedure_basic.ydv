@@ -1,0 +1,10 @@
+procedure add_two ⦅ int64 x ⦆ → int64 ⟦
+    yield x ⊕ 2 ·
+⟧
+
+process main ⦅ ⦆ → int64 ⟦
+    int64 res ↦ execute add_two ⦅ 5 ⦆ ·
+    emit res ·
+    yield 0 ·
+⟧
+

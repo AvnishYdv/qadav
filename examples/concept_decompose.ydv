@@ -1,0 +1,7 @@
+process main⦅⦆ → int64 ⟦
+    concept complex ↦ 613 ·
+    tensor⟨int64⟩ factors ↦ decompose⦅complex⦆ ·
+    emit factors ·
+    yield 0 ·
+⟧
+

@@ -1,0 +1,23 @@
+network SecretModel ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary strict_auth ⟦
+        rule unauthorized_access ↦ 1.0 ·
+    ⟧
+
+    vault v ⟬ SecretModel ⟭ threshold ↦ 3 ·
+
+    seal v ·
+    emit "Weights sealed in vault" ·
+
+    // Trigger violation / decoherence
+    enforce strict_auth on "harm_user" ·
+    emit "Decoherence triggered on unauthorized access" ·
+
+    yield 0 ·
+⟧
+

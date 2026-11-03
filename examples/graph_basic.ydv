@@ -1,0 +1,10 @@
+process main ⦅ ⦆ → int64 ⟦
+    graph g ·
+    node g ⟬ "conceptA" ↦ 101 ⟭ ·
+    node g ⟬ "conceptB" ↦ 102 ⟭ ·
+    link g ⟬ "conceptA" ⸴ "conceptB" ⸴ 1.0 ⟭ ·
+    tensor⟨int64⟩ visited ↦ trace g ⟬ "conceptA" ⸴ 2 ⟭ ·
+    emit visited ·
+    yield 0 ·
+⟧
+

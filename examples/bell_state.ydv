@@ -1,0 +1,10 @@
+process main⦅⦆ → int64 ⟦
+    qubit q0 ⸴ q1 ·
+    superpose q0 ·
+    entangle q0 ⸴ q1 ·
+    int64 a ↦ collapse q0 ·
+    int64 b ↦ collapse q1 ·
+    emit a ⊻ b ·
+    yield 0 ·
+⟧
+

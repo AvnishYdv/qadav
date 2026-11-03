@@ -1,0 +1,22 @@
+network XORNet ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+    sigmoid ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    tensor⟨float64⟩⟬4⸴ 2⟭ x ↦ tensor⟬⟬0.0⸴ 0.0⟭⸴ ⟬0.0⸴ 1.0⟭⸴ ⟬1.0⸴ 0.0⟭⸴ ⟬1.0⸴ 1.0⟭⟭ ·
+    tensor⟨float64⟩⟬4⸴ 1⟭ y ↦ tensor⟬⟬0.0⟭⸴ ⟬1.0⟭⸴ ⟬1.0⟭⸴ ⟬0.0⟭⟭ ·
+    learn XORNet on x ⸴ y ⟦
+        loss mse ·
+        optimizer adam ·
+        lr ↦ 0.1 ·
+        epochs ↦ 50 ·
+    ⟧
+    tensor⟨float64⟩⟬2⟭ test_x ↦ tensor⟬0.0⸴ 1.0⟭ ·
+    tensor⟨float64⟩⟬1⟭ pred ↦ XORNet⦅test_x⦆ ·
+    emit pred ·
+    yield 0 ·
+⟧
+

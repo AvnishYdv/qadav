@@ -14,10 +14,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
+
       - name: Cache Go modules
         uses: actions/cache@v3
         with:
@@ -27,30 +29,47 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
+
       - name: Download Go dependencies
         run: go mod download
+
       - name: Vet code
         run: go vet ./...
-      - name: Check formatting
+
+      - name: Check formatting (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
-          if [ "$(gofmt -l .)" != "" ]; then echo "gofmt found unformatted files"; exit 1; fi
+          test -z "$(gofmt -l .)" || { echo "gofmt found unformatted files:"; gofmt -l .; exit 1; }
+
+      - name: Check formatting (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $unformatted = gofmt -l .
+          if ($unformatted) { Write-Error "gofmt found unformatted files:`n$unformatted"; exit 1 }
+
       - name: Run tests with race detector and coverage
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+
       - name: Show coverage report
         run: go tool cover -func=coverage.out
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+
       - name: Install LLVM (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y llvm-18 clang-18 llvm-18-dev
+
       - name: Install LLVM (macOS)
         if: runner.os == 'macOS'
         run: brew install llvm@18
+
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
         run: choco install llvm --version=18.1.8
-

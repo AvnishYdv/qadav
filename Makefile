@@ -1,44 +1,53 @@
 # Makefile for Qadav project
+# Compatible with GNU make and PowerShell on Windows
 
-# Variables
-BINARY=bin/qyn
-LSP_BINARY=bin/qyn-lsp
+BINARY     = bin/qyn.exe
+LSP_BINARY = bin/qyn-lsp.exe
+GOFLAGS    =
+SHELL      = powershell.exe
+.SHELLFLAGS = -NoProfile -Command
 
-.PHONY: all build build-lsp build-all test test-race test-update lint fmt clean ci
+.PHONY: all build build-lsp build-all doctor test test-race test-race-linux test-update lint fmt clean ci
 
 all: build
 
 build:
-	@echo "Building..."
-	@go build -o $(BINARY) ./cmd/qyn
+	if (-not (Test-Path 'bin')) { New-Item -ItemType Directory -Path 'bin' | Out-Null }
+	go build $(GOFLAGS) -o $(BINARY) ./cmd/qyn
+	Write-Host "Build complete: $(BINARY)"
 
 build-lsp:
-	@echo "Building LSP..."
-	@go build -o $(LSP_BINARY) ./cmd/qyn-lsp
+	if (-not (Test-Path 'bin')) { New-Item -ItemType Directory -Path 'bin' | Out-Null }
+	go build $(GOFLAGS) -o $(LSP_BINARY) ./cmd/qyn-lsp
+	Write-Host "Build complete: $(LSP_BINARY)"
 
 build-all: build build-lsp
 
+doctor:
+	go run ./cmd/qyn doctor
+
 test:
-	@echo "Running tests..."
-	@go test ./... -v
+	go test ./... -v
 
 test-race:
-	@go test -race -coverprofile=coverage.out -covermode=atomic ./...
+	go test ./...
+
+test-race-linux:
+	go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
 test-update:
-	@go test -update ./...
+	go test ./... -args -update
 
 lint:
-	@golangci-lint run
+	golangci-lint run
 
 fmt:
-	@go fmt ./...
-	@goimports -w .
+	go fmt ./...
 
 clean:
-	@echo "Cleaning..."
-	@go clean -cache -testcache
-	@rm -rf $(BINARY) $(LSP_BINARY) bin coverage.out 2>/dev/null || true
-	@powershell -Command "if (Test-Path '$(BINARY)') { Remove-Item -Recurse -Force '$(BINARY)' }; if (Test-Path '$(LSP_BINARY)') { Remove-Item -Recurse -Force '$(LSP_BINARY)' }; if (Test-Path 'bin') { Remove-Item -Recurse -Force 'bin' }; if (Test-Path 'coverage.out') { Remove-Item -Force 'coverage.out' }"
+	go clean -cache -testcache
+	if (Test-Path 'bin') { Remove-Item -Recurse -Force 'bin' }
+	if (Test-Path 'coverage.out') { Remove-Item -Force 'coverage.out' }
+	Write-Host "Clean complete."
 
-ci: fmt lint test-race
+ci: fmt lint test-race-linux

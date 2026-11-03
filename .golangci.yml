@@ -1,3 +1,4 @@
+version: "2"
 run:
   timeout: 5m
   tests: true
@@ -6,11 +7,8 @@ linters:
     - govet
     - staticcheck
     - errcheck
-    - gosimple
     - ineffassign
     - unused
-    - gofmt
-    - goimports
     - misspell
     - unconvert
     - bodyclose
@@ -21,6 +19,7 @@ linters:
     - funlen
     - gocognit
     - cyclop
+    - gosec
 linters-settings:
   govet:
     enable-all: true
@@ -30,7 +29,13 @@ linters-settings:
     excludes:
       - G204
       - G304
+      - G702
+      - G703
 issues:
+  exclude-rules:
+    - linters:
+        - gosec
+      text: "Subprocess launched|Path traversal|Command injection"
   exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
