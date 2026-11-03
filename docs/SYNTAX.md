@@ -141,7 +141,7 @@ EthicalRule         ::= "rule" Ident "↦" FloatLit "·"
 EnforceStmt         ::= "enforce" Ident "on" Expr "·"
 DecoherenceStmt     ::= "decoherence" "·"
 
-VaultDecl           ::= "vault" Ident "⟬" Ident "⟭" "threshold" "↦" IntLit "·"
+VaultDecl           ::= "vault" Ident "with" Ident "⟬" Ident "⟭" "threshold" "↦" IntLit "·"
 SealStmt            ::= "seal" Ident "·"
 UnsealStmt          ::= "unseal" Ident "with" Ident "·"
 WipeStmt            ::= "wipe" Ident "·"
@@ -149,7 +149,82 @@ WipeStmt            ::= "wipe" Ident "·"
 ProvenanceDecl      ::= "provenance" Ident "⟬" Ident "⟭" "·"
 CertifyStmt         ::= "certify" Ident "·"
 VerifyTrainingExpr  ::= "verify_training" "⟬" Expr "⟭"
+
+MemoryProvDecl      ::= "memory_prov" Ident "with" Ident "⟦" ("capacity" "↦" IntLit "·")? "⟧" "·"?
+VerifyMemoryStmt    ::= "verify_memory" Ident "·"
+AuditMemoryStmt     ::= "audit_memory" Ident "·"
+CorruptShareStmt    ::= "corrupt_memory_share" Ident "⟬" Expr "⟭" "at" "↦" IntLit "·"
+
+LicenseDecl         ::= "license" Ident "for" Ident "on" Ident "⟦" ("max_epochs" "↦" IntLit "·")? ("max_rate" "↦" FloatLit "·")? ("expiry" "↦" IntLit "·")? "⟧" "·"?
+TransferStmt        ::= "transfer" Ident "from" Ident "to" Ident "layers" "⟬" (IntLit ("⸴" IntLit)*)? "⟭" "·"
+DistillStmt         ::= "distill" Ident "on" Ident "with" Expr "⸴" Expr "⟦" ("rate" "↦" FloatLit "·")? ("epochs" "↦" IntLit "·")? "⟧" "·"?
+
+ReasoningChainDecl  ::= "reasoning_chain" Ident ("with" Ident)? "⟦" ("capacity" "↦" IntLit "·")? "⟧" "·"?
+ReasonStepStmt      ::= "reason" ("deduce" | "induce" | "abduce" | "verify") ("from" Expr)? "to" Expr "with" FloatLit "·"
+VerifyChainStmt     ::= "verify_chain" Ident "·"
+AuditReasoningStmt  ::= "audit_reasoning" Ident "·"
+CorruptReasonStep   ::= "corrupt_reasoning_step" Ident "⟬" Expr "⟭" "at" "↦" IntLit "·"
+
+ModalityDecl        ::= "modality" Ident "as" ("tensor_input" | "text_input" | "concept_input") "from" Expr "·"
+CrossModalReason    ::= "cross_modal_reason" Ident ("deduce" | "induce" | "abduce" | "verify") "from" "⟬" (Expr ("⸴" Expr)*)? "⟭" "to" Expr "with" FloatLit "·"
+
+QECMemoryDecl       ::= "qec_memory" Ident "as" ("surface_code" | "qldpc_code") "distance" "↦" IntLit ("with" Ident)? ("⟦" "⟧")? "·"
+SyndromeStmt        ::= "syndrome" Ident ("into" Ident)? "·"
+VerifySyndromeStmt  ::= "verify_syndrome" Ident "with" Ident "·"
+CorrectStmt         ::= "correct" Ident "with" Ident "·"
+CorruptSyndromeStmt ::= "corrupt_syndrome" Ident "⟬" Ident "⟭" "at" "↦" IntLit "·"
+
+ConsolidateStmt     ::= "consolidate" Ident "into" Ident "with" "threshold" "↦" FloatLit "·"
+
+RecallTokenDecl     ::= "recall_token" Ident "for" Ident ("on" | "to") Ident "⟦" ("keys" "↦" "⟬" (StringLit ("⸴" StringLit)*)? "⟭" "·")? ("expiry" "↦" IntLit "·")? "⟧" "·"?
+GrantStmt           ::= "grant" Ident ("to" Ident)? "·"
+RevokeStmt          ::= "revoke" Ident "·"
+ScopedRecallExpr    ::= "recall_scoped" Ident "⟬" Expr "⟭" ("with" | "using") Ident
+
+ToolRegisterDecl    ::= "tool_register" Ident ("with" Ident)? ("pre" "⟦" Expr "⟧")? ("post" "⟦" Expr "⟧")? "·"
+ToolCallStmt        ::= "tool_call" Ident "⦅" (Expr ("⸴" Expr)*)? "⦆" ("audit" Ident)? "·"
+ToolCallExpr        ::= "tool_call" Ident "⦅" (Expr ("⸴" Expr)*)? "⦆" ("audit" Ident)?
+
+CertifiedReasonStmt ::= "certified_reason" Ident ("deduce" | "induce" | "abduce" | "verify") "from" Expr "to" Expr "witness" "⟬" Expr "⟭" "confidence" "↦" FloatLit "·"
+AbstainThreshDecl   ::= "abstain_threshold" Ident "↦" FloatLit "mode" ("retry" | "escalate" | "refuse") ("max_retries" "↦" IntLit)? "·"
+AbstainCheckStmt    ::= "abstain_check" Ident ("into" Ident)? "·"
+AbstainCheckExpr    ::= "abstain_check" Ident
+
+SandboxCreateStmt   ::= "sandbox_create" Ident "with" Ident "⟦" ("capacity" "↦" IntLit "·")? "⟧" "·"?
+SandboxRunStmt      ::= "sandbox_run" Ident "⟦" Statement* "⟧" "into" Ident "·"
+SandboxVerifyStmt   ::= "sandbox_verify" Ident ("into" Ident)? "·"
+SandboxVerifyExpr   ::= "sandbox_verify" Ident
 ```
+
+### 19. Calibrated Confidence Formulation
+For Type-Tagged Proof-Carrying Reasoning (TTPCR) and Calibrated Abstention, cumulative chain confidence is evaluated using the variance-penalized geometric composite confidence:
+$$C_{\text{chain}} = \left(\prod_{i=1}^n c_i\right)^{1/n} \times \left(1.0 - \frac{\sigma^2_c}{4}\right)$$
+where $c_i \in [0.0, 1.0]$ are individual step confidences and $\sigma^2_c = \frac{1}{n} \sum_{i=1}^n (c_i - \bar{c})^2$ is step confidence variance.
+
+### 20. Sandbox Grammar & Quantum Isolation
+Quantum-Entangled Sandbox Isolation (QESI — Invention #16) provisions isolated quantum registers:
+- `sandbox_create <id> with <boundary> ⟦ capacity ↦ <N> · ⟧`
+- `sandbox_run <id> ⟦ <stmts> ⟧ into <status_var> ·`
+- `sandbox_verify <id> into <attestation_var> ·` / `<attestation_var> ↦ sandbox_verify <id>`
+
+Violations inside `sandbox_run` decohere only the isolated sandbox register and store a 32-byte SHA3 forensic attestation, returning `-2` to the host process without host termination.
+
+### 21. GPU DirectCompute & AGKE Grammar
+Phase 6 introduces native DirectCompute GPU operations and Invention #17 (AGKE):
+```bnf
+GPUMatmulStmt       ::= ("@gpu")? "gpu_matmul" Expr "⸴" Expr "into" Ident ("audit" Ident)? "·"
+GPUSoftmaxStmt      ::= ("@gpu")? "gpu_softmax" Expr "into" Ident ("audit" Ident)? "·"
+GPULayernormStmt    ::= ("@gpu")? "gpu_layernorm" Expr "into" Ident ("audit" Ident)? "·"
+AGKEAttestStmt      ::= "agke_attest" Ident ("⦅" Expr "⸴" Expr "⸴" Expr "⦆")? "·"
+AGKEVerifyStmt      ::= "agke_verify" Ident ("into" Ident)? "·"
+AGKEVerifyExpr      ::= "agke_verify" Ident
+CorruptGPUDigestStmt::= "corrupt_gpu_digest" Ident "at" "↦" IntLit "·"  // --test only
+```
+
+### Compiler Testing Flags:
+- `--test`: Enables test-only AST statements (e.g. `corrupt_memory_share`, `corrupt_reasoning_step`, `corrupt_syndrome`) for cryptographic tamper resilience verification. In normal builds, test-only statements are rejected with a checker error.
+
+### Strict Syntax Rules:
 
 
 1. **NO Legacy Keywords**: `let`, `mut`, `var`, `print`, `if`, `else`, `fn`, `return`, `class`, `struct`, `enum`, `import`, `export`, `true`, `false`, `null`, `async`, `await` are completely prohibited.

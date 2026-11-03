@@ -299,6 +299,117 @@ const (
 	VERIFY_TRAIN Type = "VERIFY_TRAIN"
 )
 
+// QEMP (Quantum-Entangled Memory Provenance) Keywords
+const (
+	MEMORY_PROV   Type = "MEMORY_PROV"
+	VERIFY_MEMORY Type = "VERIFY_MEMORY"
+	AUDIT_MEMORY  Type = "AUDIT_MEMORY"
+	CORRUPT_SHARE Type = "CORRUPT_SHARE"
+)
+
+// QECMT (Quantum-Entangled Cross-Model Transfer) Keywords
+const (
+	LICENSE  Type = "LICENSE"
+	TRANSFER Type = "TRANSFER"
+	DISTILL  Type = "DISTILL"
+	TEACHER  Type = "TEACHER"
+	STUDENT  Type = "STUDENT"
+)
+
+// QERA (Quantum-Entangled Reasoning Attestation) Keywords
+const (
+	REASONING_CHAIN        Type = "REASONING_CHAIN"
+	REASON                 Type = "REASON"
+	DEDUCE                 Type = "DEDUCE"
+	INDUCE                 Type = "INDUCE"
+	ABDUCE                 Type = "ABDUCE"
+	VERIFY_CHAIN           Type = "VERIFY_CHAIN"
+	AUDIT_REASONING        Type = "AUDIT_REASONING"
+	CORRUPT_REASONING_STEP Type = "CORRUPT_REASONING_STEP"
+)
+
+// QECMA (Quantum-Entangled Cross-Modal Attestation) Keywords
+const (
+	MODALITY           Type = "MODALITY"
+	CROSS_MODAL_REASON Type = "CROSS_MODAL_REASON"
+	TENSOR_INPUT       Type = "TENSOR_INPUT"
+	TEXT_INPUT         Type = "TEXT_INPUT"
+	CONCEPT_INPUT      Type = "CONCEPT_INPUT"
+)
+
+// QEC-QEMP (Quantum Error-Corrected Memory Provenance — Invention #13) Keywords
+const (
+	QEC_MEMORY       Type = "QEC_MEMORY"
+	SYNDROME         Type = "SYNDROME"
+	CORRECT          Type = "CORRECT"
+	VERIFY_SYNDROME  Type = "VERIFY_SYNDROME"
+	QEC_CODE         Type = "QEC_CODE"
+	SURFACE_CODE     Type = "SURFACE_CODE"
+	QLDPC_CODE       Type = "QLDPC_CODE"
+	CORRUPT_SYNDROME Type = "CORRUPT_SYNDROME"
+)
+
+// Memory Consolidation Keywords (M5.6)
+const (
+	CONSOLIDATE Type = "CONSOLIDATE"
+	PROMOTE_TO  Type = "PROMOTE_TO"
+	EPISODIC    Type = "EPISODIC"
+	SEMANTIC    Type = "SEMANTIC"
+)
+
+// CB-SRCPP (Invention #14) Keywords
+const (
+	RECALL_TOKEN  Type = "RECALL_TOKEN"
+	GRANT         Type = "GRANT"
+	REVOKE        Type = "REVOKE"
+	SCOPED_ACCESS Type = "SCOPED_ACCESS"
+	RECALL_SCOPED Type = "RECALL_SCOPED"
+)
+
+// Safe Tool Orchestration (M5.8) Keywords
+const (
+	TOOL_REGISTER  Type = "TOOL_REGISTER"
+	TOOL_CALL      Type = "TOOL_CALL"
+	TOOL_AUDIT     Type = "TOOL_AUDIT"
+	PRE_CONDITION  Type = "PRE_CONDITION"
+	POST_CONDITION Type = "POST_CONDITION"
+)
+
+// TTPCR (Invention #15) & Calibrated Abstention Keywords
+const (
+	CERTIFIED_REASON  Type = "CERTIFIED_REASON"
+	CERT_KIND         Type = "CERT_KIND"
+	WITNESS           Type = "WITNESS"
+	ABSTAIN           Type = "ABSTAIN"
+	RETRY             Type = "RETRY"
+	ESCALATE          Type = "ESCALATE"
+	REFUSE            Type = "REFUSE"
+	ABSTAIN_THRESHOLD Type = "ABSTAIN_THRESHOLD"
+	ABSTAIN_CHECK     Type = "ABSTAIN_CHECK"
+)
+
+// QESI (Invention #16: Quantum-Entangled Sandbox Isolation) Keywords
+const (
+	SANDBOX        Type = "SANDBOX"
+	SANDBOX_CREATE Type = "SANDBOX_CREATE"
+	SANDBOX_RUN    Type = "SANDBOX_RUN"
+	SANDBOX_VERIFY Type = "SANDBOX_VERIFY"
+	QUARANTINE     Type = "QUARANTINE"
+)
+
+// Phase 6: DirectCompute GPU & AGKE (Invention #17) Keywords
+const (
+	AT_GPU             Type = "AT_GPU"
+	GPU_MATMUL         Type = "GPU_MATMUL"
+	GPU_SOFTMAX        Type = "GPU_SOFTMAX"
+	GPU_LAYERNORM      Type = "GPU_LAYERNORM"
+	AGKE_ATTEST        Type = "AGKE_ATTEST"
+	AGKE_VERIFY        Type = "AGKE_VERIFY"
+	CORRUPT_GPU_DIGEST Type = "CORRUPT_GPU_DIGEST"
+)
+
+
+
 // Quasinary Keywords & Literals
 const (
 	QUASI      Type = "QUASI"
@@ -610,6 +721,93 @@ var keywords = map[string]Type{
 	"certify":         CERTIFY,
 	"verify_training": VERIFY_TRAIN,
 
+	// QEMP (Quantum-Entangled Memory Provenance)
+	"memory_prov":          MEMORY_PROV,
+	"verify_memory":        VERIFY_MEMORY,
+	"audit_memory":         AUDIT_MEMORY,
+	"corrupt_memory_share": CORRUPT_SHARE,
+
+	// QECMT (Quantum-Entangled Cross-Model Transfer)
+	"license":  LICENSE,
+	"transfer": TRANSFER,
+	"distill":  DISTILL,
+	"teacher":  TEACHER,
+	"student":  STUDENT,
+
+	// QERA (Quantum-Entangled Reasoning Attestation)
+	"reasoning_chain":        REASONING_CHAIN,
+	"reason":                 REASON,
+	"deduce":                 DEDUCE,
+	"induce":                 INDUCE,
+	"abduce":                 ABDUCE,
+	"verify_chain":           VERIFY_CHAIN,
+	"audit_reasoning":        AUDIT_REASONING,
+	"corrupt_reasoning_step": CORRUPT_REASONING_STEP,
+
+	// QECMA
+	"modality":           MODALITY,
+	"cross_modal_reason": CROSS_MODAL_REASON,
+	"tensor_input":       TENSOR_INPUT,
+	"text_input":         TEXT_INPUT,
+	"concept_input":      CONCEPT_INPUT,
+
+	// QEC-QEMP (Invention #13)
+	"qec_memory":       QEC_MEMORY,
+	"syndrome":         SYNDROME,
+	"correct":          CORRECT,
+	"verify_syndrome":  VERIFY_SYNDROME,
+	"qec_code":         QEC_CODE,
+	"surface_code":     SURFACE_CODE,
+	"qldpc_code":       QLDPC_CODE,
+	"corrupt_syndrome": CORRUPT_SYNDROME,
+
+	// Memory Consolidation (M5.6)
+	"consolidate": CONSOLIDATE,
+	"promote_to":  PROMOTE_TO,
+	"episodic":    EPISODIC,
+	"semantic":    SEMANTIC,
+
+	// CB-SRCPP (Invention #14)
+	"recall_token":  RECALL_TOKEN,
+	"grant":         GRANT,
+	"revoke":        REVOKE,
+	"scoped_access": SCOPED_ACCESS,
+	"recall_scoped": RECALL_SCOPED,
+
+	// Safe Tool Orchestration (M5.8)
+	"tool_register":  TOOL_REGISTER,
+	"tool_call":      TOOL_CALL,
+	"tool_audit":     TOOL_AUDIT,
+	"pre_condition":  PRE_CONDITION,
+	"post_condition": POST_CONDITION,
+
+	// TTPCR (Invention #15) & Calibrated Abstention
+	"certified_reason":  CERTIFIED_REASON,
+	"cert_kind":         CERT_KIND,
+	"witness":           WITNESS,
+	"abstain":           ABSTAIN,
+	"retry":             RETRY,
+	"escalate":          ESCALATE,
+	"refuse":            REFUSE,
+	"abstain_threshold": ABSTAIN_THRESHOLD,
+	"abstain_check":     ABSTAIN_CHECK,
+
+	// QESI (Invention #16: Quantum-Entangled Sandbox Isolation)
+	"sandbox":        SANDBOX,
+	"sandbox_create": SANDBOX_CREATE,
+	"sandbox_run":    SANDBOX_RUN,
+	"sandbox_verify": SANDBOX_VERIFY,
+	"quarantine":     QUARANTINE,
+
+	// Phase 6: DirectCompute GPU & AGKE (Invention #17)
+	"@gpu":               AT_GPU,
+	"gpu_matmul":         GPU_MATMUL,
+	"gpu_softmax":        GPU_SOFTMAX,
+	"gpu_layernorm":      GPU_LAYERNORM,
+	"agke_attest":        AGKE_ATTEST,
+	"agke_verify":        AGKE_VERIFY,
+	"corrupt_gpu_digest": CORRUPT_GPU_DIGEST,
+
 	// Cryptography
 	"sign":    SIGN,
 	"verify":  VERIFY,
@@ -634,47 +832,114 @@ var fallbacks = func() map[string]Type {
 		m[op.Fallback] = op.Type
 	}
 	kwFallbacks := map[string]Type{
-		`\dataset`:         DATASET,
-		`\load`:            LOAD,
-		`\normalize`:       NORMALIZE,
-		`\minmax`:          MINMAX,
-		`\zscore`:          ZSCORE,
-		`\shuffle`:         SHUFFLE,
-		`\batch`:           BATCH,
-		`\quasi`:           QUASI,
-		`\qneg`:            QUASI_NEG,
-		`\qzero`:           QUASI_ZERO,
-		`\qpos`:            QUASI_POS,
-		`\energy`:          ENERGY,
-		`\minimize`:        MINIMIZE,
-		`\tile`:            TILE,
-		`\infer`:           INFER,
-		`\assert`:          ASSERT,
-		`\propagate`:       PROPAGATE,
-		`\epistemic`:       EPISTEMIC,
-		`\unknown`:         UNKNOWN,
-		`\known`:           KNOWN,
-		`\memory`:          MEMORY,
-		`\graph`:           GRAPH,
-		`\procedure`:       PROCEDURE,
-		`\recall`:          RECALL,
-		`\remember`:        REMEMBER,
-		`\link`:            LINK,
-		`\node`:            NODE,
-		`\trace`:           TRACE,
-		`\execute`:         EXECUTE,
-		`\ethical`:         ETHICAL_BOUNDARY,
-		`\enforce`:         ENFORCE,
-		`\decoherence`:     DECOHERENCE,
-		`\hamiltonian`:     HAMILTONIAN,
-		`\rule`:            RULE,
-		`\vault`:           VAULT,
-		`\seal`:            SEAL,
-		`\unseal`:          UNSEAL,
-		`\wipe`:            WIPE,
-		`\provenance`:      PROVENANCE,
-		`\certify`:         CERTIFY,
-		`\verify_training`: VERIFY_TRAIN,
+		`\dataset`:              DATASET,
+		`\load`:                 LOAD,
+		`\normalize`:            NORMALIZE,
+		`\minmax`:               MINMAX,
+		`\zscore`:               ZSCORE,
+		`\shuffle`:              SHUFFLE,
+		`\batch`:                BATCH,
+		`\quasi`:                QUASI,
+		`\qneg`:                 QUASI_NEG,
+		`\qzero`:                QUASI_ZERO,
+		`\qpos`:                 QUASI_POS,
+		`\energy`:               ENERGY,
+		`\minimize`:             MINIMIZE,
+		`\tile`:                 TILE,
+		`\infer`:                INFER,
+		`\assert`:               ASSERT,
+		`\propagate`:            PROPAGATE,
+		`\epistemic`:            EPISTEMIC,
+		`\unknown`:              UNKNOWN,
+		`\known`:                KNOWN,
+		`\memory`:               MEMORY,
+		`\graph`:                GRAPH,
+		`\procedure`:            PROCEDURE,
+		`\recall`:               RECALL,
+		`\remember`:             REMEMBER,
+		`\link`:                 LINK,
+		`\node`:                 NODE,
+		`\trace`:                TRACE,
+		`\execute`:              EXECUTE,
+		`\ethical`:              ETHICAL_BOUNDARY,
+		`\enforce`:              ENFORCE,
+		`\decoherence`:          DECOHERENCE,
+		`\hamiltonian`:          HAMILTONIAN,
+		`\rule`:                 RULE,
+		`\vault`:                VAULT,
+		`\seal`:                 SEAL,
+		`\unseal`:               UNSEAL,
+		`\wipe`:                 WIPE,
+		`\provenance`:           PROVENANCE,
+		`\certify`:              CERTIFY,
+		`\verify_training`:      VERIFY_TRAIN,
+		`\memory_prov`:          MEMORY_PROV,
+		`\verify_memory`:        VERIFY_MEMORY,
+		`\audit_memory`:         AUDIT_MEMORY,
+		`\corrupt_share`:        CORRUPT_SHARE,
+		`\corrupt_memory_share`: CORRUPT_SHARE,
+		`\license`:              LICENSE,
+		`\transfer`:             TRANSFER,
+		`\distill`:              DISTILL,
+		`\teacher`:              TEACHER,
+		`\student`:              STUDENT,
+		`\reasoning_chain`:        REASONING_CHAIN,
+		`\reason`:                 REASON,
+		`\deduce`:                 DEDUCE,
+		`\induce`:                 INDUCE,
+		`\abduce`:                 ABDUCE,
+		`\verify_chain`:           VERIFY_CHAIN,
+		`\audit_reasoning`:        AUDIT_REASONING,
+		`\corrupt_reasoning_step`: CORRUPT_REASONING_STEP,
+		`\modality`:               MODALITY,
+		`\cross_modal_reason`:     CROSS_MODAL_REASON,
+		`\tensor_input`:           TENSOR_INPUT,
+		`\text_input`:             TEXT_INPUT,
+		`\concept_input`:          CONCEPT_INPUT,
+		`\qec_memory`:             QEC_MEMORY,
+		`\syndrome`:               SYNDROME,
+		`\correct`:                CORRECT,
+		`\verify_syndrome`:        VERIFY_SYNDROME,
+		`\qec_code`:               QEC_CODE,
+		`\surface_code`:           SURFACE_CODE,
+		`\qldpc_code`:             QLDPC_CODE,
+		`\corrupt_syndrome`:       CORRUPT_SYNDROME,
+		`\consolidate`:            CONSOLIDATE,
+		`\promote_to`:             PROMOTE_TO,
+		`\episodic`:               EPISODIC,
+		`\semantic`:               SEMANTIC,
+		`\recall_token`:           RECALL_TOKEN,
+		`\grant`:                  GRANT,
+		`\revoke`:                 REVOKE,
+		`\scoped_access`:          SCOPED_ACCESS,
+		`\recall_scoped`:          RECALL_SCOPED,
+		`\tool_register`:          TOOL_REGISTER,
+		`\tool_call`:              TOOL_CALL,
+		`\tool_audit`:             TOOL_AUDIT,
+		`\pre_condition`:          PRE_CONDITION,
+		`\post_condition`:         POST_CONDITION,
+		`\certified_reason`:       CERTIFIED_REASON,
+		`\cert_kind`:              CERT_KIND,
+		`\witness`:                WITNESS,
+		`\abstain`:                ABSTAIN,
+		`\retry`:                  RETRY,
+		`\escalate`:               ESCALATE,
+		`\refuse`:                 REFUSE,
+		`\abstain_threshold`:      ABSTAIN_THRESHOLD,
+		`\abstain_check`:          ABSTAIN_CHECK,
+		`\sandbox`:                SANDBOX,
+		`\sandbox_create`:         SANDBOX_CREATE,
+		`\sandbox_run`:            SANDBOX_RUN,
+		`\sandbox_verify`:         SANDBOX_VERIFY,
+		`\quarantine`:             QUARANTINE,
+		`\gpu`:                    AT_GPU,
+		`\at_gpu`:                 AT_GPU,
+		`\gpu_matmul`:             GPU_MATMUL,
+		`\gpu_softmax`:            GPU_SOFTMAX,
+		`\gpu_layernorm`:          GPU_LAYERNORM,
+		`\agke_attest`:            AGKE_ATTEST,
+		`\agke_verify`:            AGKE_VERIFY,
+		`\corrupt_gpu_digest`:     CORRUPT_GPU_DIGEST,
 	}
 	for k, v := range kwFallbacks {
 		m[k] = v

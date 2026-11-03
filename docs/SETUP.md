@@ -159,7 +159,7 @@ Qadav provides native cryptographic tamper simulation statements (such as `corru
 In standard builds without `--test`, any test-only statement produces a compile-time type-checker error.
 
 ### Runtime Modules
-Qadav features 24 modular zero-libc runtime objects compiled on demand: `rt`, `tensor`, `nn`, `quantum`, `prime`, `io`, `dataset`, `quasinary`, `cir`, `agi`, `sha3`, `merkle`, `lamport`, `selfcheck`, `qeeh`, `qemwv`, `mctp`, `qemp`, `qecmt`, `qera`, `qecma`, `qec` (integrating QEC-QEMP and memory consolidation), `scoped` (CB-SRCPP privacy-preserving access), and `tools` (safe tool orchestration).
+Qadav features 30 modular zero-libc runtime objects compiled on demand: `rt`, `tensor`, `nn`, `quantum`, `prime`, `io`, `dataset`, `quasinary`, `cir`, `agi`, `sha3`, `merkle`, `lamport`, `selfcheck`, `qeeh`, `qemwv`, `mctp`, `qemp`, `qecmt`, `qera`, `qecma`, `qec` (QEC-QEMP), `consolidate` (episodic-to-semantic memory consolidation), `scoped` (CB-SRCPP privacy-preserving access), `tools` (safe tool orchestration), `certificate` (TTPCR type-tagged proof-carrying reasoning certificates), `abstain` (calibrated epistemic uncertainty and abstention), `sandbox` (QESI quantum-entangled sandbox isolation), `gpu` (DirectCompute GPU acceleration), and `agke` (Invention #17: Attested GPU Kernel Execution).
 
 ### Standard Library Management:
 ```powershell

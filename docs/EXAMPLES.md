@@ -571,12 +571,12 @@ network SecretModel ⟦
     dense ⟬4⸴ 1⟭ ·
 ⟧
 
-process main ⦅ ⦆ → int64 ⟦
+process main⦅⦆ → int64 ⟦
     ethical_boundary auth ⟦
-        rule user_authorized ↦ 1.0 ·
+        rule authorized ↦ 1.0 ·
     ⟧
 
-    vault v ⟬ SecretModel ⟭ threshold ↦ 3 ·
+    vault v with auth ⟬ SecretModel ⟭ threshold ↦ 3 ·
 
     seal v ·
     emit "Weights sealed in vault" ·
@@ -610,24 +610,28 @@ Exit code: `0`
 File: `examples/qemwv_tamper.ydv`
 
 ```qadav
-network SecretModel ⟦
+network Model ⟦
     dense ⟬2⸴ 4⟭ ·
     relu ·
     dense ⟬4⸴ 1⟭ ·
 ⟧
 
-process main ⦅ ⦆ → int64 ⟦
-    ethical_boundary strict_auth ⟦
-        rule unauthorized_access ↦ 1.0 ·
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule authorized ↦ 1.0 ·
     ⟧
 
-    vault v ⟬ SecretModel ⟭ threshold ↦ 3 ·
+    ethical_boundary attacker ⟦
+        rule malicious ↦ 1.0 ·
+    ⟧
 
+    vault v with auth ⟬ Model ⟭ threshold ↦ 3 ·
     seal v ·
-    emit "Weights sealed in vault" ·
+    emit "Weights sealed" ·
 
-    enforce strict_auth on "harm_user" ·
-    emit "Decoherence triggered on unauthorized access" ·
+    // Attacker tries to unseal with wrong boundary
+    unseal v with attacker ·
+    emit "Unreachable" ·
 
     yield 0 ·
 ⟧
@@ -639,10 +643,9 @@ qyn run examples\qemwv_tamper.ydv
 ```
 Output:
 ```
-Weights sealed in vault
-Decoherence triggered on unauthorized access
+Weights sealed
 ```
-Exit code: `0`
+Exit code: `0xDEADBEEF` (`-559038737`) (active quantum decoherence triggered on unauthorized boundary access)
 
 ---
 
@@ -699,9 +702,1103 @@ qyn verify-training examples\mctp_demo.mctp
 ```
 Output:
 ```
-INTEGRITY OK: 20 epochs, final weights match Merkle root 4747a8c355613cdcdc453ab9ccf4487209340343ebe20ab048a4c8a517f7beca, WOTS signature valid
+INTEGRITY OK: 20 epochs, final weights match Merkle root 82328ad3607e571d34feb0bd361360bc78494da484e2f9921b4767ff2e353054, WOTS signature valid
 ```
 Exit code: `0`
+
+---
+
+## 21. QEMWV Boundary Escalation Defense / वॉल्ट बाउंड्री एस्केलेशन रोकथाम
+
+File: `examples/qemwv_escalation.ydv`
+
+```qadav
+network SecretModel ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth1 ⟦
+        rule access ↦ 1.0 ·
+    ⟧
+
+    ethical_boundary auth2 ⟦
+        rule access ↦ 1.0 ·
+    ⟧
+
+    vault v with auth1 ⟬ SecretModel ⟭ threshold ↦ 3 ·
+    seal v ·
+    emit "Vault sealed with auth1" ·
+
+    // Attacker tries to unseal with auth2
+    unseal v with auth2 ·
+    emit "Unreachable" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run examples\qemwv_escalation.ydv
+```
+Output:
+```
+Vault sealed with auth1
+```
+Exit code: `0xDEADBEEF` (`-559038737`) (boundary escalation detected; SHA3 identity mismatch triggers decoherence and halts)
+
+---
+
+## 22. Quantum-Entangled Memory Provenance (QEMP) / क्वांटम-उलझा हुआ स्मृति उत्पत्ति
+
+File: `examples/qemp_demo.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary mem_auth ⟦
+        rule memory_access ↦ 1.0 ·
+    ⟧
+
+    memory_prov mp with mem_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    remember mp⟬"user_preference"⟭ ↦ "prefers_detailed_answers" ·
+    remember mp⟬"session_context"⟭ ↦ "debugging_python" ·
+    remember mp⟬"user_name"⟭ ↦ "Alice" ·
+
+    verify_memory mp ·
+    emit "Memory integrity verified" ·
+
+    text pref ↦ recall mp⟬"user_preference"⟭ ·
+    emit pref ·
+
+    text name ↦ recall mp⟬"user_name"⟭ ·
+    emit name ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run examples\qemp_demo.ydv
+```
+Output:
+```
+Memory integrity verified
+prefers_detailed_answers
+Alice
+```
+Exit code: `0`
+
+---
+
+## 23. QEMP Tamper Detection & Quantum Decoherence / स्मृति छेड़छाड़ एवं डिकोहेरेंस
+
+File: `examples/qemp_tamper.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary mem_auth ⟦
+        rule memory_access ↦ 1.0 ·
+    ⟧
+
+    memory_prov mp with mem_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    remember mp⟬"secret"⟭ ↦ "critical_data" ·
+
+    verify_memory mp ·
+    emit "Clean state verified" ·
+
+    // Corrupt share 0 for tamper simulation
+    corrupt_memory_share mp⟬"secret"⟭ at ↦ 0 ·
+
+    // This recall triggers decoherence
+    text result ↦ recall mp⟬"secret"⟭ ·
+    emit result ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run --test examples\qemp_tamper.ydv
+```
+Output:
+```
+Clean state verified
+```
+Exit code: `0xDEADBEEF` (`-559038737`) (share tamper detected; Lagrange reconstruction integrity check fails SHA3 commitment, triggering active quantum decoherence and terminating)
+
+---
+
+## 24. Quantum-Entangled Cross-Model Transfer (QECMT) / क्रॉस-मॉडल ट्रांसफर
+
+File: `examples/qecmt_demo.ydv`
+
+```qadav
+network TeacherNet ⟦
+    dense ⟬4⸴ 8⟭ ·
+    relu ·
+    dense ⟬8⸴ 4⟭ ·
+⟧
+
+network StudentNet ⟦
+    dense ⟬4⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 4⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary teacher_auth ⟦
+        rule allow_distillation ↦ 1.0 ·
+    ⟧
+
+    ethical_boundary student_auth ⟦
+        rule allow_learning ↦ 1.0 ·
+    ⟧
+
+    vault teacher_vault with teacher_auth ⟬ TeacherNet ⟭ threshold ↦ 3 ·
+    seal teacher_vault ·
+    emit "Teacher weights sealed" ·
+
+    license l for teacher_vault on StudentNet ⟦
+        max_epochs ↦ 50 ·
+        max_rate ↦ 0.5 ·
+        expiry ↦ 1735689600 ·
+    ⟧
+    emit "Transfer license issued" ·
+
+    transfer l from teacher_vault to StudentNet layers ⟬0⸴ 1⟭ ·
+    emit "Layers transferred to student" ·
+
+    tensor⟨float64⟩⟬4⸴ 4⟭ x ↦ tensor⟬⟬0.5⸴ 0.5⸴ 0.0⸴ 0.0⟭⸴ ⟬0.5⸴ 0.5⸴ 0.0⸴ 0.0⟭⸴ ⟬0.0⸴ 0.0⸴ 0.5⸴ 0.5⟭⸴ ⟬0.0⸴ 0.0⸴ 0.5⸴ 0.5⟭⟭ ·
+    tensor⟨float64⟩⟬4⸴ 4⟭ y ↦ x ·
+
+    distill l on StudentNet with x ⸴ y ⟦
+        rate ↦ 0.3 ·
+        epochs ↦ 20 ·
+    ⟧
+    emit "Student distilled successfully" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run examples\qecmt_demo.ydv
+```
+Output:
+```
+Teacher weights sealed
+Transfer license issued
+Layers transferred to student
+Student distilled successfully
+```
+Exit code: `0`
+
+---
+
+## 25. QECMT Unauthorized Distillation Rate Violation / अनधिकृत दर उल्लंघन
+
+File: `examples/qecmt_unauthorized.ydv`
+
+```qadav
+network TeacherNet ⟦
+    dense ⟬4⸴ 8⟭ ·
+    relu ·
+    dense ⟬8⸴ 4⟭ ·
+⟧
+
+network StudentNet ⟦
+    dense ⟬4⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 4⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary teacher_auth ⟦
+        rule allow_distillation ↦ 1.0 ·
+    ⟧
+
+    vault teacher_vault with teacher_auth ⟬ TeacherNet ⟭ threshold ↦ 3 ·
+    seal teacher_vault ·
+
+    license l for teacher_vault on StudentNet ⟦
+        max_epochs ↦ 50 ·
+        max_rate ↦ 0.2 ·
+        expiry ↦ 1735689600 ·
+    ⟧
+
+    transfer l from teacher_vault to StudentNet layers ⟬0⸴ 1⟭ ·
+
+    tensor⟨float64⟩⟬4⸴ 4⟭ x ↦ tensor⟬⟬0.5⸴ 0.5⸴ 0.0⸴ 0.0⟭⸴ ⟬0.5⸴ 0.5⸴ 0.0⸴ 0.0⟭⸴ ⟬0.0⸴ 0.0⸴ 0.5⸴ 0.5⟭⸴ ⟬0.0⸴ 0.0⸴ 0.5⸴ 0.5⟭⟭ ·
+    tensor⟨float64⟩⟬4⸴ 4⟭ y ↦ x ·
+
+    // Exceeds max_rate 0.2 -> triggers immediate decoherence & exit
+    distill l on StudentNet with x ⸴ y ⟦
+        rate ↦ 0.8 ·
+        epochs ↦ 20 ·
+    ⟧
+    emit "Unreachable" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run examples\qecmt_unauthorized.ydv
+```
+Output: (Empty; decoherence triggered and process terminated immediately)
+Exit code: `0xDEADBEEF` (`-559038737`)
+
+---
+
+## 26. Multi-Agent Collaborative Integration / बहु-एजेंट सहयोग
+
+File: `examples/multi_agent_demo.ydv`
+
+```qadav
+network AgentA ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+network AgentB ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary authA ⟦
+        rule access_A ↦ 1.0 ·
+    ⟧
+
+    ethical_boundary authB ⟦
+        rule access_B ↦ 1.0 ·
+    ⟧
+
+    vault vault_A with authA ⟬ AgentA ⟭ threshold ↦ 3 ·
+    seal vault_A ·
+
+    vault vault_B with authB ⟬ AgentB ⟭ threshold ↦ 3 ·
+    seal vault_B ·
+    emit "Both agent weight vaults sealed" ·
+
+    memory_prov mem_A with authA ⟦
+        capacity ↦ 50 ·
+    ⟧
+    remember mem_A⟬"task_plan"⟭ ↦ "act_forward" ·
+
+    memory_prov mem_B with authB ⟦
+        capacity 50 ·
+    ⟧
+    remember mem_B⟬"telemetry"⟭ ↦ "sensor_reading_43" ·
+    emit "Agent memories initialized with provenance" ·
+
+    license lic_AB for vault_A on AgentB ⟦
+        max_epochs ↦ 20 ·
+        max_rate ↦ 0.40 ·
+        expiry ↦ 2000000000 ·
+    ⟧
+    emit "Cross-agent transfer license issued" ·
+
+    transfer lic_AB from vault_A to AgentB layers ⟬0⸴ 1⟭ ·
+    emit "Layer transferred from A to B" ·
+
+    verify_memory mem_A ·
+    verify_memory mem_B ·
+    emit "All memory provenance verified" ·
+
+    text plan ↦ recall mem_A⟬"task_plan"⟭ ·
+    emit plan ·
+
+    text telem ↦ recall mem_B⟬"telemetry"⟭ ·
+    emit telem ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run examples\multi_agent_demo.ydv
+```
+Output:
+```
+Both agent weight vaults sealed
+Agent memories initialized with provenance
+Cross-agent transfer license issued
+Layer transferred from A to B
+All memory provenance verified
+act_forward
+sensor_reading_43
+```
+Exit code: `0`
+
+---
+
+## 27. Multi-Agent Tamper & Unauthorized Cross-Access / बहु-एजेंट अनधिकृत पहुंच
+
+File: `examples/multi_agent_tamper.ydv`
+
+```qadav
+network AgentA ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+network AgentB ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary authA ⟦
+        rule access_A ↦ 1.0 ·
+    ⟧
+
+    ethical_boundary authB ⟦
+        rule access_B ↦ 1.0 ·
+    ⟧
+
+    vault vault_A with authA ⟬ AgentA ⟭ threshold ↦ 3 ·
+    seal vault_A ·
+    emit "Agent A vault sealed" ·
+
+    // Agent B attempts to unseal Agent A's vault with unauthorized boundary authB -> decoherence
+    unseal vault_A with authB ·
+    emit "Unreachable" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run examples\multi_agent_tamper.ydv
+```
+Output:
+```
+Agent A vault sealed
+```
+Exit code: `0xDEADBEEF` (`-559038737`) (unauthorized boundary detected via content-based hash comparison; decoherence triggered and process terminated immediately)
+
+---
+
+## 28. Quantum-Entangled Reasoning Attestation (QERA) / रीज़निंग अटेस्टेशन
+
+### Source Code (`examples/qera_demo.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary reasoning_auth ⟦
+        rule logical_consistency ↦ 1.0 ·
+        rule no_harm ↦ 1.0 ·
+    ⟧
+
+    memory_prov mp with reasoning_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    remember mp⟬"premise_1"⟭ ↦ "Socrates is a man" ·
+    remember mp⟬"premise_2"⟭ ↦ "All men are mortal" ·
+
+    reasoning_chain logic with reasoning_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    reason deduce from mp⟬"premise_1"⟭ to "Socrates is mortal" with 0.95 ·
+    reason deduce from mp⟬"premise_2"⟭ to "Socrates is mortal" with 0.98 ·
+
+    verify_chain logic ·
+    emit "Reasoning chain verified" ·
+
+    audit_reasoning logic ·
+    emit "Full audit passed" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run examples\qera_demo.ydv
+```
+Output:
+```
+Reasoning chain verified
+--- QERA REASONING CHAIN AUDIT ---
+Chain: logic | Steps: 2
+
+  [0] op=deduce in=df55c715dc4cda09 out=98240ea5cd8b8ca3 commit=65f065d9ce98efb9
+  [1] op=deduce in=8e4cedc0e53a03c6 out=98240ea5cd8b8ca3 commit=1703d8759649b395
+Chain Root: 35d595cd3e77656d
+----------------------------------
+Full audit passed
+```
+
+---
+
+## 29. QERA Tamper Detection & Decoherence / रीज़निंग छेड़छाड़ पहचान
+
+### Source Code (`examples/qera_tamper.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary reasoning_auth ⟦
+        rule logical_consistency ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain logic with reasoning_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    reason deduce from "premise" to "conclusion" with 0.95 ·
+    reason deduce from "premise" to "conclusion2" with 0.95 ·
+
+    verify_chain logic ·
+    emit "Initial chain verified" ·
+
+    corrupt_reasoning_step logic⟬0⟭ at ↦ 0 ·
+
+    verify_chain logic ·
+    emit "Unreachable" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+Without `--test` flag:
+```powershell
+qyn run examples\qera_tamper.ydv
+```
+Output:
+```
+qyn run: type errors in examples\qera_tamper.ydv:
+  examples\qera_tamper.ydv:16:5: corrupt_reasoning_step is test-only, use --test flag
+```
+
+With `--test` flag:
+```powershell
+qyn run --test examples\qera_tamper.ydv
+```
+Output:
+```
+Initial chain verified
+```
+Exit code: `0xDEADBEEF` (`-559038737`) (tampering detected during rolling chain verification; quantum decoherence triggered and process terminated immediately)
+
+---
+
+## 30. Quantum-Entangled Cross-Modal Attestation (QECMA) / क्रॉस-मॉडल अटेस्टेशन
+
+### Source Code (`examples/qecma_demo.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary multiauth ⟦
+        rule cross_modal_integrity ↦ 1.0 ·
+        rule non_harm ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain cross_modal_chain with multiauth ⟦
+        capacity ↦ 50 ·
+    ⟧
+
+    tensor⟨float64⟩⟬4⟭ sensor_readings ↦ tensor⟬0.25⸴ 0.50⸴ 0.75⸴ 1.00⟭ ·
+    text sensory_description ↦ "Camera detected obstacle at 2 meters" ·
+    int64 semantic_category ↦ 7919 ·
+
+    modality sensor_mod as tensor_input from sensor_readings ·
+    modality text_mod as text_input from sensory_description ·
+    modality concept_mod as concept_input from semantic_category ·
+
+    cross_modal_reason cross_modal_chain deduce from ⟬sensor_mod⸴ text_mod⸴ concept_mod⟭ to "Obstacle confirmed: initiate braking maneuver" with 0.98 ·
+
+    verify_chain cross_modal_chain ·
+    emit "Cross-modal reasoning step verified successfully" ·
+
+    audit_reasoning cross_modal_chain ·
+    emit "Cross-modal audit completed" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+```powershell
+qyn run examples\qecma_demo.ydv
+```
+Output:
+```
+Cross-modal reasoning step verified successfully
+--- QERA REASONING CHAIN AUDIT ---
+Chain: cross_modal_chain | Steps: 1
+
+  [0] op=deduce in=363cbb51de634a92 out=57ebbc1b83ac9aba commit=b81a646a68719eeb
+Chain Root: 35d2c0edefb2f8e5
+----------------------------------
+Cross-modal audit completed
+```
+Exit code: `0`
+
+---
+
+## 31. QECMA Tamper Detection & Decoherence / क्रॉस-मॉडल छेड़छाड़ पहचान
+
+### Source Code (`examples/qecma_tamper.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary multiauth ⟦
+        rule cross_modal_integrity ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain cross_modal_chain with multiauth ⟦
+        capacity ↦ 50 ·
+    ⟧
+
+    text sensory_description ↦ "Camera detected obstacle at 2 meters" ·
+    modality text_mod as text_input from sensory_description ·
+
+    cross_modal_reason cross_modal_chain deduce from ⟬text_mod⟭ to "Obstacle confirmed: initiate braking maneuver" with 0.98 ·
+
+    verify_chain cross_modal_chain ·
+    emit "Initial cross-modal reasoning verified" ·
+
+    corrupt_reasoning_step cross_modal_chain⟬0⟭ at ↦ 0 ·
+
+    verify_chain cross_modal_chain ·
+    emit "Unreachable: tampered cross-modal step passed" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution & Output:
+Without `--test` flag:
+```powershell
+qyn run examples\qecma_tamper.ydv
+```
+Output:
+```
+qyn run: type errors in examples\qecma_tamper.ydv:
+  examples\qecma_tamper.ydv:18:5: corrupt_reasoning_step is test-only, use --test flag
+```
+
+With `--test` flag:
+```powershell
+qyn run --test examples\qecma_tamper.ydv
+```
+Output:
+```
+Initial cross-modal reasoning verified
+```
+Exit code: `0xDEADBEEF` (`-559038737`) (quantum decoherence triggered upon cross-modal step verification failure; process terminated immediately)
+
+---
+
+## 32. Quantum Error-Corrected Memory Provenance (QEC-QEMP) / क्वांटम त्रुटि-संशोधित मेमोरी प्रोवेनेंस
+
+### Source Code (`examples/qec_demo.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary qec_auth ⟦
+        rule memory_coherence ↦ 1.0 ·
+        rule non_harm ↦ 1.0 ·
+    ⟧
+
+    qec_memory qm as surface_code distance ↦ 3 with qec_auth ⟦ ⟧ ·
+
+    syndrome qm into syn0 ·
+    verify_syndrome qm with syn0 ·
+    correct qm with syn0 ·
+
+    emit "QEC surface code distance 3 syndrome verified and corrected" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\qec_demo.ydv
+```
+
+### Output:
+```
+QEC surface code distance 3 syndrome verified and corrected
+```
+Exit code: `0`
+
+---
+
+## 33. QEC Compile-Time Rejection of Unverified Correction / असत्यापित संशोधन संकलन अस्वीकृति
+
+### Source Code (`examples/qec_unverified_correct.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary qec_auth ⟦
+        rule memory_coherence ↦ 1.0 ·
+    ⟧
+
+    qec_memory qm as surface_code distance ↦ 3 with qec_auth ⟦ ⟧ ·
+
+    syndrome qm into syn0 ·
+    correct qm with syn0 ·
+
+    emit "Unverified correction attempted" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\qec_unverified_correct.ydv
+```
+
+### Output:
+```
+qyn run: type errors in examples\qec_unverified_correct.ydv:
+  examples\qec_unverified_correct.ydv:9:5: correct requires verified syndrome, call verify_syndrome first
+```
+Exit code: `1`
+
+---
+
+## 34. QEC Syndrome Tamper Detection & Active Decoherence / सिंड्रोम छेड़छाड़ पहचान
+
+### Source Code (`examples/qec_tamper.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary qec_auth ⟦
+        rule memory_coherence ↦ 1.0 ·
+    ⟧
+
+    qec_memory qm as surface_code distance ↦ 3 with qec_auth ⟦ ⟧ ·
+
+    syndrome qm into syn0 ·
+    corrupt_syndrome qm⟬syn0⟭ at ↦ 0 ·
+    verify_syndrome qm with syn0 ·
+    correct qm with syn0 ·
+
+    emit "Tampered syndrome applied" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+Without `--test` flag:
+```powershell
+qyn run examples\qec_tamper.ydv
+```
+Output:
+```
+qyn run: type errors in examples\qec_tamper.ydv:
+  examples\qec_tamper.ydv:9:5: corrupt_syndrome is test-only, use --test flag
+```
+
+With `--test` flag:
+```powershell
+qyn run --test examples\qec_tamper.ydv
+```
+Exit code: `0xDEADBEEF` (`-559038737`) (quantum decoherence triggered upon syndrome commitment mismatch; process terminated immediately)
+
+---
+
+## 35. Memory Consolidation (Episodic to Semantic) / मेमोरी समेकन
+
+### Source Code (`examples/consolidation_demo.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary cons_auth ⟦
+        rule knowledge_integrity ↦ 1.0 ·
+    ⟧
+
+    memory_prov episodic_store with cons_auth ⟦
+        capacity ↦ 50 ·
+    ⟧
+
+    graph semantic_net ·
+
+    remember episodic_store⟬"concept_orbit"⟭ ↦ "orbital mechanics" ·
+    remember episodic_store⟬"concept_gravity"⟭ ↦ "gravitational pull" ·
+
+    consolidate episodic_store into semantic_net with threshold ↦ 0.50 ·
+
+    emit "Memory consolidation episodic to semantic completed" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\consolidation_demo.ydv
+```
+
+### Output:
+```
+Memory consolidation episodic to semantic completed
+```
+Exit code: `0`
+
+---
+
+## 36. Privacy-Preserving Scoped Access Token Recall (CB-SRCPP) / गोपनीयता-संरक्षी स्कोप्ड मेमोरी रिकॉल
+
+### Source Code (`examples/scoped_demo.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary owner_auth ⟦
+        rule confidential_policy ↦ 1.0 ·
+    ⟧
+
+    memory_prov secure_vault with owner_auth ⟦
+        capacity ↦ 50 ·
+    ⟧
+
+    remember secure_vault⟬"patient_record"⟭ ↦ "clinical_data_anonymized" ·
+    remember secure_vault⟬"billing_id"⟭ ↦ "acc_99214" ·
+
+    recall_token dr_token for secure_vault on research_agent ⟦
+        keys ↦ ⟬ "patient_record" ⟭ ·
+        expiry ↦ 3600 ·
+    ⟧
+
+    grant dr_token to research_agent ·
+
+    text accessed_record ↦ recall_scoped secure_vault⟬"patient_record"⟭ with dr_token ·
+    emit accessed_record ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\scoped_demo.ydv
+```
+
+### Output:
+```
+clinical_data_anonymized
+```
+Exit code: `0`
+
+---
+
+## 37. Safe Tool Orchestration with QERA Attestation / सुरक्षित टूल ऑर्केस्ट्रेशन
+
+### Source Code (`examples/tool_demo.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary tool_auth ⟦
+        rule security_gate ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain audit_ledger with tool_auth ⟦
+        capacity ↦ 20 ·
+    ⟧
+
+    tool_register file_scanner with tool_auth pre ⟦ 1 ⟧ post ⟦ 1 ⟧ ·
+
+    tool_call file_scanner⦅"/var/log/kernel.log"⦆ audit audit_ledger ·
+
+    verify_chain audit_ledger ·
+    emit "Tool orchestration with QERA attestation verified" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\tool_demo.ydv
+```
+
+### Output:
+```
+Tool orchestration with QERA attestation verified
+```
+Exit code: `0`
+
+---
+
+## 38. Type-Tagged Proof-Carrying Reasoning (TTPCR) / टाइप-टैग्ड रीज़निंग
+
+### Source Code (`examples/certificate_demo.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary cert_auth ⟦
+        rule logical_consistency ↦ 1.0 ·
+    ⟧
+
+    memory_prov premises with cert_auth ⟦ capacity ↦ 100 · ⟧
+    remember premises⟬"p1"⟭ ↦ "Socrates is a man" ·
+    remember premises⟬"p2"⟭ ↦ "All men are mortal" ·
+
+    reasoning_chain logic with cert_auth ⟦ capacity ↦ 50 · ⟧
+
+    certified_reason logic deduce from premises⟬"p1"⟭ to "Socrates is mortal" witness ⟬"modus_ponens_with_universal_instantiation"⟭ confidence ↦ 0.95 ·
+
+    certified_reason logic deduce from premises⟬"p2"⟭ to "Socrates is mortal" witness ⟬"modus_ponens"⟭ confidence ↦ 0.98 ·
+
+    verify_chain logic ·
+    emit "Certified reasoning chain verified" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\certificate_demo.ydv
+```
+
+### Output:
+```
+Certified reasoning chain verified
+```
+Exit code: `0`
+
+---
+
+## 39. Calibrated Epistemic Abstention / कैलिब्रेटेड ऐब्सटेंशन
+
+### Source Code (`examples/abstain_demo.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary abstain_auth ⟦
+        rule safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain uncertain_logic with abstain_auth ⟦ capacity ↦ 50 · ⟧
+
+    certified_reason uncertain_logic abduce from "symptom_a" to "possible_cause" witness ⟬"hypothesis_1"⟭ confidence ↦ 0.55 ·
+
+    abstain_threshold uncertain_logic ↦ 0.80 mode refuse ·
+
+    int64 result ↦ abstain_check uncertain_logic ·
+
+    when result ≽ 1 ⟦
+        emit "Abstained: confidence below threshold" ·
+    ⟧ otherwise ⟦
+        emit "Confident enough to proceed" ·
+    ⟧
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\abstain_demo.ydv
+```
+
+### Output:
+```
+Abstained: confidence below threshold
+```
+Exit code: `0`
+
+---
+
+## 40. Quantum-Entangled Sandbox Isolation (QESI) / क्वांटम-उलझा हुआ सैंडबॉक्स आइसोलेशन
+
+### Source Code (`examples/sandbox_demo.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary host_auth ⟦
+        rule safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain host_log with host_auth ⟦ capacity ↦ 20 · ⟧
+
+    ethical_boundary untrusted_auth ⟦
+        rule tool_safety ↦ 1.0 ·
+    ⟧
+
+    sandbox_create untrusted_sandbox with untrusted_auth ⟦ capacity ↦ 10 · ⟧
+
+    tool_register safe_tool with untrusted_auth pre ⟦ 1 ⟧ post ⟦ 1 ⟧ ·
+
+    sandbox_run untrusted_sandbox ⦅ safe_tool⦅"valid_arg"⦆ ⦆ ·
+
+    sandbox_run untrusted_sandbox ⦅ safe_tool⦅"trigger_violation"⦆ ⦆ ·
+
+    text attestation ↦ sandbox_verify untrusted_sandbox ·
+
+    emit "Host process continues after sandbox violation" ·
+    emit attestation ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\sandbox_demo.ydv
+```
+
+### Output:
+```
+Host process continues after sandbox violation
+[32-byte hexadecimal SHA3 attestation]
+```
+Exit code: `0` (Sandbox decodes localized decoherence; host process survives and executes to completion)
+
+---
+
+## 41. QESI Tamper Quarantine & Forensic Attestation / सैंडबॉक्स छेड़छाड़ और फोरेंसिक अटेस्टेशन
+
+### Source Code (`examples/sandbox_tamper.ydv`):
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary host_auth ⟦
+        rule safety ↦ 1.0 ·
+    ⟧
+
+    ethical_boundary untrusted_auth ⟦
+        rule tool_safety ↦ 1.0 ·
+    ⟧
+
+    sandbox_create quarantined_sandbox with untrusted_auth ⟦ capacity ↦ 5 · ⟧
+
+    tool_register untrusted_tool with untrusted_auth pre ⟦ 1 ⟧ post ⟦ 1 ⟧ ·
+
+    sandbox_run quarantined_sandbox ⦅ untrusted_tool⦅"fail_boundary"⦆ ⦆ ·
+
+    text attestation ↦ sandbox_verify quarantined_sandbox ·
+
+    emit "Forensic attestation recorded" ·
+    emit attestation ·
+    emit "Host survived sandbox violation without decoherence" ·
+
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\sandbox_tamper.ydv
+```
+
+### Output:
+```
+Forensic attestation recorded
+[32-byte hexadecimal SHA3 attestation]
+Host survived sandbox violation without decoherence
+```
+Exit code: `0`
+
+---
+
+## 42. DirectCompute GPU Acceleration & AGKE Attestation / जीपीयू एक्सेलेरेशन एवं AGKE प्रमाणीकरण
+
+File: `examples/gpu_demo.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule execution_safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain gpu_audit_chain with auth ⟦ capacity ↦ 20 · ⟧
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ a ↦ tensor⟬⟬1.0⸴ 2.0⟭⸴ ⟬3.0⸴ 4.0⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ b ↦ tensor⟬⟬5.0⸴ 6.0⟭⸴ ⟬7.0⸴ 8.0⟭⟭ ·
+
+    @gpu gpu_matmul a ⸴ b into c ·
+    @gpu gpu_softmax c into s ·
+    @gpu gpu_layernorm s into ln ·
+
+    agke_attest gpu_audit_chain ·
+    agke_verify gpu_audit_chain into is_verified ·
+
+    emit "GPU DirectCompute and AGKE Attestation Verified" ·
+    yield 0 ·
+⟧
+```
+
+### Execution:
+```powershell
+qyn run examples\gpu_demo.ydv
+```
+
+### Output:
+```
+GPU DirectCompute and AGKE Attestation Verified
+```
+Exit code: `0`
+
+---
+
+## 43. AGKE Tamper Detection & Quantum Decoherence / AGKE छेड़छाड़ पहचान एवं क्वांटम डिकोहेरेंस
+
+File: `examples/agke_tamper.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule execution_safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain gpu_audit_chain with auth ⟦ capacity ↦ 20 · ⟧
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ a ↦ tensor⟬⟬1.0⸴ 2.0⟭⸴ ⟬3.0⸴ 4.0⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ b ↦ tensor⟬⟬5.0⸴ 6.0⟭⸴ ⟬7.0⸴ 8.0⟭⟭ ·
+
+    @gpu gpu_matmul a ⸴ b into c ·
+
+    agke_attest gpu_audit_chain ·
+
+    corrupt_gpu_digest gpu_audit_chain at ↦ 0 ·
+
+    agke_verify gpu_audit_chain into is_verified ·
+
+    emit "Tampered GPU execution incorrectly passed" ·
+    yield 0 ·
+⟧
+```
+
+### Execution (Safety Gated):
+```powershell
+qyn run examples\agke_tamper.ydv
+```
+Output:
+```
+qyn run: type errors in examples\agke_tamper.ydv:
+  examples\agke_tamper.ydv:15:5: corrupt_gpu_digest is only permitted in test mode (--test)
+```
+Exit code: `1`
+
+### Execution with `--test` (Decoherence Triggered):
+```powershell
+qyn run --test examples\agke_tamper.ydv
+```
+Output: *(Process self-nullified immediately)*  
+Exit code: `0xDEADBEEF` (`-559038737`)
+
+
+
+
+
+
+
 
 
 

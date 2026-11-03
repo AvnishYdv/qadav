@@ -129,6 +129,31 @@ func (p *Parser) Parse() *ast.Program {
 			if decl != nil {
 				prog.Decls = append(prog.Decls, decl)
 			}
+		case token.MEMORY_PROV:
+			decl := p.parseMemoryProvenanceDecl()
+			if decl != nil {
+				prog.Decls = append(prog.Decls, decl)
+			}
+		case token.LICENSE:
+			decl := p.parseLicenseDecl()
+			if decl != nil {
+				prog.Decls = append(prog.Decls, decl)
+			}
+		case token.REASONING_CHAIN:
+			decl := p.parseReasoningChainDecl()
+			if decl != nil {
+				prog.Decls = append(prog.Decls, decl)
+			}
+		case token.RECALL_TOKEN:
+			decl := p.parseRecallTokenDecl()
+			if decl != nil {
+				prog.Decls = append(prog.Decls, decl)
+			}
+		case token.TOOL_REGISTER:
+			decl := p.parseToolRegisterDecl()
+			if decl != nil {
+				prog.Decls = append(prog.Decls, decl)
+			}
 		default:
 			p.errorf(p.curPos(), "unexpected top-level token: %s (%q)", p.current.Type, p.current.Literal)
 			p.nextToken()
@@ -458,6 +483,82 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseProvenanceDecl()
 	case p.current.Type == token.CERTIFY:
 		return p.parseCertifyStmt()
+	case p.current.Type == token.MEMORY_PROV:
+		return p.parseMemoryProvenanceDecl()
+	case p.current.Type == token.VERIFY_MEMORY:
+		return p.parseVerifyMemoryStmt()
+	case p.current.Type == token.AUDIT_MEMORY:
+		return p.parseAuditMemoryStmt()
+	case p.current.Type == token.CORRUPT_SHARE:
+		return p.parseCorruptShareStmt()
+	case p.current.Type == token.LICENSE:
+		return p.parseLicenseDecl()
+	case p.current.Type == token.TRANSFER:
+		return p.parseTransferStmt()
+	case p.current.Type == token.DISTILL:
+		return p.parseDistillStmt()
+	case p.current.Type == token.REASONING_CHAIN:
+		return p.parseReasoningChainDecl()
+	case p.current.Type == token.REASON:
+		return p.parseReasonStepStmt()
+	case p.current.Type == token.VERIFY_CHAIN:
+		return p.parseVerifyChainStmt()
+	case p.current.Type == token.AUDIT_REASONING:
+		return p.parseAuditReasoningStmt()
+	case p.current.Type == token.CORRUPT_REASONING_STEP:
+		return p.parseCorruptReasoningStepStmt()
+	case p.current.Type == token.MODALITY:
+		return p.parseModalityDecl()
+	case p.current.Type == token.CROSS_MODAL_REASON:
+		return p.parseCrossModalReasonStmt()
+	case p.current.Type == token.QEC_MEMORY:
+		return p.parseQECMemoryDecl()
+	case p.current.Type == token.SYNDROME:
+		return p.parseSyndromeStmt()
+	case p.current.Type == token.VERIFY_SYNDROME:
+		return p.parseVerifySyndromeStmt()
+	case p.current.Type == token.CORRECT:
+		return p.parseCorrectStmt()
+	case p.current.Type == token.CORRUPT_SYNDROME:
+		return p.parseCorruptSyndromeStmt()
+	case p.current.Type == token.CONSOLIDATE:
+		return p.parseConsolidateStmt()
+	case p.current.Type == token.RECALL_TOKEN:
+		return p.parseRecallTokenDecl()
+	case p.current.Type == token.GRANT:
+		return p.parseGrantStmt()
+	case p.current.Type == token.REVOKE:
+		return p.parseRevokeStmt()
+	case p.current.Type == token.TOOL_REGISTER:
+		return p.parseToolRegisterDecl()
+	case p.current.Type == token.TOOL_CALL:
+		return p.parseToolCallStmt(nil)
+	case p.current.Type == token.CERTIFIED_REASON:
+		return p.parseCertifiedReasonStmt()
+	case p.current.Type == token.ABSTAIN_THRESHOLD:
+		return p.parseAbstainThresholdDecl()
+	case p.current.Type == token.ABSTAIN_CHECK:
+		return p.parseAbstainCheckStmt()
+	case p.current.Type == token.SANDBOX_CREATE:
+		return p.parseSandboxCreateStmt()
+	case p.current.Type == token.SANDBOX_RUN:
+		return p.parseSandboxRunStmt()
+	case p.current.Type == token.SANDBOX_VERIFY:
+		return p.parseSandboxVerifyStmt()
+	case p.current.Type == token.AT_GPU:
+		return p.parseGPUAnnotatedStmt()
+	case p.current.Type == token.GPU_MATMUL:
+		return p.parseGPUMatmulStmt(false)
+	case p.current.Type == token.GPU_SOFTMAX:
+		return p.parseGPUSoftmaxStmt(false)
+	case p.current.Type == token.GPU_LAYERNORM:
+		return p.parseGPULayernormStmt(false)
+	case p.current.Type == token.AGKE_ATTEST:
+		return p.parseAGKEAttestStmt()
+	case p.current.Type == token.AGKE_VERIFY:
+		return p.parseAGKEVerifyStmt()
+	case p.current.Type == token.CORRUPT_GPU_DIGEST:
+		return p.parseCorruptGPUDigestStmt()
 	case isTypeToken(p.current.Type):
 		return p.parseBindStmt()
 	case p.current.Type == token.EMIT:
@@ -868,7 +969,7 @@ func (p *Parser) parseExpression(precedence int) ast.Expr {
 func (p *Parser) parsePrefix() ast.Expr {
 	pos := p.curPos()
 	switch p.current.Type {
-	case token.IDENT, token.AFFIRM, token.DENY, token.TOP, token.BOTTOM:
+	case token.IDENT, token.AFFIRM, token.DENY, token.TOP, token.BOTTOM, token.LOGIC:
 		lit := p.current.Literal
 		p.nextToken()
 		return &ast.Ident{Pos_: pos, Name: lit}
@@ -947,6 +1048,119 @@ func (p *Parser) parsePrefix() ast.Expr {
 		key := p.parseExpression(LOWEST)
 		p.expect(closeTok)
 		return &ast.RecallExpr{Pos_: pos, Memory: &ast.Ident{Pos_: pos, Name: memName}, Key: key}
+	case token.RECALL_SCOPED:
+		p.nextToken()
+		memName := p.expect(token.IDENT).Literal
+		closeTok := token.INDEX_CLOSE
+		if p.current.Type == token.GROUP_OPEN {
+			closeTok = token.GROUP_CLOSE
+			p.nextToken()
+		} else {
+			p.expect(token.INDEX_OPEN)
+		}
+		key := p.parseExpression(LOWEST)
+		p.expect(closeTok)
+		if p.current.Type == token.WITH || (p.current.Type == token.IDENT && (p.current.Literal == "with" || p.current.Literal == "using")) {
+			p.nextToken()
+		}
+		tokName := p.expect(token.IDENT).Literal
+		return &ast.ScopedRecallExpr{
+			Pos_:    pos,
+			Memory: &ast.Ident{Pos_: pos, Name: memName},
+			Key:    key,
+			Token:  &ast.Ident{Pos_: pos, Name: tokName},
+		}
+	case token.TOOL_CALL:
+		p.nextToken()
+		toolName := p.expect(token.IDENT).Literal
+		p.expect(token.GROUP_OPEN)
+		var args []ast.Expr
+		for p.current.Type != token.GROUP_CLOSE && p.current.Type != token.EOF {
+			arg := p.parseExpression(LOWEST)
+			if arg != nil {
+				args = append(args, arg)
+			}
+			if p.current.Type == token.SEP {
+				p.nextToken()
+			} else {
+				break
+			}
+		}
+		p.expect(token.GROUP_CLOSE)
+		var audit ast.Expr
+		if p.current.Type == token.TOOL_AUDIT || (p.current.Type == token.IDENT && p.current.Literal == "audit") {
+			p.nextToken()
+			audit = p.parseExpression(CALL_PREC)
+		}
+		return &ast.ToolCallExpr{
+			Pos_:     pos,
+			ToolName: toolName,
+			Args:     args,
+			Audit:    audit,
+		}
+	case token.ABSTAIN_CHECK:
+		p.nextToken()
+		var chain ast.Expr
+		if p.current.Type == token.IDENT || p.current.Type == token.LOGIC {
+			chain = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+			p.nextToken()
+		} else {
+			chain = p.parseExpression(CALL_PREC)
+		}
+		return &ast.AbstainCheckExpr{
+			Pos_:  pos,
+			Chain: chain,
+		}
+	case token.SANDBOX_VERIFY:
+		p.nextToken()
+		sbName := p.expect(token.IDENT).Literal
+		return &ast.SandboxVerifyExpr{
+			Pos_:    pos,
+			Sandbox: sbName,
+		}
+	case token.GPU_MATMUL:
+		p.nextToken()
+		p.expect(token.GROUP_OPEN)
+		left := p.parseExpression(LOWEST)
+		p.expect(token.SEP)
+		right := p.parseExpression(LOWEST)
+		p.expect(token.GROUP_CLOSE)
+		return &ast.GPUMatmulExpr{
+			Pos_:  pos,
+			Left:  left,
+			Right: right,
+		}
+	case token.GPU_SOFTMAX:
+		p.nextToken()
+		p.expect(token.GROUP_OPEN)
+		src := p.parseExpression(LOWEST)
+		p.expect(token.GROUP_CLOSE)
+		return &ast.GPUSoftmaxExpr{
+			Pos_:   pos,
+			Source: src,
+		}
+	case token.GPU_LAYERNORM:
+		p.nextToken()
+		p.expect(token.GROUP_OPEN)
+		src := p.parseExpression(LOWEST)
+		p.expect(token.GROUP_CLOSE)
+		return &ast.GPULayernormExpr{
+			Pos_:   pos,
+			Source: src,
+		}
+	case token.AGKE_VERIFY:
+		p.nextToken()
+		var chain ast.Expr
+		if p.current.Type == token.IDENT || p.current.Type == token.LOGIC {
+			chain = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+			p.nextToken()
+		} else {
+			chain = p.parseExpression(CALL_PREC)
+		}
+		return &ast.AGKEVerifyExpr{
+			Pos_:  pos,
+			Chain: chain,
+		}
 	case token.TRACE:
 		p.nextToken()
 		graphName := p.expect(token.IDENT).Literal
@@ -1503,7 +1717,7 @@ func (p *Parser) parseEthicalBoundaryDecl() *ast.EthicalBoundaryDecl {
 			p.nextToken() // consume 'rule'
 		}
 		ruleName := ""
-		if p.current.Type == token.IDENT {
+		if p.current.Type == token.IDENT || p.current.Type == token.ACCESS || p.current.Type == token.STRING {
 			ruleName = p.current.Literal
 			p.nextToken()
 		}
@@ -1579,6 +1793,20 @@ func (p *Parser) parseVaultDecl() *ast.VaultDecl {
 		p.nextToken()
 	}
 
+	var boundary ast.Expr
+	if p.current.Type == token.WITH {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			boundary = &ast.Ident{
+				Pos_: p.curPos(),
+				Name: p.current.Literal,
+			}
+			p.nextToken()
+		} else {
+			boundary = p.parseExpression(CALL_PREC)
+		}
+	}
+
 	var netRef ast.Expr
 	if p.current.Type == token.INDEX_OPEN {
 		p.nextToken()
@@ -1599,6 +1827,7 @@ func (p *Parser) parseVaultDecl() *ast.VaultDecl {
 	return &ast.VaultDecl{
 		Pos_:       pos,
 		Name:       name,
+		Boundary:   boundary,
 		NetworkRef: netRef,
 		Threshold:  thresh,
 	}
@@ -1685,3 +1914,1564 @@ func (p *Parser) parseCertifyStmt() *ast.CertifyStmt {
 		Provenance: provExpr,
 	}
 }
+
+func (p *Parser) parseMemoryProvenanceDecl() *ast.MemoryProvenanceDecl {
+	pos := p.curPos()
+	p.nextToken() // consume 'memory_prov'
+
+	name := ""
+	if p.current.Type == token.IDENT {
+		name = p.current.Literal
+		p.nextToken()
+	}
+
+	var boundary ast.Expr
+	if p.current.Type == token.WITH {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			boundary = &ast.Ident{
+				Pos_: p.curPos(),
+				Name: p.current.Literal,
+			}
+			p.nextToken()
+		} else {
+			boundary = p.parseExpression(CALL_PREC)
+		}
+	}
+
+	var capExpr ast.Expr
+	if p.current.Type == token.BLOCK_OPEN {
+		p.nextToken() // consume '⟦'
+		if p.current.Type == token.IDENT && p.current.Literal == "capacity" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			capExpr = p.parseExpression(LOWEST)
+			if p.current.Type == token.STMT_END {
+				p.nextToken()
+			}
+		}
+		p.expect(token.BLOCK_CLOSE) // '⟧'
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.MemoryProvenanceDecl{
+		Pos_:     pos,
+		Name:     name,
+		Boundary: boundary,
+		Capacity: capExpr,
+	}
+}
+
+func (p *Parser) parseVerifyMemoryStmt() *ast.VerifyMemoryStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'verify_memory'
+	mem := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+	return &ast.VerifyMemoryStmt{Pos_: pos, Mem: mem}
+}
+
+func (p *Parser) parseAuditMemoryStmt() *ast.AuditMemoryStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'audit_memory'
+	mem := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+	return &ast.AuditMemoryStmt{Pos_: pos, Mem: mem}
+}
+
+func (p *Parser) parseCorruptShareStmt() *ast.CorruptShareStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_memory_share'
+
+	memName := ""
+	if p.current.Type == token.IDENT {
+		memName = p.current.Literal
+		p.nextToken()
+	}
+
+	closeTok := token.INDEX_CLOSE
+	if p.current.Type == token.GROUP_OPEN {
+		closeTok = token.GROUP_CLOSE
+		p.nextToken()
+	} else {
+		p.expect(token.INDEX_OPEN)
+	}
+	key := p.parseExpression(LOWEST)
+	p.expect(closeTok)
+
+	if p.current.Type == token.IDENT && p.current.Literal == "at" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+	shareIdx := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+
+	return &ast.CorruptShareStmt{
+		Pos_:       pos,
+		Mem:        &ast.Ident{Pos_: pos, Name: memName},
+		Key:        key,
+		ShareIndex: shareIdx,
+	}
+}
+
+func (p *Parser) parseLicenseDecl() *ast.LicenseDecl {
+	pos := p.curPos()
+	p.nextToken() // consume 'license'
+
+	name := ""
+	if p.current.Type == token.IDENT {
+		name = p.current.Literal
+		p.nextToken()
+	}
+
+	// optional 'for'
+	if p.current.Type == token.IDENT && p.current.Literal == "for" {
+		p.nextToken()
+	}
+
+	var teacher ast.Expr
+	if p.current.Type == token.IDENT {
+		teacher = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	}
+
+	// optional 'on'
+	if p.current.Type == token.ON || (p.current.Type == token.IDENT && p.current.Literal == "on") {
+		p.nextToken()
+	}
+
+	var student ast.Expr
+	if p.current.Type == token.IDENT {
+		student = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	}
+
+	var maxEpochs, maxRate, expiry ast.Expr
+	if p.current.Type == token.BLOCK_OPEN {
+		p.nextToken() // consume '⟦'
+		for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+			if p.current.Type == token.IDENT {
+				field := p.current.Literal
+				p.nextToken()
+				if p.current.Type == token.BIND {
+					p.nextToken()
+				}
+				val := p.parseExpression(LOWEST)
+				switch field {
+				case "max_epochs":
+					maxEpochs = val
+				case "max_rate":
+					maxRate = val
+				case "expiry":
+					expiry = val
+				}
+				if p.current.Type == token.STMT_END {
+					p.nextToken()
+				}
+			} else {
+				p.nextToken()
+			}
+		}
+		p.expect(token.BLOCK_CLOSE) // '⟧'
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.LicenseDecl{
+		Pos_:      pos,
+		Name:      name,
+		Teacher:   teacher,
+		Student:   student,
+		MaxEpochs: maxEpochs,
+		MaxRate:   maxRate,
+		Expiry:    expiry,
+	}
+}
+
+func (p *Parser) parseTransferStmt() *ast.TransferStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'transfer'
+
+	var lic ast.Expr
+	if p.current.Type == token.IDENT {
+		lic = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	}
+
+	// optional 'from'
+	if p.current.Type == token.IDENT && p.current.Literal == "from" {
+		p.nextToken()
+	}
+
+	var teacher ast.Expr
+	if p.current.Type == token.IDENT {
+		teacher = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	}
+
+	// optional 'to'
+	if p.current.Type == token.IDENT && p.current.Literal == "to" {
+		p.nextToken()
+	}
+
+	var student ast.Expr
+	if p.current.Type == token.IDENT {
+		student = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	}
+
+	// optional 'layers'
+	if p.current.Type == token.IDENT && p.current.Literal == "layers" {
+		p.nextToken()
+	}
+
+	var layers []ast.Expr
+	if p.current.Type == token.INDEX_OPEN || p.current.Type == token.GROUP_OPEN {
+		closeTok := token.INDEX_CLOSE
+		if p.current.Type == token.GROUP_OPEN {
+			closeTok = token.GROUP_CLOSE
+		}
+		p.nextToken() // consume '⟬'
+		for p.current.Type != closeTok && p.current.Type != token.EOF {
+			elem := p.parseExpression(LOWEST)
+			if elem != nil {
+				layers = append(layers, elem)
+			}
+			if p.current.Type == token.SEP {
+				p.nextToken()
+			} else {
+				break
+			}
+		}
+		p.expect(closeTok)
+	}
+
+	p.expect(token.STMT_END)
+
+	return &ast.TransferStmt{
+		Pos_:    pos,
+		License: lic,
+		Teacher: teacher,
+		Student: student,
+		Layers:  layers,
+	}
+}
+
+func (p *Parser) parseDistillStmt() *ast.DistillStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'distill'
+
+	var lic ast.Expr
+	if p.current.Type == token.IDENT {
+		lic = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	}
+
+	// optional 'on'
+	if p.current.Type == token.ON || (p.current.Type == token.IDENT && p.current.Literal == "on") {
+		p.nextToken()
+	}
+
+	var student ast.Expr
+	if p.current.Type == token.IDENT {
+		student = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	}
+
+	// optional 'with'
+	var dsX, dsY ast.Expr
+	if p.current.Type == token.WITH {
+		p.nextToken()
+		dsX = p.parseExpression(CALL_PREC)
+		if p.current.Type == token.SEP {
+			p.nextToken()
+			dsY = p.parseExpression(CALL_PREC)
+		}
+	}
+
+	var rate, epochs ast.Expr
+	if p.current.Type == token.BLOCK_OPEN {
+		p.nextToken() // consume '⟦'
+		for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+			if p.current.Type == token.IDENT {
+				field := p.current.Literal
+				p.nextToken()
+				if p.current.Type == token.BIND {
+					p.nextToken()
+				}
+				val := p.parseExpression(LOWEST)
+				switch field {
+				case "rate":
+					rate = val
+				case "epochs":
+					epochs = val
+				}
+				if p.current.Type == token.STMT_END {
+					p.nextToken()
+				}
+			} else {
+				p.nextToken()
+			}
+		}
+		p.expect(token.BLOCK_CLOSE) // '⟧'
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.DistillStmt{
+		Pos_:     pos,
+		License:  lic,
+		Student:  student,
+		DatasetX: dsX,
+		DatasetY: dsY,
+		Rate:     rate,
+		Epochs:   epochs,
+	}
+}
+
+func (p *Parser) parseReasoningChainDecl() *ast.ReasoningChainDecl {
+	pos := p.curPos()
+	p.nextToken() // consume 'reasoning_chain'
+
+	name := ""
+	if p.current.Type == token.IDENT || p.current.Type == token.LOGIC {
+		name = p.current.Literal
+		p.nextToken()
+	}
+
+	var boundary ast.Expr
+	if p.current.Type == token.WITH {
+		p.nextToken()
+		if p.current.Type == token.IDENT || p.current.Type == token.LOGIC {
+			boundary = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+			p.nextToken()
+		}
+	}
+
+	var capExpr ast.Expr
+	if p.current.Type == token.BLOCK_OPEN {
+		p.nextToken() // consume '⟦'
+		for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+			if p.current.Type == token.IDENT && p.current.Literal == "capacity" {
+				p.nextToken()
+				if p.current.Type == token.BIND {
+					p.nextToken()
+				}
+				capExpr = p.parseExpression(LOWEST)
+				if p.current.Type == token.STMT_END {
+					p.nextToken()
+				}
+			} else {
+				p.nextToken()
+			}
+		}
+		p.expect(token.BLOCK_CLOSE) // '⟧'
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.ReasoningChainDecl{
+		Pos_:     pos,
+		Name:     name,
+		Boundary: boundary,
+		Capacity: capExpr,
+	}
+}
+
+func (p *Parser) parseReasonStepStmt() *ast.ReasonStepStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'reason'
+
+	var chain ast.Expr
+	// If the next token is an IDENT and NOT a reason op keyword or "from", treat as chain identifier
+	if p.current.Type == token.IDENT &&
+		p.current.Literal != "deduce" && p.current.Literal != "induce" &&
+		p.current.Literal != "abduce" && p.current.Literal != "verify" &&
+		p.current.Literal != "from" {
+		chain = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	}
+
+	op := token.DEDUCE
+	switch p.current.Type {
+	case token.DEDUCE, token.INDUCE, token.ABDUCE, token.VERIFY:
+		op = p.current.Type
+		p.nextToken()
+	case token.IDENT:
+		switch p.current.Literal {
+		case "deduce":
+			op = token.DEDUCE
+			p.nextToken()
+		case "induce":
+			op = token.INDUCE
+			p.nextToken()
+		case "abduce":
+			op = token.ABDUCE
+			p.nextToken()
+		case "verify":
+			op = token.VERIFY
+			p.nextToken()
+		}
+	}
+
+	// optional 'from'
+	if p.current.Type == token.IDENT && p.current.Literal == "from" {
+		p.nextToken()
+	}
+
+	inputExpr := p.parseExpression(CALL_PREC)
+
+	// optional 'to'
+	if p.current.Type == token.IDENT && p.current.Literal == "to" {
+		p.nextToken()
+	}
+
+	outputExpr := p.parseExpression(CALL_PREC)
+
+	// optional 'with'
+	if p.current.Type == token.WITH {
+		p.nextToken()
+	}
+
+	confExpr := p.parseExpression(LOWEST)
+
+	p.expect(token.STMT_END)
+
+	return &ast.ReasonStepStmt{
+		Pos_:       pos,
+		Chain:      chain,
+		Operation:  op,
+		InputExpr:  inputExpr,
+		OutputExpr: outputExpr,
+		Confidence: confExpr,
+	}
+}
+
+func (p *Parser) parseVerifyChainStmt() *ast.VerifyChainStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'verify_chain'
+	chain := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+	return &ast.VerifyChainStmt{Pos_: pos, Chain: chain}
+}
+
+func (p *Parser) parseAuditReasoningStmt() *ast.AuditReasoningStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'audit_reasoning'
+	chain := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+	return &ast.AuditReasoningStmt{Pos_: pos, Chain: chain}
+}
+
+func (p *Parser) parseCorruptReasoningStepStmt() *ast.CorruptReasoningStepStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_reasoning_step'
+
+	chainName := ""
+	if p.current.Type == token.IDENT || p.current.Type == token.LOGIC {
+		chainName = p.current.Literal
+		p.nextToken()
+	}
+
+	closeTok := token.INDEX_CLOSE
+	if p.current.Type == token.GROUP_OPEN {
+		closeTok = token.GROUP_CLOSE
+		p.nextToken()
+	} else {
+		p.expect(token.INDEX_OPEN)
+	}
+	stepIdx := p.parseExpression(LOWEST)
+	p.expect(closeTok)
+
+	if p.current.Type == token.IDENT && p.current.Literal == "at" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+	atVal := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+
+	return &ast.CorruptReasoningStepStmt{
+		Pos_:      pos,
+		Chain:     &ast.Ident{Pos_: pos, Name: chainName},
+		StepIndex: stepIdx,
+		AtVal:     atVal,
+	}
+}
+
+func (p *Parser) parseModalityDecl() *ast.ModalityDecl {
+	pos := p.curPos()
+	p.nextToken() // consume 'modality'
+
+	name := ""
+	if p.current.Type == token.IDENT || p.current.Type == token.LOGIC {
+		name = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "as" {
+		p.nextToken()
+	}
+
+	kind := p.current.Type
+	switch p.current.Type {
+	case token.TENSOR_INPUT, token.TEXT_INPUT, token.CONCEPT_INPUT:
+		kind = p.current.Type
+		p.nextToken()
+	case token.IDENT:
+		switch p.current.Literal {
+		case "tensor_input":
+			kind = token.TENSOR_INPUT
+			p.nextToken()
+		case "text_input":
+			kind = token.TEXT_INPUT
+			p.nextToken()
+		case "concept_input":
+			kind = token.CONCEPT_INPUT
+			p.nextToken()
+		default:
+			p.errorf(p.curPos(), "unknown modality kind %s", p.current.Literal)
+		}
+	default:
+		p.errorf(p.curPos(), "expected modality kind, got %s", p.current.Type)
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "from" {
+		p.nextToken()
+	}
+
+	source := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+
+	return &ast.ModalityDecl{
+		Pos_:   pos,
+		Name:   name,
+		Kind:   kind,
+		Source: source,
+	}
+}
+
+func (p *Parser) parseCrossModalReasonStmt() *ast.CrossModalReasonStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'cross_modal_reason'
+
+	chain := p.parseExpression(CALL_PREC)
+
+	op := token.DEDUCE
+	switch p.current.Type {
+	case token.DEDUCE, token.INDUCE, token.ABDUCE, token.VERIFY:
+		op = p.current.Type
+		p.nextToken()
+	case token.IDENT:
+		switch p.current.Literal {
+		case "deduce":
+			op = token.DEDUCE
+			p.nextToken()
+		case "induce":
+			op = token.INDUCE
+			p.nextToken()
+		case "abduce":
+			op = token.ABDUCE
+			p.nextToken()
+		case "verify":
+			op = token.VERIFY
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "from" {
+		p.nextToken()
+	}
+
+	var modalities []ast.Expr
+	closeTok := token.INDEX_CLOSE
+	switch p.current.Type {
+	case token.INDEX_OPEN:
+		closeTok = token.INDEX_CLOSE
+		p.nextToken()
+	case token.GROUP_OPEN:
+		closeTok = token.GROUP_CLOSE
+		p.nextToken()
+	}
+
+	for p.current.Type != closeTok && p.current.Type != token.EOF {
+		mod := p.parseExpression(CALL_PREC)
+		if mod != nil {
+			modalities = append(modalities, mod)
+		}
+		if p.current.Type == token.SEP {
+			p.nextToken()
+		} else {
+			break
+		}
+	}
+	p.expect(closeTok)
+
+	if p.current.Type == token.IDENT && p.current.Literal == "to" {
+		p.nextToken()
+	}
+
+	outputExpr := p.parseExpression(CALL_PREC)
+
+	if p.current.Type == token.WITH {
+		p.nextToken()
+	} else if p.current.Type == token.IDENT && p.current.Literal == "with" {
+		p.nextToken()
+	}
+
+	confExpr := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+
+	return &ast.CrossModalReasonStmt{
+		Pos_:       pos,
+		Chain:      chain,
+		Operation:  op,
+		Modalities: modalities,
+		OutputExpr: outputExpr,
+		Confidence: confExpr,
+	}
+}
+
+func (p *Parser) parseQECMemoryDecl() *ast.QECMemoryDecl {
+	pos := p.curPos()
+	p.nextToken() // consume 'qec_memory'
+
+	name := ""
+	if p.current.Type == token.IDENT || p.current.Type == token.LOGIC {
+		name = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "as" {
+		p.nextToken()
+	}
+
+	codeType := token.SURFACE_CODE
+	switch p.current.Type {
+	case token.SURFACE_CODE, token.QLDPC_CODE:
+		codeType = p.current.Type
+		p.nextToken()
+	case token.IDENT:
+		switch p.current.Literal {
+		case "surface_code":
+			codeType = token.SURFACE_CODE
+			p.nextToken()
+		case "qldpc_code":
+			codeType = token.QLDPC_CODE
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "distance" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+	distExpr := p.parseExpression(CALL_PREC)
+
+	var boundaryExpr ast.Expr
+	if p.current.Type == token.WITH || (p.current.Type == token.IDENT && p.current.Literal == "with") {
+		p.nextToken()
+		boundaryExpr = p.parseExpression(CALL_PREC)
+	}
+
+	if p.current.Type == token.BLOCK_OPEN {
+		p.nextToken()
+		if p.current.Type == token.BLOCK_CLOSE {
+			p.nextToken()
+		}
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.QECMemoryDecl{
+		Pos_:     pos,
+		Name:     name,
+		CodeType: codeType,
+		Distance: distExpr,
+		Boundary: boundaryExpr,
+	}
+}
+
+func (p *Parser) parseSyndromeStmt() *ast.SyndromeStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'syndrome'
+
+	qecMem := p.parseExpression(CALL_PREC)
+
+	into := ""
+	if p.current.Type == token.IDENT && p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			into = p.current.Literal
+			p.nextToken()
+		} else {
+			p.expect(token.IDENT)
+		}
+	}
+
+	p.expect(token.STMT_END)
+
+	return &ast.SyndromeStmt{
+		Pos_:   pos,
+		QECMem: qecMem,
+		Into:   into,
+	}
+}
+
+func (p *Parser) parseVerifySyndromeStmt() *ast.VerifySyndromeStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'verify_syndrome'
+
+	qecMem := p.parseExpression(CALL_PREC)
+
+	if p.current.Type == token.WITH || (p.current.Type == token.IDENT && p.current.Literal == "with") {
+		p.nextToken()
+	}
+
+	synExpr := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+
+	return &ast.VerifySyndromeStmt{
+		Pos_:     pos,
+		QECMem:   qecMem,
+		Syndrome: synExpr,
+	}
+}
+
+func (p *Parser) parseCorrectStmt() *ast.CorrectStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'correct'
+
+	qecMem := p.parseExpression(CALL_PREC)
+
+	if p.current.Type == token.WITH || (p.current.Type == token.IDENT && p.current.Literal == "with") {
+		p.nextToken()
+	}
+
+	synExpr := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+
+	return &ast.CorrectStmt{
+		Pos_:     pos,
+		QECMem:   qecMem,
+		Syndrome: synExpr,
+	}
+}
+
+func (p *Parser) parseCorruptSyndromeStmt() *ast.CorruptSyndromeStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_syndrome'
+
+	qecMemName := ""
+	if p.current.Type == token.IDENT {
+		qecMemName = p.current.Literal
+		p.nextToken()
+	}
+
+	p.expect(token.INDEX_OPEN)
+	synExpr := p.parseExpression(LOWEST)
+	p.expect(token.INDEX_CLOSE)
+
+	if p.current.Type == token.IDENT && p.current.Literal == "at" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+	atVal := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+
+	return &ast.CorruptSyndromeStmt{
+		Pos_:     pos,
+		QECMem:   &ast.Ident{Pos_: pos, Name: qecMemName},
+		Syndrome: synExpr,
+		AtVal:    atVal,
+	}
+}
+
+func (p *Parser) parseConsolidateStmt() *ast.ConsolidateStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'consolidate'
+
+	if p.current.Type == token.EPISODIC || (p.current.Type == token.IDENT && p.current.Literal == "episodic") {
+		p.nextToken()
+	}
+
+	epMem := p.parseExpression(CALL_PREC)
+
+	if p.current.Type == token.IDENT && p.current.Literal == "into" {
+		p.nextToken()
+	}
+
+	if p.current.Type == token.SEMANTIC || (p.current.Type == token.IDENT && p.current.Literal == "semantic") {
+		p.nextToken()
+	}
+
+	semMem := p.parseExpression(CALL_PREC)
+
+	if p.current.Type == token.WITH || (p.current.Type == token.IDENT && p.current.Literal == "with") {
+		p.nextToken()
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "threshold" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+
+	thresh := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+
+	return &ast.ConsolidateStmt{
+		Pos_:          pos,
+		EpisodicMem:   epMem,
+		SemanticMem:   semMem,
+		MinConfidence: thresh,
+	}
+}
+
+func (p *Parser) parseRecallTokenDecl() *ast.RecallTokenDecl {
+	pos := p.curPos()
+	p.nextToken() // consume 'recall_token'
+
+	name := ""
+	if p.current.Type == token.IDENT {
+		name = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "for" {
+		p.nextToken()
+	}
+
+	mem := p.parseExpression(CALL_PREC)
+
+	if (p.current.Type == token.ON || (p.current.Type == token.IDENT && p.current.Literal == "on")) ||
+		(p.current.Type == token.IDENT && p.current.Literal == "to") {
+		p.nextToken()
+	}
+
+	recipient := p.parseExpression(CALL_PREC)
+
+	var keys []ast.Expr
+	var expiry ast.Expr
+
+	if p.current.Type == token.BLOCK_OPEN {
+		p.nextToken() // consume '⟦'
+		for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+			if p.current.Type == token.IDENT {
+				field := p.current.Literal
+				p.nextToken()
+				if p.current.Type == token.BIND {
+					p.nextToken()
+				}
+				switch field {
+				case "keys":
+					if p.current.Type == token.INDEX_OPEN {
+						p.nextToken()
+						for p.current.Type != token.INDEX_CLOSE && p.current.Type != token.EOF {
+							elem := p.parseExpression(LOWEST)
+							if elem != nil {
+								keys = append(keys, elem)
+							}
+							if p.current.Type == token.SEP {
+								p.nextToken()
+							} else {
+								break
+							}
+						}
+						p.expect(token.INDEX_CLOSE)
+					}
+				case "expiry":
+					expiry = p.parseExpression(LOWEST)
+				default:
+					p.parseExpression(LOWEST)
+				}
+				if p.current.Type == token.STMT_END {
+					p.nextToken()
+				}
+			} else {
+				p.nextToken()
+			}
+		}
+		p.expect(token.BLOCK_CLOSE) // '⟧'
+	}
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.RecallTokenDecl{
+		Pos_:       pos,
+		Name:      name,
+		Memory:    mem,
+		Recipient: recipient,
+		Keys:      keys,
+		Expiry:    expiry,
+	}
+}
+
+func (p *Parser) parseGrantStmt() *ast.GrantStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'grant'
+
+	tok := p.parseExpression(CALL_PREC)
+	var recipient ast.Expr
+	if p.current.Type == token.IDENT && p.current.Literal == "to" {
+		p.nextToken()
+		recipient = p.parseExpression(CALL_PREC)
+	}
+	p.expect(token.STMT_END)
+
+	return &ast.GrantStmt{
+		Pos_:       pos,
+		Token:     tok,
+		Recipient: recipient,
+	}
+}
+
+func (p *Parser) parseRevokeStmt() *ast.RevokeStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'revoke'
+
+	tok := p.parseExpression(CALL_PREC)
+	p.expect(token.STMT_END)
+
+	return &ast.RevokeStmt{
+		Pos_:   pos,
+		Token: tok,
+	}
+}
+
+func (p *Parser) parseToolRegisterDecl() *ast.ToolRegisterDecl {
+	pos := p.curPos()
+	p.nextToken() // consume 'tool_register'
+
+	name := ""
+	if p.current.Type == token.IDENT {
+		name = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Type == token.WITH || (p.current.Type == token.IDENT && p.current.Literal == "with") {
+		p.nextToken()
+	}
+
+	boundary := p.parseExpression(CALL_PREC)
+
+	var preCond ast.Expr
+	var postCond ast.Expr
+
+	for (p.current.Type == token.PRE_CONDITION || (p.current.Type == token.IDENT && p.current.Literal == "pre")) ||
+		(p.current.Type == token.POST_CONDITION || (p.current.Type == token.IDENT && p.current.Literal == "post")) {
+		isPre := p.current.Type == token.PRE_CONDITION || (p.current.Type == token.IDENT && p.current.Literal == "pre")
+		p.nextToken()
+		if p.current.Type == token.BLOCK_OPEN {
+			p.nextToken()
+			condExpr := p.parseExpression(LOWEST)
+			for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+				p.nextToken()
+			}
+			p.expect(token.BLOCK_CLOSE)
+			if isPre {
+				preCond = condExpr
+			} else {
+				postCond = condExpr
+			}
+		} else {
+			condExpr := p.parseExpression(CALL_PREC)
+			if isPre {
+				preCond = condExpr
+			} else {
+				postCond = condExpr
+			}
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.ToolRegisterDecl{
+		Pos_:          pos,
+		Name:          name,
+		Boundary:      boundary,
+		PreCondition:  preCond,
+		PostCondition: postCond,
+	}
+}
+
+func (p *Parser) parseToolCallStmt(target ast.Expr) *ast.ToolCallStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'tool_call'
+
+	name := p.expect(token.IDENT).Literal
+	p.expect(token.GROUP_OPEN)
+	var args []ast.Expr
+	for p.current.Type != token.GROUP_CLOSE && p.current.Type != token.EOF {
+		arg := p.parseExpression(LOWEST)
+		if arg != nil {
+			args = append(args, arg)
+		}
+		if p.current.Type == token.SEP {
+			p.nextToken()
+		} else {
+			break
+		}
+	}
+	p.expect(token.GROUP_CLOSE)
+
+	var audit ast.Expr
+	if p.current.Type == token.TOOL_AUDIT || (p.current.Type == token.IDENT && p.current.Literal == "audit") {
+		p.nextToken()
+		audit = p.parseExpression(LOWEST)
+	}
+	p.expect(token.STMT_END)
+
+	return &ast.ToolCallStmt{
+		Pos_:      pos,
+		Target:    target,
+		ToolName:  name,
+		Args:      args,
+		Audit:     audit,
+	}
+}
+
+func (p *Parser) parseCertifiedReasonStmt() *ast.CertifiedReasonStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'certified_reason'
+
+	var chain ast.Expr
+	if (p.current.Type == token.IDENT || p.current.Type == token.LOGIC) &&
+		p.current.Literal != "deduce" && p.current.Literal != "induce" &&
+		p.current.Literal != "abduce" && p.current.Literal != "verify" &&
+		p.current.Literal != "from" {
+		chain = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	}
+
+	op := token.DEDUCE
+	switch p.current.Type {
+	case token.DEDUCE, token.INDUCE, token.ABDUCE, token.VERIFY:
+		op = p.current.Type
+		p.nextToken()
+	case token.IDENT:
+		switch p.current.Literal {
+		case "deduce":
+			op = token.DEDUCE
+			p.nextToken()
+		case "induce":
+			op = token.INDUCE
+			p.nextToken()
+		case "abduce":
+			op = token.ABDUCE
+			p.nextToken()
+		case "verify":
+			op = token.VERIFY
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "from" {
+		p.nextToken()
+	}
+
+	inputExpr := p.parseExpression(CALL_PREC)
+
+	if p.current.Type == token.IDENT && p.current.Literal == "to" {
+		p.nextToken()
+	}
+
+	outputExpr := p.parseExpression(CALL_PREC)
+
+	if p.current.Type == token.WITNESS || (p.current.Type == token.IDENT && p.current.Literal == "witness") {
+		p.nextToken()
+	}
+
+	closeTok := token.Type("")
+	if p.current.Type == token.GROUP_OPEN {
+		closeTok = token.GROUP_CLOSE
+		p.nextToken()
+	} else if p.current.Type == token.INDEX_OPEN {
+		closeTok = token.INDEX_CLOSE
+		p.nextToken()
+	}
+
+	witnessExpr := p.parseExpression(CALL_PREC)
+
+	if closeTok != "" && (p.current.Type == token.GROUP_CLOSE || p.current.Type == token.INDEX_CLOSE) {
+		p.nextToken()
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "confidence" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	} else if p.current.Type == token.WITH {
+		p.nextToken()
+	}
+
+	confExpr := p.parseExpression(LOWEST)
+	p.expect(token.STMT_END)
+
+	return &ast.CertifiedReasonStmt{
+		Pos_:       pos,
+		Chain:      chain,
+		Kind:       op,
+		InputExpr:  inputExpr,
+		OutputExpr: outputExpr,
+		Witness:    witnessExpr,
+		Confidence: confExpr,
+	}
+}
+
+func (p *Parser) parseAbstainThresholdDecl() *ast.AbstainThresholdDecl {
+	pos := p.curPos()
+	p.nextToken() // consume 'abstain_threshold'
+
+	var chain ast.Expr
+	if (p.current.Type == token.IDENT || p.current.Type == token.LOGIC) && p.current.Literal != "mode" {
+		chain = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	}
+
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+
+	thresholdExpr := p.parseExpression(CALL_PREC)
+
+	mode := token.REFUSE
+	if p.current.Type == token.IDENT && p.current.Literal == "mode" {
+		p.nextToken()
+	}
+
+	switch p.current.Type {
+	case token.RETRY:
+		mode = token.RETRY
+		p.nextToken()
+	case token.ESCALATE:
+		mode = token.ESCALATE
+		p.nextToken()
+	case token.REFUSE:
+		mode = token.REFUSE
+		p.nextToken()
+	case token.IDENT:
+		switch p.current.Literal {
+		case "retry":
+			mode = token.RETRY
+			p.nextToken()
+		case "escalate":
+			mode = token.ESCALATE
+			p.nextToken()
+		case "refuse":
+			mode = token.REFUSE
+			p.nextToken()
+		}
+	}
+
+	var maxRetries ast.Expr
+	if p.current.Type == token.IDENT && p.current.Literal == "max_retries" {
+		p.nextToken()
+		if p.current.Type == token.BIND {
+			p.nextToken()
+		}
+		maxRetries = p.parseExpression(CALL_PREC)
+	}
+
+	p.expect(token.STMT_END)
+
+	return &ast.AbstainThresholdDecl{
+		Pos_:       pos,
+		Chain:      chain,
+		Threshold:  thresholdExpr,
+		Mode:       mode,
+		MaxRetries: maxRetries,
+	}
+}
+
+func (p *Parser) parseAbstainCheckStmt() *ast.AbstainCheckStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'abstain_check'
+
+	var chain ast.Expr
+	if p.current.Type == token.IDENT || p.current.Type == token.LOGIC {
+		chain = &ast.Ident{Pos_: p.curPos(), Name: p.current.Literal}
+		p.nextToken()
+	} else {
+		chain = p.parseExpression(CALL_PREC)
+	}
+
+	intoVar := ""
+	if p.current.Type == token.IDENT && p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT || p.current.Type == token.LOGIC {
+			intoVar = p.current.Literal
+			p.nextToken()
+		}
+	}
+	p.expect(token.STMT_END)
+
+	return &ast.AbstainCheckStmt{
+		Pos_:  pos,
+		Chain: chain,
+		Into:  intoVar,
+	}
+}
+
+func (p *Parser) parseSandboxCreateStmt() *ast.SandboxCreateStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'sandbox_create'
+
+	name := p.expect(token.IDENT).Literal
+
+	if p.current.Type == token.WITH || (p.current.Type == token.IDENT && p.current.Literal == "with") {
+		p.nextToken()
+	}
+
+	boundary := p.expect(token.IDENT).Literal
+
+	var capExpr ast.Expr
+	if p.current.Type == token.BLOCK_OPEN {
+		p.nextToken()
+		for p.current.Type != token.BLOCK_CLOSE && p.current.Type != token.EOF {
+			if p.current.Literal == "capacity" {
+				p.nextToken()
+				if p.current.Type == token.BIND || p.current.Type == token.ASSIGN {
+					p.nextToken()
+				}
+				capExpr = p.parseExpression(CALL_PREC)
+				if p.current.Type == token.STMT_END {
+					p.nextToken()
+				}
+			} else {
+				p.nextToken()
+			}
+		}
+		p.expect(token.BLOCK_CLOSE)
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.SandboxCreateStmt{
+		Pos_:     pos,
+		Name:     name,
+		Boundary: boundary,
+		Capacity: capExpr,
+	}
+}
+
+func (p *Parser) parseSandboxRunStmt() *ast.SandboxRunStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'sandbox_run'
+
+	sbName := p.expect(token.IDENT).Literal
+
+	p.expect(token.GROUP_OPEN)
+	toolName := p.expect(token.IDENT).Literal
+
+	p.expect(token.GROUP_OPEN)
+	var args []ast.Expr
+	for p.current.Type != token.GROUP_CLOSE && p.current.Type != token.EOF {
+		arg := p.parseExpression(LOWEST)
+		if arg != nil {
+			args = append(args, arg)
+		}
+		if p.current.Type == token.SEP {
+			p.nextToken()
+		} else {
+			break
+		}
+	}
+	p.expect(token.GROUP_CLOSE) // close inner call
+	p.expect(token.GROUP_CLOSE) // close outer sandbox_run
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.SandboxRunStmt{
+		Pos_:     pos,
+		Sandbox:  sbName,
+		ToolName: toolName,
+		Args:     args,
+	}
+}
+
+func (p *Parser) parseSandboxVerifyStmt() *ast.SandboxVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'sandbox_verify'
+
+	sbName := p.expect(token.IDENT).Literal
+
+	intoVar := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		intoVar = p.expect(token.IDENT).Literal
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.SandboxVerifyStmt{
+		Pos_:    pos,
+		Sandbox: sbName,
+		Into:    intoVar,
+	}
+}
+
+func (p *Parser) parseGPUAnnotatedStmt() ast.Stmt {
+	p.nextToken() // consume '@gpu'
+	switch p.current.Type {
+	case token.GPU_MATMUL:
+		return p.parseGPUMatmulStmt(true)
+	case token.GPU_SOFTMAX:
+		return p.parseGPUSoftmaxStmt(true)
+	case token.GPU_LAYERNORM:
+		return p.parseGPULayernormStmt(true)
+	default:
+		stmt := p.parseStatement()
+		return stmt
+	}
+}
+
+func (p *Parser) parseGPUMatmulStmt(isAnnotated bool) *ast.GPUMatmulStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'gpu_matmul'
+
+	hasGroup := false
+	if p.current.Type == token.GROUP_OPEN {
+		hasGroup = true
+		p.nextToken()
+	}
+
+	left := p.parseExpression(LOWEST)
+	p.expect(token.SEP)
+	right := p.parseExpression(LOWEST)
+
+	if hasGroup {
+		p.expect(token.GROUP_CLOSE)
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "into" {
+		p.nextToken()
+	}
+
+	target := p.parseExpression(CALL_PREC)
+
+	var audit ast.Expr
+	if (p.current.Type == token.IDENT && p.current.Literal == "audit") || p.current.Type == token.TOOL_AUDIT {
+		p.nextToken()
+		audit = p.parseExpression(CALL_PREC)
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.GPUMatmulStmt{
+		Pos_:        pos,
+		IsAnnotated: isAnnotated,
+		Left:        left,
+		Right:       right,
+		Target:      target,
+		Audit:       audit,
+	}
+}
+
+func (p *Parser) parseGPUSoftmaxStmt(isAnnotated bool) *ast.GPUSoftmaxStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'gpu_softmax'
+
+	hasGroup := false
+	if p.current.Type == token.GROUP_OPEN {
+		hasGroup = true
+		p.nextToken()
+	}
+
+	src := p.parseExpression(LOWEST)
+
+	if hasGroup {
+		p.expect(token.GROUP_CLOSE)
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "into" {
+		p.nextToken()
+	}
+
+	target := p.parseExpression(CALL_PREC)
+
+	var audit ast.Expr
+	if (p.current.Type == token.IDENT && p.current.Literal == "audit") || p.current.Type == token.TOOL_AUDIT {
+		p.nextToken()
+		audit = p.parseExpression(CALL_PREC)
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.GPUSoftmaxStmt{
+		Pos_:        pos,
+		IsAnnotated: isAnnotated,
+		Source:      src,
+		Target:      target,
+		Audit:       audit,
+	}
+}
+
+func (p *Parser) parseGPULayernormStmt(isAnnotated bool) *ast.GPULayernormStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'gpu_layernorm'
+
+	hasGroup := false
+	if p.current.Type == token.GROUP_OPEN {
+		hasGroup = true
+		p.nextToken()
+	}
+
+	src := p.parseExpression(LOWEST)
+
+	if hasGroup {
+		p.expect(token.GROUP_CLOSE)
+	}
+
+	if p.current.Type == token.IDENT && p.current.Literal == "into" {
+		p.nextToken()
+	}
+
+	target := p.parseExpression(CALL_PREC)
+
+	var audit ast.Expr
+	if (p.current.Type == token.IDENT && p.current.Literal == "audit") || p.current.Type == token.TOOL_AUDIT {
+		p.nextToken()
+		audit = p.parseExpression(CALL_PREC)
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.GPULayernormStmt{
+		Pos_:        pos,
+		IsAnnotated: isAnnotated,
+		Source:      src,
+		Target:      target,
+		Audit:       audit,
+	}
+}
+
+func (p *Parser) parseAGKEAttestStmt() *ast.AGKEAttestStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'agke_attest'
+
+	chain := p.parseExpression(CALL_PREC)
+	var kernel, inTensor, outTensor ast.Expr
+
+	if p.current.Type == token.GROUP_OPEN {
+		p.nextToken()
+		kernel = p.parseExpression(LOWEST)
+		p.expect(token.SEP)
+		inTensor = p.parseExpression(LOWEST)
+		p.expect(token.SEP)
+		outTensor = p.parseExpression(LOWEST)
+		p.expect(token.GROUP_CLOSE)
+	} else {
+		for p.current.Type != token.STMT_END && p.current.Type != token.EOF {
+			lit := p.current.Literal
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			val := p.parseExpression(LOWEST)
+			switch lit {
+			case "kernel":
+				kernel = val
+			case "input":
+				inTensor = val
+			case "output":
+				outTensor = val
+			}
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.AGKEAttestStmt{
+		Pos_:         pos,
+		Chain:        chain,
+		KernelName:   kernel,
+		InputTensor:  inTensor,
+		OutputTensor: outTensor,
+	}
+}
+
+func (p *Parser) parseAGKEVerifyStmt() *ast.AGKEVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'agke_verify'
+
+	chain := p.parseExpression(CALL_PREC)
+	var target ast.Expr
+	if p.current.Type == token.IDENT && p.current.Literal == "into" {
+		p.nextToken()
+		target = p.parseExpression(CALL_PREC)
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.AGKEVerifyStmt{
+		Pos_:   pos,
+		Chain:  chain,
+		Target: target,
+	}
+}
+
+func (p *Parser) parseCorruptGPUDigestStmt() *ast.CorruptGPUDigestStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_gpu_digest'
+
+	chain := p.parseExpression(CALL_PREC)
+	if p.current.Type == token.IDENT && p.current.Literal == "at" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+	offset := p.parseExpression(LOWEST)
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.CorruptGPUDigestStmt{
+		Pos_:   pos,
+		Chain:  chain,
+		Offset: offset,
+	}
+}
+
+
+
+
+

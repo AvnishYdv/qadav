@@ -131,9 +131,28 @@ By eliminating `<stdio.h>`, `<stdlib.h>`, `<string.h>`, and `<math.h>`:
    - Reconstructed weights are cryptographically verified against their commitments before unsealing into active process memory.
 3. **Ethical Boundary Clearance & Active Decoherence Defense**:
    - An unseal operation (`unseal <vault> with <boundary> ·`) requires positive authorization against the specified `ethical_boundary`.
+   - At vault creation, the content-based SHA3-256 digest of the authorized boundary (`qadav_qeeh_boundary_hash`) is embedded permanently in `vault->authorized_boundary_id` (F6, F7). It serializes solely `num_rules` (4 bytes LE) and each rule's `rule_name` (null-terminated) || `penalty` (8 bytes double LE), avoiding any heap pointers or struct padding. Any attempt to unseal using an alternative or attacker-crafted boundary triggers instant quantum decoherence (`qadav_qeeh_trigger_decoherence`) and terminates the process (`ExitProcess(0xDEADBEEF)`).
    - Any unauthorized unseal attempt or corrupted share integrity trigger calls `qadav_qeeh_trigger_decoherence`, instantly zeroing all quantum state vector amplitudes and neutralizing model functionality.
 4. **Zero-Libc Freestanding Vault Implementation**:
    - Fully freestanding implementation in `qadav_qemwv.c` / `qadav_qemwv.h` relying strictly on Win32 memory primitives without CRT libraries, eliminating foreign injection points.
+
+---
+
+## 13. Quantum-Entangled Memory Provenance (QEMP — Invention #9) / क्वांटम-उलझा हुआ स्मृति साक्ष्य
+
+1. **Information-Theoretic Memory Security ($k=3, n=5$)**:
+   - Stored episodic and semantic memory values are split into 5 polynomial shares over Galois Field $GF(256)$ using random degree-2 polynomials.
+   - Any 2 shares reveal mathematically zero bits about the stored value.
+2. **Per-Entry SHA3-256 Provenance Commitments**:
+   - Every `remember` write binds the source identifier, hardware cycle counter timestamp (`__builtin_readcyclecounter()`), and a non-deterministic PRNG nonce into an immutable 32-byte hash.
+   - Every individual share is committed via `SHA3-256(share || entry_idx || share_idx)`.
+3. **QEEH Authorized Recall & Active Decoherence**:
+   - Recall requires positive verification against the memory's creation boundary: `SHA3(boundary) == auth_boundary_id`.
+   - Action `recall:<key>` must evaluate cleanly through the ethical Hamiltonian ($E = 0$).
+   - Any share tampering or unauthorized recall attempt invokes instant quantum decoherence (`qadav_qeeh_trigger_decoherence`), wipes all shares in the entry, and exits immediately with `0xDEADBEEF`.
+4. **Hierarchical Memory Root (Merkle-Vault Root)**:
+   - All memory entry value hashes are aggregated into a 32-byte `vault_root` updated on each store/wipe operation, providing instantaneous global integrity auditing (`audit_memory mp ·`).
+
 
 ---
 
@@ -148,6 +167,165 @@ By eliminating `<stdio.h>`, `<stdlib.h>`, `<string.h>`, and `<math.h>`:
 3. **Standalone Binary Sidecar (`.mctp`)**:
    - Provenance records are encapsulated in a binary sidecar format verified natively by the Qadav compiler runtime (`qadav_mctp.c`) and CLI validator (`qyn verify-training`).
    - Filesystem operations are performed via direct Win32 API calls (`CreateFileW`, `WriteFile`, `ReadFile`), maintaining 100% zero-libc safety.
+
+---
+
+## 14. Quantum-Entangled Cross-Model Transfer (QECMT — Invention #10) / क्रॉस-मॉडल ट्रांसफर सुरक्षा
+
+1. **Cryptographic License Authorization**:
+   - Transfer and distillation between models require an explicit `license` declaration.
+   - The license digest `SHA3(teacher_vault_id || student_network_hash || max_distill_rate || expiry || issued_at)` is signed and enforced at runtime.
+2. **Selective Layer Share Transfer**:
+   - Only requested layers are transferred as Shamir shares, preventing extraction or leakage of unshared network parameters.
+3. **Anti-IP-Theft Distillation Rate Enforcement**:
+   - If an unauthorized process attempts distillation at a rate exceeding `max_distill_rate` or beyond `max_epochs`, `qadav_qecmt_distill` detects the violation, triggers quantum decoherence (`qadav_qeeh_trigger_decoherence`), and immediately terminates the process via `ExitProcess(0xDEADBEEF)`.
+4. **Rolling Provenance Chain**:
+   - Every license grant, layer transfer, and distillation step computes a rolling SHA3-256 chain: `chain_next = SHA3(chain_current || event_digest)`.
+   - Any tampering or out-of-order execution invalidates `qadav_qecmt_verify_chain`, securing the supply chain of distilled models.
+
+---
+
+## 15. Quantum-Entangled Reasoning Attestation (QERA — Invention #11) / रीज़निंग अटेस्टेशन सुरक्षा
+
+1. **Deterministic 185-Byte Packing**:
+   - Each reasoning step is packed into a contiguous 185-byte binary structure (`step_index` 8B + `timestamp` 8B + `input_hash` 32B + `weights_hash` 32B + `ethics_hash` 32B + `output_hash` 32B + `operation` 1B + `confidence` 8B + `prev_commitment` 32B).
+   - Immune to ASLR pointer randomization, struct padding variances, and cross-platform ABI discrepancies.
+
+2. **Epistemic Rolling Hash Chain**:
+   - The reasoning chain maintains a rolling cryptographic root:
+     $$\text{chain\_root}_{k} = \text{SHA3-256}(\text{chain\_root}_{k-1} \,\|\, \text{step\_commitment}_{k})$$
+   - Each step's commitment binds the input premise, derived conclusion, epistemic confidence score, and active ethical Hamiltonian state.
+
+3. **Content-Based Boundary Coupling**:
+   - The reasoning chain is permanently bound to an ethical boundary using its content-based rule-and-penalty hash (`qadav_qeeh_boundary_hash`), strictly preventing unauthorized boundary manipulation.
+
+4. **Tamper Decoherence & Termination**:
+   - Any revalidation discrepancy during `verify_chain` immediately triggers quantum state vector decoherence (`qadav_qeeh_trigger_decoherence`), followed by hard process termination with exit code `0xDEADBEEF`.
+
+5. **Test-Only Tamper Primitive Guard**:
+   - Primitives that simulate reasoning corruption (`corrupt_reasoning_step`) are strictly gated behind the `--test` compiler flag. Attempting to use them in standard builds produces an immediate compile-time checker error.
+
+---
+
+## 16. Quantum-Entangled Cross-Modal Attestation (QECMA — Invention #12) / क्रॉस-मॉडल अटेस्टेशन सुरक्षा
+
+1. **Domain-Separated Modality Tags**:
+   - Enforces unique 1-byte domain separation prefixes (`0x54` for `tensor_input`, `0x58` for `text_input`, `0x43` for `concept_input`), strictly preventing cross-modal injection, type spoofing, and representation confusion attacks.
+
+2. **Deterministic Canonical Ordering**:
+   - Multi-modal inputs within a bundle are canonically sorted by (tag ASC, digest ASC, length ASC) prior to Merkle aggregation, preventing permutation bypass attacks where attackers reorder inputs to evade pattern detection.
+
+3. **Collision-Resistant 41-Byte Leaf Construction**:
+   - Each leaf hash is computed over `tag (1B) || digest (32B) || data_len (8B LE)`. This explicit length and domain inclusion defeats length extension attacks and ambiguous concatenation attacks.
+
+4. **Cryptographic Coupling to QERA & QEEH**:
+   - The resulting 32-byte `unified_root` is passed directly as the premise attestation to QERA. Any perturbation to raw tensor floats, prompt strings, or prime concepts produces an immediate Merkle avalanche that corrupts the chain root.
+   - Verification failures trigger active quantum decoherence (`qadav_qeeh_trigger_decoherence`) and hard exit (`0xDEADBEEF`).
+
+---
+
+## 17. Quantum Error-Corrected Memory Provenance (QEC-QEMP — Invention #13) / क्वांटम त्रुटि-संशोधित मेमोरी सुरक्षा
+
+1. **Physical Quantum Stabilizer Syndrome Integrity**:
+   - Stabilizer syndrome measurements from Surface Codes or QLDPC codes are cryptographically committed using post-quantum SHA3-256:
+     $$\text{commitment} = \text{SHA3-256}(\text{syndrome\_id} \,\|\, \text{timestamp} \,\|\, \text{raw\_syndrome} \,\|\, \text{boundary\_hash})$$
+   - Prevents adversarial manipulation of error syndromes to inject unauthorized bitflips or phaseflips into cognitive memory representations.
+
+2. **Strict Two-Stage Verification-Before-Correction Protocol**:
+   - Neural decoders and autonomous agents cannot execute `correct` operations without first executing `verify_syndrome`.
+   - Statically enforced by the AST semantic checker at compile-time and backed by zero-libc runtime assertions returning error code `-6`.
+
+3. **Active Decoherence Failsafe**:
+   - Any single-bit modification of syndrome payload, timestamp, or ethical boundary digest fails constant-time cryptographic verification (`qadav_sha3_ct_compare`).
+   - Tamper detection immediately triggers `qadav_qeeh_trigger_decoherence` and terminates the execution environment via `ExitProcess(0xDEADBEEF)`.
+
+4. **Test-Only Syndrome Corruption Primitive Guard**:
+   - Adversarial simulation primitives (`corrupt_syndrome`) are gated behind the `--test` compiler flag. Standard builds reject them at compile-time.
+
+5. **Consolidation Provenance Preservation**:
+   - High-confidence episodic memory entries recalled through QEMP and promoted into semantic graphs retain cryptographic binding to the creating ethical boundary, preventing unauthorized cross-boundary memory leakage.
+
+---
+
+## 18. Cross-Boundary Privacy Preservation (CB-SRCPP — Invention #14)
+
+1. **Zero Boundary Disclosure**:
+   - The token encapsulates only the owner's 32-byte canonical boundary hash commitment, revealing zero information regarding the owner's confidential internal Hamiltonian rules or penalty coefficients.
+2. **Cryptographic Key Scoping**:
+   - Permitted memory keys are committed via a SHA3-256 Merkle root. Unpermitted key recall requests are rejected at compile-time by the AST checker and trigger runtime decoherence.
+3. **Recipient Identity Pinning**:
+   - Scoped tokens are tied to the recipient agent's cryptographic identity hash via constant-time comparison, defeating token reuse, relay, and theft attacks.
+4. **Monotonic Temporal Gating & Instant Revocation**:
+   - Enforces expiration timestamps and atomic revocation flags. Revoked or expired token recall triggers active quantum decoherence and process termination (`0xDEADBEEF`).
+
+---
+
+## 19. Safe Tool Orchestration & Execution Sandboxing (M5.8)
+
+1. **Pre- and Post-Condition Verification**:
+   - Tool arguments and execution state are strictly gated by invariant pre-conditions and post-conditions. Failed post-conditions gracefully fail with error code `-4` without logging false audit steps.
+2. **Ethical Boundary Invocations**:
+   - Tools are evaluated against ethical Hamiltonian bounds prior to execution. Unauthorized actions trigger immediate decoherence.
+3. **Reasoning Chain Auditing**:
+   - Invocations audited to a QERA reasoning chain append an immutable, tamper-evident `QADAV_OP_VERIFY` reasoning step with calibrated 1.0 confidence.
+
+---
+
+## 20. Type-Tagged Proof-Carrying Reasoning Security (TTPCR — Invention #15)
+
+1. **Category Isolation & Semantic Typing**:
+   - Every reasoning certificate specifies an explicit discrete kind ($1 = \text{Deductive}, 2 = \text{Inductive}, 3 = \text{Abductive}, 4 = \text{Verification}$). Uncategorized or invalid inferences are rejected at compile-time and runtime.
+2. **Bounded Witness Security**:
+   - Witnesses are strictly bounded ($1 \le \text{len} \le 512$ bytes), preventing buffer overflow or denial-of-service memory exhaustion attacks.
+3. **Non-Zero Hash Invariant**:
+   - Premise and conclusion hashes are verified to be strictly non-zero, defeating zero-preimage substitution exploits.
+4. **Dual-Layer SHA3 Commitment**:
+   - Step certificates recompute `cert_id` and `commitment` in constant-time, cryptographically proving structural validity before accepting chain integrity.
+
+---
+
+## 21. Calibrated Abstention Safety & Non-Decoherence Guarantee (M5.10)
+
+1. **Epistemic Humility vs. Attack Surface**:
+   - Abstention due to low confidence ($C_{\text{chain}} < \tau$) represents honest probabilistic uncertainty, NOT an adversarial attack on memory or boundaries.
+2. **Zero Decoherence Guarantee**:
+   - Abstention gracefully returns structured error status (`RETRY`, `ESCALATE`, `REFUSE`). It NEVER triggers quantum decoherence, memory erasure, or vault self-nullification.
+3. **Bounded Retry Protection**:
+   - `RETRY` mode strictly caps retry iterations against `max_retries`, preventing infinite reasoning loops.
+
+---
+
+## 22. Quantum-Entangled Sandbox Isolation & Host Continuity Guarantee (QESI — Invention #16)
+
+1. **Register-Level Quantum Isolation**:
+   - Untrusted computations execute within dedicated quantum register structures with private amplitude arrays and local Hamiltonian operator bounds.
+2. **Contained Decoherence**:
+   - Any boundary or invariant violation within the sandbox causes quantum wavefunction decoherence **strictly within that isolated register** (returning `-2`).
+3. **Host Process Continuity Guarantee**:
+   - The host process and its own quantum state survive intact. The host receives a forensic attestation token without experiencing decoherence or process termination (`0xDEADBEEF`).
+4. **Cryptographic Non-Repudiation**:
+   - Every sandbox violation generates a tamper-evident 32-byte SHA3 attestation recording the violation details and binds into the host's QERA reasoning chain.
+
+---
+
+## 23. Attested GPU Kernel Execution Security (AGKE — Invention #17)
+
+1. **Hardware Device Anchoring**:
+   - Every GPU compute dispatch extracts and cryptographic binds the physical GPU device UUID into the attestation record. Rogue device emulation or PCIe relay attacks trigger instant verification mismatch.
+2. **Dual-Buffer Activation Digests**:
+   - Both input parameters and output activation tensors are individually hashed using SHA3-256, protecting against asynchronous driver-level memory manipulation or DMA poisoning.
+3. **Bytecode Identity Commitment**:
+   - Compute shader source and compiled bytecode identities are hashed and verified, preventing GPU kernel replacement or shader injection exploits.
+4. **QERA Reasoning Chain Entanglement**:
+   - Dispatches are committed into the host QERA reasoning chain (`QADAV_OP_VERIFY`, confidence 1.0).
+5. **Fail-Stop Wavefunction Decoherence**:
+   - Unlike software-level exceptions, any AGKE verification failure immediately triggers global quantum wavefunction collapse (`qadav_qeeh_trigger_decoherence`) and zero-libc process self-nullification (`ExitProcess(0xDEADBEEF)`).
+
+
+
+
+
+
 
 
 

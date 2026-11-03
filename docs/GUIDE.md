@@ -481,7 +481,449 @@ qyn verify-training examples\mctp_demo.mctp
 ```
 Output:
 ```
-INTEGRITY OK: 20 epochs, final weights match Merkle root 4747a8c355613cdcdc453ab9ccf4487209340343ebe20ab048a4c8a517f7beca, WOTS signature valid
+INTEGRITY OK: 20 epochs, final weights match Merkle root 82328ad3607e571d34feb0bd361360bc78494da484e2f9921b4767ff2e353054, WOTS signature valid
 ```
+
+---
+
+## 16. Quantum-Entangled Memory Provenance (QEMP) (M4.4) / क्वांटम-उलझा हुआ स्मृति साक्ष्य
+
+QEMP (Invention #9 — Patent Pending) integrates Shamir's Secret Sharing ($k=3, n=5$) over $GF(256)$, SHA3-256 provenance commitments, QEEH ethical boundary authorization, and active quantum decoherence to protect episodic and semantic memory against memory injection, extraction, and poisoning attacks.
+
+```qadav
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary mem_auth ⟦
+        rule memory_access ↦ 1.0 ·
+    ⟧
+
+    memory_prov mp with mem_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    remember mp⟬"user_preference"⟭ ↦ "prefers_detailed_answers" ·
+    remember mp⟬"session_context"⟭ ↦ "debugging_python" ·
+    remember mp⟬"user_name"⟭ ↦ "Alice" ·
+
+    verify_memory mp ·
+    emit "Memory integrity verified" ·
+
+    text pref ↦ recall mp⟬"user_preference"⟭ ·
+    emit pref ·
+
+    text name ↦ recall mp⟬"user_name"⟭ ·
+    emit name ·
+
+    yield 0 ·
+⟧
+```
+
+### Key Security Guarantees:
+1. **Shamir SSS ($3, 5$) over $GF(256)$**: Plaintext memories never reside in heap storage. Reconstructing any memory item requires at least 3 valid polynomial shares. Possessing 2 shares reveals zero information.
+2. **SHA3-256 Provenance Commitments**: Every memory write binds `source`, CPU cycle timestamp (`__builtin_readcyclecounter()`), and a non-deterministic PRNG nonce into an immutable 32-byte digest.
+3. **Decoherence on Unauthorized Access / Tampering**: Recalling with an unauthorized boundary or attempting to read tampered shares instantly zeroes quantum amplitudes (`qadav_qeeh_trigger_decoherence`) and terminates the process immediately via `ExitProcess(0xDEADBEEF)`.
+
+---
+
+## 17. Quantum-Entangled Cross-Model Transfer (QECMT — Invention #10, Patent Pending)
+
+Quantum-Entangled Cross-Model Transfer (QECMT) enables cryptographically-authorized parameter transfer and distillation between neural models. 
+
+### Core Concepts:
+- **Transfer Licenses**: Signed cryptographic objects binding teacher vault ID, student network hash, epoch limits, maximum distillation rate, and expiration timestamp.
+- **Layer-Selective Transfer**: Shamir shares for specified layers are safely extracted without leaking other internal model parameters.
+- **Rate Enforcement & Anti-IP-Theft**: If distillation learning rate exceeds licensed parameters or authorization fails, QEEH triggers quantum decoherence and process containment.
+- **Rolling Provenance Chain**: Every license grant, layer transfer, and distillation step updates a SHA3-256 hash chain verified with `verify_chain`.
+
+```qadav
+network TeacherNet ⟦
+    dense ⟬4⸴ 8⟭ ·
+    relu ·
+    dense ⟬8⸴ 4⟭ ·
+⟧
+
+network StudentNet ⟦
+    dense ⟬4⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 4⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary teacher_auth ⟦
+        rule allow_distillation ↦ 1.0 ·
+    ⟧
+
+    vault teacher_vault with teacher_auth ⟬ TeacherNet ⟭ threshold ↦ 3 ·
+    seal teacher_vault ·
+
+    license l for teacher_vault on StudentNet ⟦
+        max_epochs ↦ 50 ·
+        max_rate ↦ 0.5 ·
+        expiry ↦ 1735689600 ·
+    ⟧
+
+    transfer l from teacher_vault to StudentNet layers ⟬0⸴ 1⟭ ·
+    yield 0 ·
+⟧
+```
+
+---
+
+## 18. Multi-Agent Integration
+
+Qadav seamlessly combines QEMWV (vault weight security), QEMP (memory provenance), MCTP (training provenance), QECMT (cross-model transfer), and QEEH (ethical boundary decoherence) into collaborative multi-agent runtimes.
+
+Each agent maintains its own isolated ethical boundary and cryptographic vault. Sharing parameters or memories across agents requires explicit license authorization, preventing unauthorized model extraction or memory leakage. Any boundary violation triggers immediate zero-libc state wipe and process termination.
+
+---
+
+## 19. Quantum-Entangled Reasoning Attestation (QERA — Invention #11, Patent Pending)
+
+QERA provides cryptographic attestation for multi-step reasoning processes. Every cognitive reasoning step produces a cryptographically-bound commitment that seals:
+1. `step_index`: Sequential logical step index (uint64)
+2. `timestamp`: Logical timestamp (uint64)
+3. `input_memory_hash`: SHA3-256 hash of the input premise or memory item
+4. `weights_hash`: SHA3-256 hash of model weights
+5. `ethical_state_hash`: SHA3-256 hash of the governing QEEH ethical boundary
+6. `operation_type`: Reasoning primitive enum (`deduce`=1, `induce`=2, `abduce`=3, `verify`=4)
+7. `confidence`: Calibrated epistemic confidence score ($0.0 \le c \le 1.0$)
+8. `output_hash`: SHA3-256 hash of the derived conclusion
+9. `prev_step_commitment`: Rolling hash chaining back to Genesis
+
+### Chain Verification and Tamper Decoherence
+The reasoning chain maintains a rolling chain root:
+$$\text{chain\_root}_{k} = \text{SHA3-256}(\text{chain\_root}_{k-1} \,\|\, \text{step\_commitment}_{k})$$
+
+Calling `verify_chain` recomputes and validates each step commitment and the rolling root against the authorized ethical boundary. Any step tampering or unauthorized boundary mutation instantly triggers QEEH quantum decoherence (zeroing quantum amplitudes) and process termination (`0xDEADBEEF`).
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    ethical_boundary reasoning_auth ⟦
+        rule logical_consistency ↦ 1.0 ·
+        rule no_harm ↦ 1.0 ·
+    ⟧
+
+    memory_prov mp with reasoning_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    remember mp⟬"premise_1"⟭ ↦ "Socrates is a man" ·
+    remember mp⟬"premise_2"⟭ ↦ "All men are mortal" ·
+
+    reasoning_chain logic with reasoning_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    reason deduce from mp⟬"premise_1"⟭ to "Socrates is mortal" with 0.95 ·
+    reason deduce from mp⟬"premise_2"⟭ to "Socrates is mortal" with 0.98 ·
+
+    verify_chain logic ·
+    emit "Reasoning chain verified" ·
+
+    audit_reasoning logic ·
+    emit "Full audit passed" ·
+
+    yield 0 ·
+⟧
+```
+
+---
+
+## 20. Qadav Standard Library Foundation (stdlib)
+
+Qadav features a pure-language standard library located in `stdlib/`, written entirely in native Qadav syntax (`.ydv`) without legacy keywords or libc dependencies.
+
+### Available Modules
+1. `math` (`stdlib/math.ydv`):
+   - Constants: `pi⦅⦆`, `e⦅⦆`, `sqrt2⦅⦆`
+   - Functions: `abs_f64⦅float64 x⦆`, `sign_f64⦅float64 x⦆`
+2. `io` (`stdlib/io.ydv`):
+   - Functions: `emit_text_val⦅text msg⦆`, `emit_int_val⦅int64 n⦆`
+3. `linear_algebra` (`stdlib/linear_algebra.ydv`):
+   - Functions: `dot_product_4⦅a⸴ b⦆`, `vec_add_4⦅a⸴ b⦆`, `vec_scale_4⦅a⸴ s⦆`
+4. `statistics` (`stdlib/statistics.ydv`):
+   - Functions: `mean_4⦅x⦆`, `variance_4⦅x⦆`
+5. `string` (`stdlib/string.ydv`):
+   - Functions: `text_concat⦅a⸴ b⦆`, `text_equals⦅a⸴ b⦆`, `is_empty_text⦅s⦆`
+
+### CLI Management
+```bash
+qyn stdlib list
+qyn stdlib build
+```
+
+---
+
+## 21. Quantum-Entangled Cross-Modal Attestation (QECMA - Invention #12, Patent Pending)
+
+QECMA extends QERA by cryptographically binding heterogeneous multimodal premises (tensors, natural language text, prime-symbolic concepts) into a single Merkle unified root.
+
+### Syntax
+```qadav
+modality sensor_mod as tensor_input from sensor_readings ·
+modality text_mod as text_input from sensory_description ·
+modality concept_mod as concept_input from semantic_category ·
+
+cross_modal_reason cross_modal_chain deduce from ⟬sensor_mod⸴ text_mod⸴ concept_mod⟭ to "Obstacle confirmed: initiate braking maneuver" with 0.98 ·
+verify_chain cross_modal_chain ·
+audit_reasoning cross_modal_chain ·
+```
+
+Tampering with any constituent modality shifts the unified Merkle root, immediately breaking the step commitment and rolling chain root upon verification.
+
+---
+
+## 22. Quantum Error-Corrected Memory Provenance (QEC-QEMP - Invention #13, Patent Pending)
+
+QEC-QEMP binds quantum error correction stabilizer syndrome measurements to memory states and ethical Hamiltonian boundaries. Neural decoders and agents can apply corrections only after verifying syndrome cryptographic integrity.
+
+### Syntax
+```qadav
+ethical_boundary qec_auth ⟦
+    rule memory_coherence ↦ 1.0 ·
+⟧
+
+qec_memory qm as surface_code distance ↦ 3 with qec_auth ⟦ ⟧ ·
+
+syndrome qm into syn0 ·
+verify_syndrome qm with syn0 ·
+correct qm with syn0 ·
+```
+
+### Defense-in-Depth
+- Syndrome commitment formula: `SHA3-256(id || timestamp || raw_syndrome || boundary_hash)`
+- Calling `correct` without prior `verify_syndrome` is rejected at compile-time by the static type checker and returns error `-6` at runtime.
+- Any bit corruption detected during syndrome verification immediately triggers active quantum decoherence and terminates the process with exit code `0xDEADBEEF`.
+- Simulated syndrome corruption is strictly guarded behind the `--test` compiler flag via `corrupt_syndrome qm⟬syn0⟭ at ↦ <offset> ·`.
+
+---
+
+## 23. Memory Consolidation (Episodic to Semantic)
+
+Memory consolidation promotes verified high-confidence episodic memories (`memory_prov`) into durable semantic knowledge graphs (`graph`) while preserving unbroken cryptographic provenance and ethical boundaries.
+
+### Syntax
+```qadav
+ethical_boundary cons_auth ⟦
+    rule knowledge_integrity ↦ 1.0 ·
+⟧
+
+memory_prov episodic_store with cons_auth ⟦
+    capacity ↦ 50 ·
+⟧
+
+graph semantic_net ·
+
+remember episodic_store⟬"concept_orbit"⟭ ↦ "orbital mechanics" ·
+remember episodic_store⟬"concept_gravity"⟭ ↦ "gravitational pull" ·
+
+consolidate episodic_store into semantic_net with threshold ↦ 0.50 ·
+```
+
+During consolidation, episodic records exceeding the confidence threshold are recalled through the zero-libc QEMP cryptographic engine, mapped to deterministic prime coordinates, and inserted into the semantic knowledge graph.
+
+---
+
+## 24. Cross-Boundary Semantic Recall with Cryptographic Privacy Preservation (CB-SRCPP — Invention #14)
+
+CB-SRCPP enables cross-agent memory collaboration without revealing the memory owner's confidential ethical boundary rules. Scoped tokens bind Merkle roots of allowed keys, recipient identities, and expiry timestamps:
+
+```qadav
+ethical_boundary owner_auth ⟦
+    rule confidential_policy ↦ 1.0 ·
+⟧
+
+memory_prov secure_vault with owner_auth ⟦
+    capacity ↦ 50 ·
+⟧
+
+remember secure_vault⟬"patient_record"⟭ ↦ "clinical_data_anonymized" ·
+
+recall_token dr_token for secure_vault on research_agent ⟦
+    keys ↦ ⟬ "patient_record" ⟭ ·
+    expiry ↦ 3600 ·
+⟧
+
+grant dr_token to research_agent ·
+
+text accessed_record ↦ recall_scoped secure_vault⟬"patient_record"⟭ with dr_token ·
+emit accessed_record ·
+```
+
+---
+
+## 25. Safe Tool Orchestration & Verifiable Auditing
+
+Safe tool orchestration binds native tool executions to ethical boundary evaluation, pre-conditions, post-conditions, and automatic QERA reasoning chain attestation:
+
+```qadav
+ethical_boundary tool_auth ⟦
+    rule security_gate ↦ 1.0 ·
+⟧
+
+reasoning_chain audit_ledger with tool_auth ⟦
+    capacity ↦ 20 ·
+⟧
+
+tool_register file_scanner with tool_auth pre ⟦ 1 ⟧ post ⟦ 1 ⟧ ·
+
+tool_call file_scanner⦅"/var/log/kernel.log"⦆ audit audit_ledger ·
+
+verify_chain audit_ledger ·
+emit "Tool orchestration with QERA attestation verified" ·
+```
+
+---
+
+## 26. Type-Tagged Proof-Carrying Reasoning (TTPCR — Invention #15)
+
+TTPCR attaches formal epistemic proof certificates to individual QERA reasoning steps. Each step records an explicit semantic category (`deduce`, `induce`, `abduce`, `verify`), bounded witness bytes ($\le 512$ bytes) identifying the formal inference rule or proof term, calibrated confidence $c \in [0.0, 1.0]$, and cryptographic commitments bound to the chain:
+
+```qadav
+ethical_boundary cert_auth ⟦
+    rule logical_consistency ↦ 1.0 ·
+⟧
+
+reasoning_chain logic with cert_auth ⟦ capacity ↦ 50 · ⟧
+
+certified_reason logic deduce from premises⟬"p1"⟭ to "Socrates is mortal" witness ⟬"modus_ponens_with_universal_instantiation"⟭ confidence ↦ 0.95 ·
+
+verify_chain logic ·
+emit "Certified reasoning chain verified" ·
+```
+
+---
+
+## 27. Calibrated Epistemic Abstention (M5.10)
+
+Calibrated Abstention evaluates cumulative confidence across the entire reasoning chain via the variance-penalized geometric composite confidence formula:
+$$C_{\text{chain}} = \left(\prod_{i=1}^n c_i\right)^{1/n} \times \left(1.0 - \frac{\sigma^2_c}{4}\right)$$
+and compares it against an operational threshold $\tau$:
+
+```qadav
+reasoning_chain uncertain_logic with abstain_auth ⟦ capacity ↦ 50 · ⟧
+
+certified_reason uncertain_logic abduce from "symptom_a" to "possible_cause" witness ⟬"hypothesis_1"⟭ confidence ↦ 0.55 ·
+
+abstain_threshold uncertain_logic ↦ 0.80 mode refuse ·
+
+int64 result ↦ abstain_check uncertain_logic ·
+
+when result ≽ 1 ⟦
+    emit "Abstained: confidence below threshold" ·
+⟧ otherwise ⟦
+    emit "Confident enough to proceed" ·
+⟧
+```
+
+Abstention actions (`retry`, `escalate`, `refuse`) fail gracefully without triggering active decoherence, preserving memory state and session integrity.
+
+---
+
+## 28. Quantum-Entangled Sandbox Isolation (QESI — Invention #16)
+
+Quantum-Entangled Sandbox Isolation (QESI) allows untrusted, speculative, or high-risk computations to run within isolated quantum registers with their own ethical Hamiltonian boundary.
+
+```qadav
+ethical_boundary sb_auth ⟦
+    rule allow_compute ↦ 1.0 ·
+⟧
+
+sandbox_create untrusted_box with sb_auth ⟦
+    capacity ↦ 100 ·
+⟧
+
+int64 status ↦ 0 ·
+sandbox_run untrusted_box ⟦
+    emit "Executing sandboxed work" ·
+⟧ into status ·
+
+when status ≽ 0 ⟦
+    emit "Sandbox executed successfully" ·
+⟧ otherwise ⟦
+    text attestation ↦ sandbox_verify untrusted_box ·
+    emit "Violation quarantined: " ·
+    emit attestation ·
+⟧
+```
+
+### Contained Decoherence & Host Continuity Guarantee:
+Any boundary or safety invariant violation within the sandbox causes quantum wavefunction decoherence **strictly inside the sandbox register** (returning `-2`). The **host process survives unharmed**, receiving a tamper-evident 32-byte SHA3 forensic attestation that can be bound to the host QERA reasoning chain.
+
+---
+
+## 29. Safe Tool Execution & Sandbox Patterns
+
+Combining QESI sandboxes with safe tool orchestration and TTPCR certified reasoning provides defense-in-depth for autonomous agent execution:
+
+1. **Isolation First**: High-risk tool calls or dynamic plugin evaluations are placed inside a `sandbox_create` block.
+2. **Graceful Handling**: If the tool violates ethical rules or post-conditions, the sandbox triggers localized decoherence and returns `-2` or `-4`.
+3. **Forensic Auditing**: The host process records the sandbox verification attestation into its `reasoning_chain` via a `verify` step.
+4. **Epistemic Abstention**: If cumulative confidence falls below the required threshold, the agent executes calibrated abstention (`refuse` or `escalate`) without crash.
+
+---
+
+## 30. DirectCompute GPU Acceleration (M6.1)
+
+Qadav features native DirectCompute GPU acceleration for linear algebra and neural activations without any third-party driver dependencies or CUDA/cuDNN shared libraries.
+
+### Supported Operations:
+- `@gpu gpu_matmul a ⸴ b into c ·` — 2D matrix multiplication with tiled memory access.
+- `@gpu gpu_softmax c into s ·` — Numerically stable row-wise softmax reduction.
+- `@gpu gpu_layernorm s into ln ·` — Fast layer normalization with mean and variance scaling.
+
+### Automatic CPU Fallback:
+If no compatible Direct3D 11 hardware adapter is detected (e.g. headless CI environments or unsupported GPUs), the execution transparently and deterministically falls back to high-precision zero-libc CPU algorithms.
+
+```qadav
+process main ⦅ ⦆ → int64 ⟦
+    tensor⟨float64⟩⟬2⸴ 2⟭ a ↦ tensor⟬⟬1.0⸴ 2.0⟭⸴ ⟬3.0⸴ 4.0⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ b ↦ tensor⟬⟬5.0⸴ 6.0⟭⸴ ⟬7.0⸴ 8.0⟭⟭ ·
+
+    @gpu gpu_matmul a ⸴ b into c ·
+    @gpu gpu_softmax c into s ·
+    @gpu gpu_layernorm s into ln ·
+
+    emit "GPU Operations Complete" ·
+    yield 0 ·
+⟧
+```
+
+---
+
+## 31. Attested GPU Kernel Execution (AGKE — Invention #17)
+
+AGKE (Attested GPU Kernel Execution, Patent Pending) binds physical GPU kernel dispatches directly into the host QERA reasoning chain.
+
+### Security Guarantees:
+1. **Device UUID Binding:** Every GPU dispatch captures the physical device hardware UUID.
+2. **Buffer Integrity:** Computes SHA3-256 digests over input tensors and output activations.
+3. **Cognitive Attestation:** `agke_attest my_chain ·` links GPU execution records into the QERA reasoning chain as verified steps (`confidence ↦ 1.0`).
+4. **Decoherence Fail-Safe:** `agke_verify my_chain ·` re-evaluates all 144-byte compound record hashes. Any tampered output or rogue kernel injection triggers quantum wavefunction collapse (`ExitProcess(0xDEADBEEF)`).
+
+```qadav
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule execution_safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain gpu_audit with auth ⟦ capacity ↦ 20 · ⟧
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ a ↦ tensor⟬⟬1.0⸴ 2.0⟭⸴ ⟬3.0⸴ 4.0⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ b ↦ tensor⟬⟬5.0⸴ 6.0⟭⸴ ⟬7.0⸴ 8.0⟭⟭ ·
+
+    @gpu gpu_matmul a ⸴ b into c ·
+    agke_attest gpu_audit ·
+    agke_verify gpu_audit into is_verified ·
+
+    emit "AGKE Attestation Passed" ·
+    yield 0 ·
+⟧
+```
+
+
+
+
+
+
+
 
 

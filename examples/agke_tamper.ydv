@@ -1,0 +1,21 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule execution_safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain gpu_audit_chain with auth ⟦ capacity ↦ 20 · ⟧
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ a ↦ tensor⟬⟬1.0⸴ 2.0⟭⸴ ⟬3.0⸴ 4.0⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ b ↦ tensor⟬⟬5.0⸴ 6.0⟭⸴ ⟬7.0⸴ 8.0⟭⟭ ·
+
+    @gpu gpu_matmul a ⸴ b into c ·
+
+    agke_attest gpu_audit_chain ·
+
+    corrupt_gpu_digest gpu_audit_chain at ↦ 0 ·
+
+    agke_verify gpu_audit_chain into is_verified ·
+
+    emit "Tampered GPU execution incorrectly passed" ·
+    yield 0 ·
+⟧
