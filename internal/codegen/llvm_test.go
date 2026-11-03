@@ -26,7 +26,7 @@ func compileSourceToIR(src string) (string, error) {
 	c := checker.New()
 	errs := c.Check(prog)
 	if len(errs) > 0 {
-		return "", errs[0]
+		return "", &errs[0]
 	}
 
 	g := New(c)

@@ -19,15 +19,17 @@ typedef struct qadav_vault {
     qadav_vault_share  shares[QADAV_MAX_SHARES];
     int                state;   // 0=empty, 1=sealed, 2=unsealed, 3=wiped
     unsigned char      vault_id[32];   // SHA3-256 identifier
+    unsigned char      authorized_boundary_id[32]; // SHA3 of boundary at creation (F6)
     qadav_tensor**     weights;
     int                n_weights;
 } qadav_vault;
 
-// Create empty vault with N shares, threshold T
-qadav_vault* qadav_qemwv_create(int n_shares, int threshold);
+// Create empty vault with N shares, threshold T, bound to authorized QEEH boundary
+qadav_vault* qadav_qemwv_create(int n_shares, int threshold, void* boundary);
 
 // Seal network weights into vault (Shamir secret sharing)
 int qadav_qemwv_seal(qadav_vault* v, qadav_tensor** weights, int n_weights);
+int qadav_qemwv_seal_with_seed(qadav_vault* v, qadav_tensor** weights, int n_weights, unsigned long long seed);
 
 // Unseal for inference — requires QEEH boundary authorization
 qadav_tensor** qadav_qemwv_unseal(qadav_vault* v, qadav_ethical_hamiltonian* boundary);

@@ -1,0 +1,13 @@
+process mean_4⦅tensor⟨float64⟩⟬4⟭ x⦆ → float64 ⟦
+    float64 s ↦ ∑ x ·
+    yield s ⊘ 4.0 ·
+⟧
+
+process variance_4⦅tensor⟨float64⟩⟬4⟭ x⦆ → float64 ⟦
+    float64 m ↦ mean_4⦅x⦆ ·
+    tensor⟨float64⟩⟬4⟭ dev ↦ x ⊖ m ·
+    tensor⟨float64⟩⟬4⟭ sq ↦ dev ⊗ dev ·
+    float64 sum_sq ↦ ∑ sq ·
+    yield sum_sq ⊘ 4.0 ·
+⟧
+

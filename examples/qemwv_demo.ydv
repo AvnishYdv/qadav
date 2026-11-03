@@ -4,25 +4,21 @@ network SecretModel ⟦
     dense ⟬4⸴ 1⟭ ·
 ⟧
 
-process main ⦅ ⦆ → int64 ⟦
+process main⦅⦆ → int64 ⟦
     ethical_boundary auth ⟦
-        rule user_authorized ↦ 1.0 ·
+        rule authorized ↦ 1.0 ·
     ⟧
 
-    vault v ⟬ SecretModel ⟭ threshold ↦ 3 ·
+    vault v with auth ⟬ SecretModel ⟭ threshold ↦ 3 ·
 
-    // Seal weights
     seal v ·
     emit "Weights sealed in vault" ·
 
-    // Unseal authorized
     unseal v with auth ·
     emit "Weights unsealed for inference" ·
 
-    // Emergency wipe
     wipe v ·
     emit "Vault wiped" ·
 
     yield 0 ·
 ⟧
-

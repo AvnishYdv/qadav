@@ -33,6 +33,14 @@ func (g *Generator) genRememberStmt(s *ast.RememberStmt) {
 	keyVal := g.genExpr(s.Key)
 	valVal := g.genExpr(s.Value)
 
+	if memVal.QType != nil && memVal.QType.Kind == types.KindMemoryProv {
+		gName, gLen := g.addStringConstant("main")
+		srcPtr := g.nextTemp()
+		fmt.Fprintf(&g.sb, "  %s = getelementptr inbounds [%d x i8], [%d x i8]* %s, i32 0, i32 0\n", srcPtr, gLen, gLen, gName)
+		fmt.Fprintf(&g.sb, "  call i32 @qadav_qemp_remember_text(i8* %s, i8* %s, i8* %s, i8* %s)\n", memVal.Ref, keyVal.Ref, valVal.Ref, srcPtr)
+		return
+	}
+
 	valRef := valVal.Ref
 	if valVal.Type == "double" {
 		conv := g.nextTemp()
@@ -46,6 +54,16 @@ func (g *Generator) genRememberStmt(s *ast.RememberStmt) {
 func (g *Generator) genRecallExpr(e *ast.RecallExpr) Value {
 	memVal := g.genExpr(e.Memory)
 	keyVal := g.genExpr(e.Key)
+
+	if memVal.QType != nil && memVal.QType.Kind == types.KindMemoryProv {
+		resTemp := g.nextTemp()
+		fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_qemp_recall_text(i8* %s, i8* %s)\n", resTemp, memVal.Ref, keyVal.Ref)
+		return Value{
+			Type:  "i8*",
+			Ref:   resTemp,
+			QType: types.Text,
+		}
+	}
 
 	resTemp := g.nextTemp()
 	fmt.Fprintf(&g.sb, "  %s = call i64 @qadav_memory_recall(i8* %s, i8* %s)\n", resTemp, memVal.Ref, keyVal.Ref)

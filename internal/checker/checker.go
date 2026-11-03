@@ -15,28 +15,38 @@ type Error struct {
 	Msg string
 }
 
-func (e Error) Error() string {
+func (e *Error) Error() string {
 	return fmt.Sprintf("%s: %s", e.Pos, e.Msg)
 }
 
 // Checker traverses the AST and verifies semantic and type correctness.
 type Checker struct {
-	globalScope *Scope
-	curScope    *Scope
-	curRetType  *types.Type
-	exprTypes   map[ast.Expr]*types.Type
-	networks    map[string]*NetworkInfo
-	errors      []Error
+	globalScope          *Scope
+	curScope             *Scope
+	curRetType           *types.Type
+	exprTypes            map[ast.Expr]*types.Type
+	networks             map[string]*NetworkInfo
+	errors               []Error
+	IsTest               bool
+	activeReasoningChain *ast.Ident
+	verifiedSyndromes    map[string]bool
+	recallTokens         map[string]*RecallTokenInfo
+	tools                map[string]*ToolInfo
+	sandboxes            map[string]*SandboxInfo
 }
 
 // New creates an initialized Checker.
 func New() *Checker {
 	global := NewScope(nil)
 	return &Checker{
-		globalScope: global,
-		curScope:    global,
-		exprTypes:   make(map[ast.Expr]*types.Type),
-		networks:    make(map[string]*NetworkInfo),
+		globalScope:       global,
+		curScope:          global,
+		exprTypes:         make(map[ast.Expr]*types.Type),
+		networks:          make(map[string]*NetworkInfo),
+		verifiedSyndromes: make(map[string]bool),
+		recallTokens:      make(map[string]*RecallTokenInfo),
+		tools:             make(map[string]*ToolInfo),
+		sandboxes:         make(map[string]*SandboxInfo),
 	}
 }
 
@@ -193,6 +203,18 @@ func (c *Checker) checkDecl(decl ast.Decl) {
 		c.checkVaultDecl(d)
 	case *ast.ProvenanceDecl:
 		c.checkProvenanceDecl(d)
+	case *ast.MemoryProvenanceDecl:
+		c.checkMemoryProvenanceDecl(d)
+	case *ast.LicenseDecl:
+		c.checkLicenseDecl(d)
+	case *ast.ReasoningChainDecl:
+		c.checkReasoningChainDecl(d)
+	case *ast.RecallTokenDecl:
+		c.checkRecallTokenDecl(d)
+	case *ast.ToolRegisterDecl:
+		c.checkToolRegisterDecl(d)
+	case *ast.AbstainThresholdDecl:
+		c.checkAbstainThresholdDecl(d)
 	case *ast.AccessDecl, *ast.ExposeDecl:
 		// Module operations - acknowledged
 	}
@@ -482,6 +504,117 @@ func (c *Checker) checkStmt(stmt ast.Stmt) {
 	case *ast.CertifyStmt:
 		c.checkCertifyStmt(s)
 
+	case *ast.MemoryProvenanceDecl:
+		c.checkMemoryProvenanceDecl(s)
+
+	case *ast.VerifyMemoryStmt:
+		c.checkVerifyMemoryStmt(s)
+
+	case *ast.AuditMemoryStmt:
+		c.checkAuditMemoryStmt(s)
+
+	case *ast.CorruptShareStmt:
+		c.checkCorruptShareStmt(s)
+
+	case *ast.LicenseDecl:
+		c.checkLicenseDecl(s)
+
+	case *ast.TransferStmt:
+		c.checkTransferStmt(s)
+
+	case *ast.DistillStmt:
+		c.checkDistillStmt(s)
+
+	case *ast.ReasoningChainDecl:
+		c.checkReasoningChainDecl(s)
+
+	case *ast.ReasonStepStmt:
+		c.checkReasonStepStmt(s)
+
+	case *ast.VerifyChainStmt:
+		c.checkVerifyChainStmt(s)
+
+	case *ast.AuditReasoningStmt:
+		c.checkAuditReasoningStmt(s)
+
+	case *ast.CorruptReasoningStepStmt:
+		c.checkCorruptReasoningStepStmt(s)
+
+	case *ast.ModalityDecl:
+		c.checkModalityDecl(s)
+
+	case *ast.CrossModalReasonStmt:
+		c.checkCrossModalReasonStmt(s)
+
+	case *ast.QECMemoryDecl:
+		c.checkQECMemoryDecl(s)
+
+	case *ast.SyndromeStmt:
+		c.checkSyndromeStmt(s)
+
+	case *ast.VerifySyndromeStmt:
+		c.checkVerifySyndromeStmt(s)
+
+	case *ast.CorrectStmt:
+		c.checkCorrectStmt(s)
+
+	case *ast.CorruptSyndromeStmt:
+		c.checkCorruptSyndromeStmt(s)
+
+	case *ast.ConsolidateStmt:
+		c.checkConsolidateStmt(s)
+
+	case *ast.RecallTokenDecl:
+		c.checkRecallTokenDecl(s)
+
+	case *ast.GrantStmt:
+		c.checkGrantStmt(s)
+
+	case *ast.RevokeStmt:
+		c.checkRevokeStmt(s)
+
+	case *ast.ToolRegisterDecl:
+		c.checkToolRegisterDecl(s)
+
+	case *ast.ToolCallStmt:
+		c.checkToolCallStmt(s)
+
+	case *ast.CertifiedReasonStmt:
+		c.checkCertifiedReasonStmt(s)
+
+	case *ast.AbstainThresholdDecl:
+		c.checkAbstainThresholdDecl(s)
+
+	case *ast.AbstainCheckStmt:
+		c.checkAbstainCheckStmt(s)
+
+	case *ast.SandboxCreateStmt:
+		c.checkSandboxCreateStmt(s)
+
+	case *ast.SandboxRunStmt:
+		c.checkSandboxRunStmt(s)
+
+	case *ast.SandboxVerifyStmt:
+		c.checkSandboxVerifyStmt(s)
+
+	case *ast.GPUMatmulStmt:
+		c.checkGPUMatmulStmt(s)
+
+	case *ast.GPUSoftmaxStmt:
+		c.checkGPUSoftmaxStmt(s)
+
+	case *ast.GPULayernormStmt:
+		c.checkGPULayernormStmt(s)
+
+	case *ast.AGKEAttestStmt:
+		c.checkAGKEAttestStmt(s)
+
+	case *ast.AGKEVerifyStmt:
+		c.checkAGKEVerifyStmt(s)
+
+	case *ast.CorruptGPUDigestStmt:
+		c.checkCorruptGPUDigestStmt(s)
+
 	case *ast.ExprStmt:
 		c.checkExpr(s.Expr)
 
@@ -753,6 +886,30 @@ func (c *Checker) checkExpr(expr ast.Expr) *types.Type {
 	case *ast.VerifyTrainingExpr:
 		result = c.checkVerifyTrainingExpr(e)
 
+	case *ast.ScopedRecallExpr:
+		result = c.checkScopedRecallExpr(e)
+
+	case *ast.ToolCallExpr:
+		result = c.checkToolCallExpr(e)
+
+	case *ast.AbstainCheckExpr:
+		result = c.checkAbstainCheckExpr(e)
+
+	case *ast.SandboxVerifyExpr:
+		result = c.checkSandboxVerifyExpr(e)
+
+	case *ast.GPUMatmulExpr:
+		result = c.checkGPUMatmulExpr(e)
+
+	case *ast.GPUSoftmaxExpr:
+		result = c.checkGPUSoftmaxExpr(e)
+
+	case *ast.GPULayernormExpr:
+		result = c.checkGPULayernormExpr(e)
+
+	case *ast.AGKEVerifyExpr:
+		result = c.checkAGKEVerifyExpr(e)
+
 	default:
 		result = types.Void
 	}
@@ -867,7 +1024,7 @@ func (c *Checker) checkTensorLit(lit *ast.TensorLit) *types.Type {
 	return types.TensorOfShape(elemType, lit.Dims)
 }
 
-func (c *Checker) checkTensorBinaryOp(pos ast.Position, op token.Type, a, b *types.Type) (*types.Type, error) {
+func (c *Checker) checkTensorBinaryOp(_ ast.Position, op token.Type, a, b *types.Type) (*types.Type, error) {
 	if a.IsTensor() && b.IsTensor() {
 		outShape, err := checkShapeOp(a.Shape, b.Shape, string(op))
 		if err != nil {
@@ -921,7 +1078,7 @@ func promoteTensors(a, b *types.Type) (*types.Type, error) {
 	return types.TensorOf(prom), nil
 }
 
-func (c *Checker) checkMatmul(pos ast.Position, a, b *types.Type) (*types.Type, error) {
+func (c *Checker) checkMatmul(_ ast.Position, a, b *types.Type) (*types.Type, error) {
 	prom, err := promoteTensors(a, b)
 	if err != nil {
 		return nil, err

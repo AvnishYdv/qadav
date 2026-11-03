@@ -13,19 +13,19 @@ type ParseError struct {
 	Message string
 }
 
-func (e ParseError) Error() string {
+func (e *ParseError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Pos, e.Message)
 }
 
 // ErrorList accumulates multiple syntax errors across parsing without terminating early.
 type ErrorList []ParseError
 
-func (l ErrorList) Error() string {
-	if len(l) == 0 {
+func (l *ErrorList) Error() string {
+	if l == nil || len(*l) == 0 {
 		return ""
 	}
 	var sb strings.Builder
-	for _, e := range l {
+	for _, e := range *l {
 		sb.WriteString(e.Error())
 		sb.WriteString("\n")
 	}

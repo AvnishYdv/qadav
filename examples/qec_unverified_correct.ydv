@@ -1,0 +1,15 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary qec_auth ⟦
+        rule memory_coherence ↦ 1.0 ·
+    ⟧
+
+    qec_memory qm as surface_code distance ↦ 3 with qec_auth ⟦ ⟧ ·
+
+    syndrome qm into syn0 ·
+    correct qm with syn0 ·
+
+    emit "Unverified correction attempted" ·
+
+    yield 0 ·
+⟧
+

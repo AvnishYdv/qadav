@@ -1,10 +1,11 @@
 package ast
 
 // VaultDecl represents a model weight vault declaration:
-// vault v ⟬ SecretModel ⟭ threshold ↦ 3 ·
+// vault v with auth ⟬ SecretModel ⟭ threshold ↦ 3 ·
 type VaultDecl struct {
 	Pos_       Position
 	Name       string
+	Boundary   Expr
 	NetworkRef Expr
 	Threshold  Expr
 }
@@ -44,4 +45,3 @@ type WipeStmt struct {
 
 func (s *WipeStmt) Pos() Position { return s.Pos_ }
 func (s *WipeStmt) stmtNode()     {}
-

@@ -116,6 +116,41 @@ func (l *Lexer) NextToken() token.Token {
 		return l.readIdent()
 	}
 
+	// 6b. Annotation: @gpu
+	if ch == '@' {
+		l.advance()
+		if l.position < len(l.input) && isIdentStart(l.peek()) {
+			start := l.position
+			for l.position < len(l.input) && isIdentPart(l.peek()) {
+				l.advance()
+			}
+			id := string(l.input[start:l.position])
+			if id == "gpu" {
+				return token.Token{
+					Type:    token.AT_GPU,
+					Literal: "@gpu",
+					Line:    startLine,
+					Col:     startCol,
+					File:    l.file,
+				}
+			}
+			return token.Token{
+				Type:    token.ILLEGAL,
+				Literal: "@" + id,
+				Line:    startLine,
+				Col:     startCol,
+				File:    l.file,
+			}
+		}
+		return token.Token{
+			Type:    token.ILLEGAL,
+			Literal: "@",
+			Line:    startLine,
+			Col:     startCol,
+			File:    l.file,
+		}
+	}
+
 	// 7. Unknown / Legacy character -> ILLEGAL token
 	l.advance()
 	return token.Token{

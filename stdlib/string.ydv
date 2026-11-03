@@ -1,0 +1,18 @@
+process text_concat⦅text a⸴ text b⦆ → text ⟦
+    yield a ⊕ b ·
+⟧
+
+process text_equals⦅text a⸴ text b⦆ → logic ⟦
+    when a ≡ b ⟦
+        yield ⊤ ·
+    ⟧
+    yield ⊥ ·
+⟧
+
+process is_empty_text⦅text s⦆ → logic ⟦
+    when s ≡ "" ⟦
+        yield ⊤ ·
+    ⟧
+    yield ⊥ ·
+⟧
+

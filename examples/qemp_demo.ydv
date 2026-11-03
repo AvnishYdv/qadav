@@ -1,0 +1,24 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary mem_auth ⟦
+        rule memory_access ↦ 1.0 ·
+    ⟧
+
+    memory_prov mp with mem_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    remember mp⟬"user_preference"⟭ ↦ "prefers_detailed_answers" ·
+    remember mp⟬"session_context"⟭ ↦ "debugging_python" ·
+    remember mp⟬"user_name"⟭ ↦ "Alice" ·
+
+    verify_memory mp ·
+    emit "Memory integrity verified" ·
+
+    text pref ↦ recall mp⟬"user_preference"⟭ ·
+    emit pref ·
+
+    text name ↦ recall mp⟬"user_name"⟭ ·
+    emit name ·
+
+    yield 0 ·
+⟧

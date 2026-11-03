@@ -1,0 +1,18 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary tool_auth ⟦
+        rule security_gate ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain audit_ledger with tool_auth ⟦
+        capacity ↦ 20 ·
+    ⟧
+
+    tool_register file_scanner with tool_auth pre ⟦ 1 ⟧ post ⟦ 1 ⟧ ·
+
+    tool_call file_scanner⦅"/var/log/kernel.log"⦆ audit audit_ledger ·
+
+    verify_chain audit_ledger ·
+    emit "Tool orchestration with QERA attestation verified" ·
+
+    yield 0 ·
+⟧

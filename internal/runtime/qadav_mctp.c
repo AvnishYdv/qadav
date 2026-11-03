@@ -1,4 +1,6 @@
 #include "qadav_mctp.h"
+#include "qadav_nn.h"
+#include "qadav_tensor.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -76,13 +78,48 @@ void qadav_mctp_record_epoch(qadav_training_cert* c, int epoch,
     c->leaves[idx].loss = loss;
 
     if (weights && weights_size > 0) {
-        qadav_sha3_256((const unsigned char*)weights, (unsigned long long)weights_size, c->leaves[idx].weights_hash);
+        if (weights_size == (long long)sizeof(qadav_network)) {
+            qadav_network* net = (qadav_network*)weights;
+            if (net->num_layers > 0 && net->num_layers <= 32 && net->layers != (void*)0) {
+                unsigned char w_acc[512];
+                int w_len = 0;
+                for (int i = 0; i < net->num_layers && w_len < 400; i++) {
+                    qadav_layer* l = net->layers[i];
+                    if (l && l->weights && l->weights->data) {
+                        int sz = l->out_size * l->in_size * 8;
+                        if (w_len + sz > 500) sz = 500 - w_len;
+                        for (int b = 0; b < sz; b++) {
+                            w_acc[w_len++] = ((unsigned char*)l->weights->data)[b];
+                        }
+                    }
+                }
+                if (w_len > 0) {
+                    qadav_sha3_256(w_acc, (unsigned long long)w_len, c->leaves[idx].weights_hash);
+                } else {
+                    qadav_sha3_256((const unsigned char*)weights, (unsigned long long)weights_size, c->leaves[idx].weights_hash);
+                }
+            } else {
+                qadav_sha3_256((const unsigned char*)weights, (unsigned long long)weights_size, c->leaves[idx].weights_hash);
+            }
+        } else {
+            qadav_sha3_256((const unsigned char*)weights, (unsigned long long)weights_size, c->leaves[idx].weights_hash);
+        }
     } else {
         qadav_sha3_256((const unsigned char*)&epoch, 4, c->leaves[idx].weights_hash);
     }
 
     if (dataset && dataset_size > 0) {
-        qadav_sha3_256((const unsigned char*)dataset, (unsigned long long)dataset_size, c->leaves[idx].dataset_hash);
+        if (dataset_size == (long long)sizeof(qadav_tensor)) {
+            qadav_tensor* t = (qadav_tensor*)dataset;
+            if (t && t->data && t->total_size > 0 && t->elem_size > 0) {
+                unsigned long long d_len = (unsigned long long)t->total_size * (unsigned long long)t->elem_size;
+                qadav_sha3_256((const unsigned char*)t->data, d_len, c->leaves[idx].dataset_hash);
+            } else {
+                qadav_sha3_256((const unsigned char*)dataset, (unsigned long long)dataset_size, c->leaves[idx].dataset_hash);
+            }
+        } else {
+            qadav_sha3_256((const unsigned char*)dataset, (unsigned long long)dataset_size, c->leaves[idx].dataset_hash);
+        }
     } else {
         qadav_sha3_256((const unsigned char*)"dataset_default", 15, c->leaves[idx].dataset_hash);
     }

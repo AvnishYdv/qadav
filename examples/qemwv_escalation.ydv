@@ -1,0 +1,25 @@
+network SecretModel ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth1 ⟦
+        rule access ↦ 1.0 ·
+    ⟧
+
+    ethical_boundary auth2 ⟦
+        rule access ↦ 1.0 ·
+    ⟧
+
+    vault v with auth1 ⟬ SecretModel ⟭ threshold ↦ 3 ·
+    seal v ·
+    emit "Vault sealed with auth1" ·
+
+    // Attacker tries to unseal with auth2
+    unseal v with auth2 ·
+    emit "Unreachable" ·
+
+    yield 0 ·
+⟧

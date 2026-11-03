@@ -39,11 +39,14 @@ type Generator struct {
 	shapeCount     int
 
 	// Per-process state
-	vars         map[string]*varSlot
-	currentProc  *ast.ProcessDecl
-	currentBlock string
-	isTerminated bool
-	sb           strings.Builder
+	vars                 map[string]*varSlot
+	currentProc          *ast.ProcessDecl
+	currentBlock         string
+	isTerminated         bool
+	activeReasoningChain string
+	modalities           map[string]modalityInfo
+	abstainPolicies      map[string]string
+	sb                   strings.Builder
 }
 
 type stringConstant struct {
@@ -66,8 +69,10 @@ type varSlot struct {
 // New creates an initialized LLVM code generator.
 func New(chk *checker.Checker) *Generator {
 	g := &Generator{
-		checker:   chk,
-		exprTypes: make(map[ast.Expr]*types.Type),
+		checker:         chk,
+		exprTypes:       make(map[ast.Expr]*types.Type),
+		vars:            make(map[string]*varSlot),
+		abstainPolicies: make(map[string]string),
 	}
 	if chk != nil {
 		g.exprTypes = chk.ExprTypes()
@@ -286,12 +291,14 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 	header.WriteString("declare i8* @qadav_procedure_create(i8*)\n")
 	header.WriteString("declare void @qadav_procedure_free(i8*)\n")
 	header.WriteString("declare i8* @qadav_qeeh_create(i32, double*)\n")
+	header.WriteString("declare void @qadav_qeeh_set_rule_name(i8*, i32, i8*)\n")
+	header.WriteString("declare i32 @qadav_qeeh_boundary_hash(i8*, i8*)\n")
 	header.WriteString("declare i32 @qadav_qeeh_evaluate(i8*, double*)\n")
 	header.WriteString("declare i32 @qadav_qeeh_evaluate_action(i8*, i8*)\n")
 	header.WriteString("declare void @qadav_qeeh_trigger_decoherence(i8*)\n")
 	header.WriteString("declare void @qadav_qeeh_free(i8*)\n\n")
 
-	header.WriteString("declare i8* @qadav_qemwv_create(i32, i32)\n")
+	header.WriteString("declare i8* @qadav_qemwv_create(i32, i32, i8*)\n")
 	header.WriteString("declare i32 @qadav_qemwv_seal(i8*, i8**, i32)\n")
 	header.WriteString("declare i8** @qadav_qemwv_unseal(i8*, i8*)\n")
 	header.WriteString("declare void @qadav_qemwv_wipe(i8*)\n")
@@ -304,6 +311,93 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 	header.WriteString("declare void @qadav_mctp_certify(i8*)\n")
 	header.WriteString("declare i32 @qadav_mctp_verify(i8*, i8*, i64)\n")
 	header.WriteString("declare void @qadav_mctp_free(i8*)\n\n")
+
+	// QEMP (Quantum-Entangled Memory Provenance)
+	header.WriteString("declare i8* @qadav_qemp_create(i8*, i32)\n")
+	header.WriteString("declare i32 @qadav_qemp_remember_text(i8*, i8*, i8*, i8*)\n")
+	header.WriteString("declare i8* @qadav_qemp_recall_text(i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_qemp_verify_all(i8*)\n")
+	header.WriteString("declare i32 @qadav_qemp_audit(i8*)\n")
+	header.WriteString("declare i32 @qadav_qemp_corrupt_share(i8*, i8*, i32)\n")
+	header.WriteString("declare void @qadav_qemp_wipe_all(i8*)\n")
+	header.WriteString("declare void @qadav_qemp_free(i8*)\n\n")
+
+	// QECMT (Quantum-Entangled Cross-Model Transfer)
+	header.WriteString("declare i32 @qadav_qecmt_issue_license(i8*, i8*, i8*, i64, double, i64, i8*)\n")
+	header.WriteString("declare i32 @qadav_qecmt_transfer_layer(i8*, i32, i8*, i8*, i32*, i32, i8*)\n")
+	header.WriteString("declare i32 @qadav_qecmt_distill(i8*, i32, i8*, i8*, i8*, double, i32)\n")
+	header.WriteString("declare i32 @qadav_qecmt_verify_chain(i8*)\n")
+	header.WriteString("declare void @qadav_qecmt_free(i8*)\n\n")
+
+	// QERA (Quantum-Entangled Reasoning Attestation - Invention #11)
+	header.WriteString("declare i8* @qadav_qera_create(i8*, i32, i8*)\n")
+	header.WriteString("declare i32 @qadav_qera_reason(i8*, i32, i8*, i64, i8*, i64, i8*, i64, double, i8*)\n")
+	header.WriteString("declare i32 @qadav_qera_verify(i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_qera_audit(i8*)\n")
+	header.WriteString("declare i32 @qadav_qera_corrupt_step(i8*, i32, i32)\n")
+	header.WriteString("declare void @qadav_qera_free(i8*)\n\n")
+
+	// QECMA (Quantum-Entangled Cross-Modal Attestation - Invention #12)
+	header.WriteString("declare i8* @qadav_qecma_create()\n")
+	header.WriteString("declare void @qadav_qecma_free(i8*)\n")
+	header.WriteString("declare i32 @qadav_qecma_add(i8*, i8, i8*, i64)\n")
+	header.WriteString("declare i32 @qadav_qecma_build(i8*)\n")
+	header.WriteString("declare i32 @qadav_qecma_get_unified_root(i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_qera_reason_cross_modal(i8*, i32, i8*, i8*, i64, double, i8*)\n\n")
+
+	// QEC-QEMP (Invention #13)
+	header.WriteString("declare i8* @qadav_qec_create(i8*, i32, i32, i8*)\n")
+	header.WriteString("declare i32 @qadav_qec_measure(i8*, i8*, i64, i64*, i8*)\n")
+	header.WriteString("declare i32 @qadav_qec_verify(i8*, i64, i8*)\n")
+	header.WriteString("declare i32 @qadav_qec_correct(i8*, i64, i8*)\n")
+	header.WriteString("declare i32 @qadav_qec_corrupt_syndrome(i8*, i64, i32)\n")
+	header.WriteString("declare void @qadav_qec_free(i8*)\n\n")
+
+	// Memory Consolidation
+	header.WriteString("declare i32 @qadav_consolidate_memory(i8*, i8*, double, i8*)\n\n")
+
+	// CB-SRCPP (Invention #14)
+	header.WriteString("declare i8* @qadav_scoped_issue(i8*, i8*, i8*, i8**, i32, i64)\n")
+	header.WriteString("declare i32 @qadav_scoped_grant(i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_scoped_revoke(i8*)\n")
+	header.WriteString("declare i32 @qadav_scoped_verify(i8*, i8*, i8*, i64)\n")
+	header.WriteString("declare i32 @qadav_scoped_recall(i8*, i8*, i8*, i8*, i64, i8**, i64*)\n")
+	header.WriteString("declare void @qadav_scoped_free(i8*)\n\n")
+
+	// Safe Tool Orchestration (M5.8)
+	header.WriteString("declare i32 @qadav_tool_register(i8*, i8*, i32, i32)\n")
+	header.WriteString("declare i32 @qadav_tool_call(i8*, i8*, i8*, i8*)\n")
+	header.WriteString("declare void @qadav_tools_reset()\n\n")
+
+	// TTPCR (Invention #15) & Calibrated Abstention (M5.9 + M5.10)
+	header.WriteString("declare i8* @qadav_alloc(i64)\n")
+	header.WriteString("declare void @qadav_free(i8*)\n")
+	header.WriteString("declare i32 @qadav_certificate_attach(i8*, i64, i8, i8*, i32, double)\n")
+	header.WriteString("declare i32 @qadav_certificate_verify(i8*)\n")
+	header.WriteString("declare i32 @qadav_certificate_verify_chain(i8*)\n")
+	header.WriteString("declare double @qadav_abstain_compute_confidence(i8*)\n")
+	header.WriteString("declare i32 @qadav_abstain_check(i8*, i8*, i32)\n")
+	header.WriteString("declare i32 @qadav_abstain_execute(i8*, i8*)\n")
+	header.WriteString("declare i8* @qadav_sandbox_create(i8*, i8*, i32)\n")
+	header.WriteString("declare i32 @qadav_sandbox_run(i8*, i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_sandbox_verify(i8*, i8*)\n")
+	header.WriteString("declare void @qadav_sandbox_quarantine(i8*)\n")
+	header.WriteString("declare void @qadav_sandbox_free(i8*)\n")
+	header.WriteString("declare i8* @qadav_sandbox_find(i8*)\n")
+	header.WriteString("declare i8* @qadav_sandbox_verify_text(i8*)\n\n")
+
+	// DirectCompute GPU Backend (M6.1) & AGKE (M6.2 — Invention #17)
+	header.WriteString("declare i32 @qadav_gpu_init()\n")
+	header.WriteString("declare i32 @qadav_gpu_is_available()\n")
+	header.WriteString("declare i8* @qadav_gpu_tensor_matmul(i8*, i8*)\n")
+	header.WriteString("declare i8* @qadav_gpu_tensor_softmax(i8*)\n")
+	header.WriteString("declare i8* @qadav_gpu_tensor_layernorm(i8*, double)\n")
+	header.WriteString("declare i32 @qadav_gpu_matmul_tensor_raw(i8*, i8*, i8*, i32, i32, i32)\n")
+	header.WriteString("declare i32 @qadav_gpu_softmax_tensor_raw(i8*, i8*, i32, i32)\n")
+	header.WriteString("declare i32 @qadav_gpu_layernorm_tensor_raw(i8*, i8*, i32, i32, double)\n")
+	header.WriteString("declare i32 @qadav_agke_attest(i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_agke_verify(i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_agke_corrupt_record(i32, i32)\n\n")
 
 	// Quantum global state
 	header.WriteString(g.generateQuantumGlobal())
@@ -349,6 +443,7 @@ func (g *Generator) genProcess(proc *ast.ProcessDecl) (string, error) {
 	g.vars = make(map[string]*varSlot)
 	g.sb.Reset()
 	g.isTerminated = false
+	g.activeReasoningChain = ""
 
 	isMain := proc.Name == "main"
 	retLLVMType := "void"
@@ -678,9 +773,91 @@ func (g *Generator) genStmt(stmt ast.Stmt) {
 		g.genProvenanceDecl(s)
 	case *ast.CertifyStmt:
 		g.genCertifyStmt(s)
+	case *ast.MemoryProvenanceDecl:
+		g.genMemoryProvenanceDecl(s)
+	case *ast.VerifyMemoryStmt:
+		g.genVerifyMemoryStmt(s)
+	case *ast.AuditMemoryStmt:
+		g.genAuditMemoryStmt(s)
+	case *ast.CorruptShareStmt:
+		g.genCorruptShareStmt(s)
+	case *ast.LicenseDecl:
+		g.genLicenseDecl(s)
+	case *ast.TransferStmt:
+		g.genTransferStmt(s)
+	case *ast.DistillStmt:
+		g.genDistillStmt(s)
+	case *ast.ReasoningChainDecl:
+		g.genReasoningChainDecl(s)
+	case *ast.ReasonStepStmt:
+		g.genReasonStepStmt(s)
+	case *ast.VerifyChainStmt:
+		g.genVerifyChainStmt(s)
+	case *ast.AuditReasoningStmt:
+		g.genAuditReasoningStmt(s)
+	case *ast.CorruptReasoningStepStmt:
+		g.genCorruptReasoningStepStmt(s)
+	case *ast.ModalityDecl:
+		g.genModalityDecl(s)
+	case *ast.CrossModalReasonStmt:
+		g.genCrossModalReasonStmt(s)
+	case *ast.QECMemoryDecl:
+		g.genQECMemoryDecl(s)
+	case *ast.SyndromeStmt:
+		g.genSyndromeStmt(s)
+	case *ast.VerifySyndromeStmt:
+		g.genVerifySyndromeStmt(s)
+	case *ast.CorrectStmt:
+		g.genCorrectStmt(s)
+	case *ast.CorruptSyndromeStmt:
+		g.genCorruptSyndromeStmt(s)
+	case *ast.ConsolidateStmt:
+		g.genConsolidateStmt(s)
+	case *ast.RecallTokenDecl:
+		g.genRecallTokenDecl(s)
+	case *ast.GrantStmt:
+		g.genGrantStmt(s)
+	case *ast.RevokeStmt:
+		g.genRevokeStmt(s)
+	case *ast.ToolRegisterDecl:
+		g.genToolRegisterDecl(s)
+	case *ast.ToolCallStmt:
+		g.genToolCallStmt(s)
+	case *ast.CertifiedReasonStmt:
+		g.genCertifiedReasonStmt(s)
+	case *ast.AbstainThresholdDecl:
+		g.genAbstainThresholdDecl(s)
+	case *ast.AbstainCheckStmt:
+		g.genAbstainCheckStmt(s)
+	case *ast.SandboxCreateStmt:
+		g.genSandboxCreateStmt(s)
+	case *ast.SandboxRunStmt:
+		g.genSandboxRunStmt(s)
+	case *ast.SandboxVerifyStmt:
+		g.genSandboxVerifyStmt(s)
+	case *ast.GPUMatmulStmt:
+		g.genGPUMatmulStmt(s)
+	case *ast.GPUSoftmaxStmt:
+		g.genGPUSoftmaxStmt(s)
+	case *ast.GPULayernormStmt:
+		g.genGPULayernormStmt(s)
+	case *ast.AGKEAttestStmt:
+		g.genAGKEAttestStmt(s)
+	case *ast.AGKEVerifyStmt:
+		g.genAGKEVerifyStmt(s)
+	case *ast.CorruptGPUDigestStmt:
+		g.genCorruptGPUDigestStmt(s)
 	case *ast.TileStmt, *ast.EnergyDecl:
 		// No-op
 	}
+}
+
+func (g *Generator) genStringConst(s string) string {
+	globalName, length := g.addStringConstant(s)
+	ptrTemp := g.nextTemp()
+	fmt.Fprintf(&g.sb, "  %s = getelementptr inbounds [%d x i8], [%d x i8]* %s, i32 0, i32 0\n",
+		ptrTemp, length, length, globalName)
+	return ptrTemp
 }
 
 func (g *Generator) genEmit(val Value) {
@@ -1225,6 +1402,20 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 	case *ast.DecomposeExpr:
 		return g.genDecomposeExpr(e)
 
+	case *ast.IndexExpr:
+		objVal := g.genExpr(e.Object)
+		idxVal := g.genExpr(e.Index)
+		if objVal.QType != nil && objVal.QType.Kind == types.KindMemoryProv {
+			resTemp := g.nextTemp()
+			fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_qemp_recall_text(i8* %s, i8* %s)\n", resTemp, objVal.Ref, idxVal.Ref)
+			return Value{Type: "i8*", Ref: resTemp, QType: types.Text}
+		}
+		if objVal.QType != nil && objVal.QType.Kind == types.KindMemory {
+			resTemp := g.nextTemp()
+			fmt.Fprintf(&g.sb, "  %s = call i64 @qadav_memory_recall(i8* %s, i8* %s)\n", resTemp, objVal.Ref, idxVal.Ref)
+			return Value{Type: "i64", Ref: resTemp, QType: types.Int64}
+		}
+
 	case *ast.ConfidentLit:
 		return g.genConfidentLit(e)
 
@@ -1239,6 +1430,25 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 
 	case *ast.VerifyTrainingExpr:
 		return g.genVerifyTrainingExpr(e)
+
+	case *ast.ScopedRecallExpr:
+		return g.genScopedRecallExpr(e)
+
+	case *ast.ToolCallExpr:
+		return g.genToolCallExpr(e)
+
+	case *ast.AbstainCheckExpr:
+		return g.genAbstainCheckExpr(e)
+	case *ast.SandboxVerifyExpr:
+		return g.genSandboxVerifyExpr(e)
+	case *ast.GPUMatmulExpr:
+		return g.genGPUMatmulExpr(e)
+	case *ast.GPUSoftmaxExpr:
+		return g.genGPUSoftmaxExpr(e)
+	case *ast.GPULayernormExpr:
+		return g.genGPULayernormExpr(e)
+	case *ast.AGKEVerifyExpr:
+		return g.genAGKEVerifyExpr(e)
 
 	case *ast.CallExpr:
 		if ident, ok := e.Func.(*ast.Ident); ok {

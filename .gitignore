@@ -20,3 +20,10 @@
 bin/
 *.test
 
+# Coverage artifacts
+checker_cov
+checker_cov.out
+coverage
+*.out
+*.cov
+

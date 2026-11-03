@@ -1,0 +1,28 @@
+process pi⦅⦆ → float64 ⟦
+    yield 3.141592653589793 ·
+⟧
+
+process e⦅⦆ → float64 ⟦
+    yield 2.718281828459045 ·
+⟧
+
+process sqrt2⦅⦆ → float64 ⟦
+    yield 1.414213562373095 ·
+⟧
+
+process abs_f64⦅float64 x⦆ → float64 ⟦
+    when x ≺ 0.0 ⟦
+        yield ⊖x ·
+    ⟧
+    yield x ·
+⟧
+
+process sign_f64⦅float64 x⦆ → float64 ⟦
+    when x ≺ 0.0 ⟦
+        yield ⊖1.0 ·
+    ⟧
+    when x ≻ 0.0 ⟦
+        yield 1.0 ·
+    ⟧
+    yield 0.0 ·
+⟧

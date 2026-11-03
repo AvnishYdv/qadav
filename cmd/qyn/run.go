@@ -19,12 +19,20 @@ import (
 )
 
 func runRun(args []string) int {
-	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Usage: qyn run <file.ydv> [arguments]")
-		return 1
+	var filename string
+	isTest := false
+	for _, arg := range args {
+		if arg == "--test" {
+			isTest = true
+		} else if !strings.HasPrefix(arg, "-") && filename == "" {
+			filename = arg
+		}
 	}
 
-	filename := args[0]
+	if filename == "" {
+		fmt.Fprintln(os.Stderr, "Usage: qyn run <file.ydv> [--test] [arguments]")
+		return 1
+	}
 	srcBytes, err := os.ReadFile(filename)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "qyn run: error reading %s: %v\n", filename, err)
@@ -44,6 +52,7 @@ func runRun(args []string) int {
 	}
 
 	c := checker.New()
+	c.IsTest = isTest
 	typeErrors := c.Check(prog)
 	if len(typeErrors) > 0 {
 		fmt.Fprintf(os.Stderr, "qyn run: type errors in %s:\n", filename)

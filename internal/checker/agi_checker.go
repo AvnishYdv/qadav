@@ -21,7 +21,7 @@ func (c *Checker) checkMemoryDecl(m *ast.MemoryDecl) {
 
 func (c *Checker) checkRememberStmt(s *ast.RememberStmt) {
 	memType := c.checkExpr(s.Memory)
-	if memType != nil && memType.Kind != types.KindMemory {
+	if memType != nil && memType.Kind != types.KindMemory && memType.Kind != types.KindMemoryProv {
 		c.errorf(s.Memory.Pos(), "remember target must be memory, got %s", memType)
 	}
 	_ = c.checkExpr(s.Key)
@@ -30,10 +30,13 @@ func (c *Checker) checkRememberStmt(s *ast.RememberStmt) {
 
 func (c *Checker) checkRecallExpr(e *ast.RecallExpr) *types.Type {
 	memType := c.checkExpr(e.Memory)
-	if memType != nil && memType.Kind != types.KindMemory {
+	if memType != nil && memType.Kind != types.KindMemory && memType.Kind != types.KindMemoryProv {
 		c.errorf(e.Memory.Pos(), "recall target must be memory, got %s", memType)
 	}
 	_ = c.checkExpr(e.Key)
+	if memType != nil && memType.Kind == types.KindMemoryProv {
+		return types.Text
+	}
 	return types.Int64
 }
 

@@ -1,0 +1,29 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary reasoning_auth ⟦
+        rule logical_consistency ↦ 1.0 ·
+        rule no_harm ↦ 1.0 ·
+    ⟧
+
+    memory_prov mp with reasoning_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    remember mp⟬"premise_1"⟭ ↦ "Socrates is a man" ·
+    remember mp⟬"premise_2"⟭ ↦ "All men are mortal" ·
+
+    reasoning_chain logic with reasoning_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    reason deduce from mp⟬"premise_1"⟭ to "Socrates is mortal" with 0.95 ·
+    reason deduce from mp⟬"premise_2"⟭ to "Socrates is mortal" with 0.98 ·
+
+    verify_chain logic ·
+    emit "Reasoning chain verified" ·
+
+    audit_reasoning logic ·
+    emit "Full audit passed" ·
+
+    yield 0 ·
+⟧
+

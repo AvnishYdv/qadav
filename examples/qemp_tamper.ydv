@@ -1,0 +1,23 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary mem_auth ⟦
+        rule memory_access ↦ 1.0 ·
+    ⟧
+
+    memory_prov mp with mem_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    remember mp⟬"secret"⟭ ↦ "critical_data" ·
+
+    verify_memory mp ·
+    emit "Clean state verified" ·
+
+    // Corrupt share 0 for tamper simulation
+    corrupt_memory_share mp⟬"secret"⟭ at ↦ 0 ·
+
+    // This recall triggers decoherence
+    text result ↦ recall mp⟬"secret"⟭ ·
+    emit result ·
+
+    yield 0 ·
+⟧

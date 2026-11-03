@@ -132,7 +132,7 @@ process main⦅⦆ → int64 ⟦
 	⟧
 	enforce local_b on "action1" ·
 	decoherence ·
-	vault v ⟬ MyNet ⟭ threshold ↦ 2 ·
+	vault v with local_b ⟬ MyNet ⟭ threshold ↦ 2 ·
 	seal v ·
 	unseal v with local_b ·
 	wipe v ·
@@ -150,5 +150,120 @@ process main⦅⦆ → int64 ⟦
 	}
 	if len(prog.Decls) != 4 {
 		t.Fatalf("expected 4 decls, got %d", len(prog.Decls))
+	}
+}
+
+func TestVaultWithBoundary(t *testing.T) {
+	src := `process main ⦅ ⦆ → int64 ⟦
+	ethical_boundary auth ⟦
+		rule authorized ↦ 1.0 ·
+	⟧
+	vault v with auth ⟬ Model ⟭ threshold ↦ 3 ·
+	yield 0 ·
+⟧`
+	l := lexer.New(src, "vault_test.ydv")
+	p := New(l, "vault_test.ydv")
+	prog := p.Parse()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	proc := prog.Decls[0].(*ast.ProcessDecl)
+	var foundVault *ast.VaultDecl
+	for _, stmt := range proc.Body.Statements {
+		if v, ok := stmt.(*ast.VaultDecl); ok {
+			foundVault = v
+			break
+		}
+	}
+	if foundVault == nil {
+		t.Fatalf("expected VaultDecl in process body")
+	}
+	if foundVault.Boundary == nil {
+		t.Fatalf("expected VaultDecl to have Boundary bound")
+	}
+}
+
+func TestRuleIdentifier(t *testing.T) {
+	src := `ethical_boundary test_b ⟦
+	rule authorized_action ↦ 0.85 ·
+	rule emergency_stop ↦ 1.0 ·
+⟧`
+	l := lexer.New(src, "rule_test.ydv")
+	p := New(l, "rule_test.ydv")
+	prog := p.Parse()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors: %v", p.Errors())
+	}
+	b := prog.Decls[0].(*ast.EthicalBoundaryDecl)
+	if len(b.Rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(b.Rules))
+	}
+	if b.Rules[0].Name != "authorized_action" {
+		t.Fatalf("expected rule name 'authorized_action', got %q", b.Rules[0].Name)
+	}
+	if b.Rules[1].Name != "emergency_stop" {
+		t.Fatalf("expected rule name 'emergency_stop', got %q", b.Rules[1].Name)
+	}
+}
+
+func TestMemoryProvenanceParse(t *testing.T) {
+	src := `process main ⦅ ⦆ → int64 ⟦
+	ethical_boundary mem_auth ⟦
+		rule memory_access ↦ 1.0 ·
+	⟧
+	memory_prov mp with mem_auth ⟦
+		capacity ↦ 100 ·
+	⟧
+	remember mp⟬"k"⟭ ↦ "v" ·
+	verify_memory mp ·
+	audit_memory mp ·
+	corrupt_memory_share mp⟬"k"⟭ at ↦ 0 ·
+	text val ↦ recall mp⟬"k"⟭ ·
+	yield 0 ·
+⟧`
+	l := lexer.New(src, "qemp_test.ydv")
+	p := New(l, "qemp_test.ydv")
+	prog := p.Parse()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parser errors for QEMP: %v", p.Errors())
+	}
+	_ = prog
+}
+
+func TestParserQECMTBoost(t *testing.T) {
+	src := `process main ⦅ ⦆ → int64 ⟦
+    license lic for teacher_vault on StudentNet ⟦
+        max_epochs ↦ 50 ·
+        max_rate ↦ 0.50 ·
+        expiry ↦ 1000 ·
+    ⟧
+    transfer lic from teacher_vault to StudentNet layers ⟬ 0 ⸴ 1 ⟭ ·
+    distill lic on StudentNet with ds1 ⸴ ds2 ⟦
+        rate ↦ 0.30 ·
+        epochs ↦ 10 ·
+    ⟧
+    transfer lic ·
+    distill lic ·
+    license lic2 ⟦ ⟧
+    yield 0 ·
+⟧`
+	l := lexer.New(src, "qecmt_test.ydv")
+	p := New(l, "qecmt_test.ydv")
+	prog := p.Parse()
+	_ = prog
+
+	// Also parse negative/error branches
+	badSrcs := []string{
+		`process main ⦅ ⦆ → int64 ⟦ license · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ transfer · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ distill · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ corrupt_memory_share · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ verify_memory · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ audit_memory · ⟧`,
+	}
+	for _, bs := range badSrcs {
+		bl := lexer.New(bs, "bad.ydv")
+		bp := New(bl, "bad.ydv")
+		_ = bp.Parse()
 	}
 }

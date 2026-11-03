@@ -140,7 +140,7 @@ process main ⦅ ⦆ → int64 ⟦
         rule user_authorized ↦ 1.0 ·
     ⟧
 
-    vault v ⟬ SecretModel ⟭ threshold ↦ 3 ·
+    vault v with auth ⟬ SecretModel ⟭ threshold ↦ 3 ·
     seal v ·
     emit "Weights sealed in vault" ·
 
@@ -156,6 +156,34 @@ process main ⦅ ⦆ → int64 ⟦
 	out := compileAndRunSource(t, src)
 	if !strings.Contains(out, "Weights sealed in vault") || !strings.Contains(out, "Weights unsealed for inference") || !strings.Contains(out, "Vault wiped") {
 		t.Errorf("expected vault steps, got: %s", out)
+	}
+}
+
+func TestQEMPCodegen(t *testing.T) {
+	t.Parallel()
+	src := `
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary mem_auth ⟦
+        rule memory_access ↦ 1.0 ·
+    ⟧
+
+    memory_prov mp with mem_auth ⟦
+        capacity ↦ 10 ·
+    ⟧
+
+    remember mp⟬"agent_state"⟭ ↦ "active" ·
+    verify_memory mp ·
+    emit "verified" ·
+
+    text val ↦ recall mp⟬"agent_state"⟭ ·
+    emit val ·
+
+    yield 0 ·
+⟧
+`
+	out := compileAndRunSource(t, src)
+	if !strings.Contains(out, "verified") || !strings.Contains(out, "active") {
+		t.Errorf("expected verified and active, got: %s", out)
 	}
 }
 
@@ -190,5 +218,106 @@ process main ⦅ ⦆ → int64 ⟦
 	out := compileAndRunSource(t, src)
 	if !strings.Contains(out, "Training certified") {
 		t.Errorf("expected Training certified, got: %s", out)
+	}
+}
+
+func TestQEMPFullAuditCodegen(t *testing.T) {
+	t.Parallel()
+	src := `
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary mem_auth ⟦
+        rule memory_access ↦ 1.0 ·
+    ⟧
+
+    memory_prov mp with mem_auth ⟦
+        capacity ↦ 50 ·
+    ⟧
+
+    remember mp⟬"test_key"⟭ ↦ "test_val" ·
+    verify_memory mp ·
+    audit_memory mp ·
+
+    text val ↦ recall mp⟬"test_key"⟭ ·
+    emit val ·
+
+    yield 0 ·
+⟧
+`
+	out := compileAndRunSource(t, src)
+	if !strings.Contains(out, "test_val") {
+		t.Errorf("expected test_val, got: %s", out)
+	}
+}
+
+func TestQECMTCodegen(t *testing.T) {
+	t.Parallel()
+	src := `
+network TeacherNet ⟦
+    dense ⟬2⸴ 2⟭ ·
+⟧
+
+network StudentNet ⟦
+    dense ⟬2⸴ 2⟭ ·
+⟧
+
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule allow_distill ↦ 1.0 ·
+    ⟧
+
+    vault v with auth ⟬ TeacherNet ⟭ threshold ↦ 2 ·
+    seal v ·
+
+    license lic for v on StudentNet ⟦
+        max_epochs ↦ 10 ·
+        max_rate ↦ 0.5 ·
+        expiry ↦ 1000 ·
+    ⟧
+
+    transfer lic from v to StudentNet layers ⟬0⟭ ·
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ x ↦ tensor⟬⟬0.5⸴ 0.5⟭⸴ ⟬0.5⸴ 0.5⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ y ↦ x ·
+
+    distill lic on StudentNet with x ⸴ y ⟦
+        rate ↦ 0.1 ·
+        epochs ↦ 2 ·
+    ⟧
+    emit "QECMT_CODEGEN_OK" ·
+
+    yield 0 ·
+⟧
+`
+	out := compileAndRunSource(t, src)
+	if !strings.Contains(out, "QECMT_CODEGEN_OK") {
+		t.Errorf("expected QECMT_CODEGEN_OK, got: %s", out)
+	}
+}
+
+func TestQERACodegen(t *testing.T) {
+	t.Parallel()
+	src := `
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary reasoning_auth ⟦
+        rule logical_consistency ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain logic with reasoning_auth ⟦
+        capacity ↦ 20 ·
+    ⟧
+
+    reason deduce from "premise" to "conclusion" with 0.95 ·
+    verify_chain logic ·
+    emit "QERA_VERIFIED_OK" ·
+
+    audit_reasoning logic ·
+    emit "QERA_AUDIT_OK" ·
+
+    yield 0 ·
+⟧
+`
+	out := compileAndRunSource(t, src)
+	if !strings.Contains(out, "QERA_VERIFIED_OK") || !strings.Contains(out, "QERA_AUDIT_OK") {
+		t.Errorf("expected QERA_VERIFIED_OK and QERA_AUDIT_OK, got: %s", out)
 	}
 }

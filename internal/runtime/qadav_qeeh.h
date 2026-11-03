@@ -15,15 +15,26 @@ typedef enum qadav_action_kind {
     QADAV_ACTION_LEAK_WEIGHTS = 3
 } qadav_action_kind;
 
+#define QADAV_QEEH_MAX_RULES 32
+#define QADAV_QEEH_RULE_NAME_MAX 64
+
 typedef struct qadav_ethical_hamiltonian {
     int     num_rules;
     double* penalties;      // rule penalties (0.0 to 1.0)
     double* conditions;     // current rule satisfaction (0.0 to 1.0)
     double  ground_energy;  // baseline ground state energy (0.0)
+    char    rule_names[QADAV_QEEH_MAX_RULES][QADAV_QEEH_RULE_NAME_MAX];
 } qadav_ethical_hamiltonian;
 
 // Creates an ethical Hamiltonian boundary with given rule penalties
 qadav_ethical_hamiltonian* qadav_qeeh_create(int num_rules, const double* penalties);
+
+// Sets the name of a specific rule
+void qadav_qeeh_set_rule_name(qadav_ethical_hamiltonian* h, int idx, const char* name);
+
+// Computes a deterministic content-only SHA3-256 hash of the boundary (ASLR-free)
+// Hashes ONLY: num_rules (4 bytes LE) || for each rule: rule_name (null-terminated) || penalty (8 bytes double LE)
+int qadav_qeeh_boundary_hash(const void* boundary, unsigned char out[32]);
 
 // Evaluates an action vector against the ethical Hamiltonian:
 // Computes energy E = sum(penalty_i * (1.0 - condition_i)).

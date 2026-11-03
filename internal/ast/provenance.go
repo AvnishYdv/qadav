@@ -32,4 +32,3 @@ type VerifyTrainingExpr struct {
 
 func (e *VerifyTrainingExpr) Pos() Position { return e.Pos_ }
 func (e *VerifyTrainingExpr) exprNode()     {}
-

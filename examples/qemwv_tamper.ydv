@@ -1,23 +1,25 @@
-network SecretModel ⟦
+network Model ⟦
     dense ⟬2⸴ 4⟭ ·
     relu ·
     dense ⟬4⸴ 1⟭ ·
 ⟧
 
-process main ⦅ ⦆ → int64 ⟦
-    ethical_boundary strict_auth ⟦
-        rule unauthorized_access ↦ 1.0 ·
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule authorized ↦ 1.0 ·
     ⟧
 
-    vault v ⟬ SecretModel ⟭ threshold ↦ 3 ·
+    ethical_boundary attacker ⟦
+        rule malicious ↦ 1.0 ·
+    ⟧
 
+    vault v with auth ⟬ Model ⟭ threshold ↦ 3 ·
     seal v ·
-    emit "Weights sealed in vault" ·
+    emit "Weights sealed" ·
 
-    // Trigger violation / decoherence
-    enforce strict_auth on "harm_user" ·
-    emit "Decoherence triggered on unauthorized access" ·
+    // Attacker tries to unseal with wrong boundary
+    unseal v with attacker ·
+    emit "Unreachable" ·
 
     yield 0 ·
 ⟧
-

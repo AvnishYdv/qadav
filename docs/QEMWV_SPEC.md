@@ -65,6 +65,7 @@ typedef struct qadav_vault {
     qadav_weight_share* shares[16][8]; // [tensor_idx][share_idx]
     int is_sealed;
     void* target_network;
+    unsigned char authorized_boundary_id[32]; // SHA3-256 of creator boundary (anti-escalation)
 } qadav_vault;
 ```
 
@@ -74,28 +75,31 @@ typedef struct qadav_vault {
 
 ### 4.1 Vault Creation: `qadav_qemwv_create`
 ```c
-qadav_vault* qadav_qemwv_create(unsigned int threshold, unsigned int total_shares, void* network);
+qadav_vault* qadav_qemwv_create(int n_shares, int threshold, qadav_ethical_hamiltonian* boundary);
 ```
 - Validates threshold $k \in [2, 5]$ and $n \ge k$.
 - Allocates vault memory using Win32 `HeapAlloc`.
+- Computes content-based SHA3-256 digest of creator `boundary` via `qadav_qeeh_boundary_hash` (F7, ASLR-independent) and binds it into `vault->authorized_boundary_id` to prevent boundary escalation attacks (Fix F6 & F7).
 
-### 4.2 Sealing: `qadav_qemwv_seal`
+### 4.2 Sealing: `qadav_qemwv_seal` & `qadav_qemwv_seal_with_seed`
 ```c
-int qadav_qemwv_seal(qadav_vault* vault);
+int qadav_qemwv_seal(qadav_vault* v, qadav_tensor** weights, int n_weights);
+int qadav_qemwv_seal_with_seed(qadav_vault* v, qadav_tensor** weights, int n_weights, unsigned long long seed);
 ```
 1. Extracts all weight tensors from target network.
 2. For each tensor, computes SHA3-256 commitment digest over raw byte data.
-3. Generates $n$ polynomial shares per byte over $GF(256)$.
+3. Generates $n$ polynomial shares per byte over $GF(256)$. In `seal_with_seed`, identical seed produces 100% deterministic shares (Fix F10).
 4. Zeroes and unlinks plaintext weight tensors from memory.
-5. Sets `is_sealed = 1`.
+5. Sets `state = 1` (Sealed).
 
 ### 4.3 Unsealing & Ethical Enforcement: `qadav_qemwv_unseal`
 ```c
-int qadav_qemwv_unseal(qadav_vault* vault, void* ethical_boundary);
+qadav_tensor** qadav_qemwv_unseal(qadav_vault* v, qadav_ethical_hamiltonian* boundary);
 ```
-1. **Ethical Verification**: Evaluates authorization with boundary. If `ethical_boundary == NULL` or boundary energy is violated ($E > 0$):
-   - Immediately calls `qadav_qeeh_trigger_decoherence()`.
-   - Halts unseal procedure and returns error code `-1`.
+1. **Boundary Identity & Escalation Verification (F6, F7)**:
+   - Computes content-based SHA3-256 of candidate `boundary` via `qadav_qeeh_boundary_hash`.
+   - Compares candidate hash against `vault->authorized_boundary_id`.
+   - If mismatch or boundary violation ($E > 0$): immediately calls `qadav_qeeh_trigger_decoherence()` and terminates process via `ExitProcess(0xDEADBEEF)`.
 2. **Lagrange Interpolation**: Reconstructs secret bytes from $k$ shares.
 3. **Commitment Integrity Check**: Computes SHA3-256 of reconstructed weights.
    - If computed hash does not match stored commitment:
@@ -120,6 +124,7 @@ void qadav_qemwv_wipe(qadav_vault* vault);
 | **Share Theft ($< k$ shares)** | Information-Theoretic SSS over $GF(256)$ | Zero mutual information; brute force equivalent to guessing secret |
 | **Share Modification / Tampering** | FIPS 202 SHA3-256 Commitments | Interpolated data fails digest check; triggers decoherence |
 | **Unauthorized Model Execution** | QEEH Ethical Boundary Coupling | Absence of valid boundary authorization invokes active decoherence |
+| **Boundary Escalation Attack** | Vault-Bound Boundary SHA3 Digest | Foreign or substitute boundary unseal immediately triggers decoherence and exits |
 | **Process Memory Dump** | Plaintext Weights Eradicated While Sealed | Only random polynomial shares reside in heap |
 | **Dependency Hijacking** | Zero-Libc Freestanding C Implementation | Eliminates foreign library hooks and standard DLL tampering |
 
@@ -129,14 +134,14 @@ void qadav_qemwv_wipe(qadav_vault* vault);
 
 ```qadav
 ethical_boundary safe_exec ⟦
-    rule "unauthorized_model_access" ↦ 1.0 ·
+    rule unauthorized_model_access ↦ 1.0 ·
 ⟧ ·
 
-vault model_vault ⟦
-    threshold ↦ 3 ·
-    shares ↦ 5 ·
-    target ↦ my_agent ·
+network SecretModel ⟦
+    dense ⟬2⸴ 4⟭ ·
 ⟧ ·
+
+vault model_vault with safe_exec ⟬ SecretModel ⟭ threshold ↦ 3 ·
 
 seal model_vault ·
 unseal model_vault with safe_exec ·

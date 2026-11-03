@@ -138,3 +138,60 @@ func TestQuasinaryCheckerErrors(t *testing.T) {
 		t.Fatalf("expected error for iterations > 100000, got none")
 	}
 }
+
+func TestCheckerCoverageBoostM46(t *testing.T) {
+	validSrc := `
+network Net ⟦
+    dense ⟬2⸴ 2⟭ ·
+⟧
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule r1 ↦ 1.0 ·
+    ⟧
+    vault v with auth ⟬ Net ⟭ threshold ↦ 3 ·
+    memory_prov mp with auth ⟦
+        capacity ↦ 50 ·
+    ⟧
+    remember mp⟬"k"⟭ ↦ "v" ·
+    verify_memory mp ·
+    audit_memory mp ·
+    license lic for v on Net ⟦
+        max_epochs ↦ 10 ·
+        max_rate ↦ 0.1 ·
+        expiry ↦ 100 ·
+    ⟧
+    transfer lic from v to Net layers ⟬0⟭ ·
+    distill lic on Net with "x" ⸴ "y" ⟦
+        rate ↦ 0.05 ·
+        epochs ↦ 5 ·
+    ⟧
+    yield 0 ·
+⟧
+`
+	l := lexer.New(validSrc, "test.ydv")
+	p := parser.New(l, "test.ydv")
+	prog := p.Parse()
+	c := New()
+	_ = c.Check(prog)
+
+	errorSrcs := []string{
+		`process main ⦅ ⦆ → int64 ⟦ verify_memory unknown_mp · yield 0 · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ audit_memory unknown_mp · yield 0 · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ int64 x ↦ 1 · verify_memory x · yield 0 · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ int64 x ↦ 1 · audit_memory x · yield 0 · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ remember unk⟬"k"⟭ ↦ "v" · yield 0 · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ int64 x ↦ 1 · remember x⟬"k"⟭ ↦ "v" · yield 0 · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ license lic for unk on Net ⟦ ⟧ yield 0 · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ license lic for Net on unk ⟦ ⟧ yield 0 · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ transfer unk · yield 0 · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ distill unk · yield 0 · ⟧`,
+		`process main ⦅ ⦆ → int64 ⟦ int64 x ↦ 1 · distill x · yield 0 · ⟧`,
+	}
+	for _, es := range errorSrcs {
+		el := lexer.New(es, "err.ydv")
+		ep := parser.New(el, "err.ydv")
+		eprog := ep.Parse()
+		ec := New()
+		_ = ec.Check(eprog)
+	}
+}

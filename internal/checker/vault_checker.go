@@ -14,6 +14,13 @@ func (c *Checker) checkVaultDecl(v *ast.VaultDecl) {
 		})
 	}
 
+	if v.Boundary != nil {
+		bType := c.checkExpr(v.Boundary)
+		if bType != nil && bType.Kind != types.KindEthicalBoundary {
+			c.errorf(v.Boundary.Pos(), "vault boundary must be an ethical_boundary, got %s", bType)
+		}
+	}
+
 	if v.NetworkRef != nil {
 		isNet := false
 		if id, ok := v.NetworkRef.(*ast.Ident); ok {

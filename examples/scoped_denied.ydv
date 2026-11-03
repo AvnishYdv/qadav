@@ -1,0 +1,25 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary owner_auth ⟦
+        rule confidential_policy ↦ 1.0 ·
+    ⟧
+
+    memory_prov secure_vault with owner_auth ⟦
+        capacity ↦ 50 ·
+    ⟧
+
+    remember secure_vault⟬"patient_record"⟭ ↦ "clinical_data_anonymized" ·
+    remember secure_vault⟬"billing_id"⟭ ↦ "acc_99214" ·
+
+    recall_token dr_token for secure_vault on research_agent ⟦
+        keys ↦ ⟬ "patient_record" ⟭ ·
+        expiry ↦ 3600 ·
+    ⟧
+
+    grant dr_token to research_agent ·
+
+    text denied_record ↦ recall_scoped secure_vault⟬"billing_id"⟭ with dr_token ·
+    emit denied_record ·
+
+    yield 0 ·
+⟧
+

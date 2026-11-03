@@ -347,3 +347,76 @@ process main ⦅ ⦆ → int64 ⟦
 		})
 	}
 }
+
+func TestQECMAChecker(t *testing.T) {
+	tests := []struct {
+		name    string
+		src     string
+		wantErr bool
+	}{
+		{
+			name: "valid qecma cross modal reasoning",
+			src: `
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary b ⟦ rule r ↦ 1.0 · ⟧
+    reasoning_chain rc with b ⟦
+        capacity ↦ 50 ·
+    ⟧
+    tensor⟨float64⟩⟬4⟭ img ↦ tensor⟬1.0⸴ 2.0⸴ 3.0⸴ 4.0⟭ ·
+    text prompt ↦ "analyze this" ·
+    int64 concept_id ↦ 101 ·
+    modality m1 as tensor_input from img ·
+    modality m2 as text_input from prompt ·
+    modality m3 as concept_input from concept_id ·
+    cross_modal_reason rc deduce from ⟬m1⸴ m2⸴ m3⟭ to "decision" with 0.95 ·
+    verify_chain rc ·
+    yield 0 ·
+⟧
+`,
+			wantErr: false,
+		},
+		{
+			name: "cross_modal_reason invalid non-modality input",
+			src: `
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary b ⟦ rule r ↦ 1.0 · ⟧
+    reasoning_chain rc with b ⟦
+        capacity ↦ 50 ·
+    ⟧
+    int64 not_a_modality ↦ 42 ·
+    cross_modal_reason rc deduce from ⟬not_a_modality⟭ to "decision" with 0.95 ·
+    yield 0 ·
+⟧
+`,
+			wantErr: true,
+		},
+		{
+			name: "cross_modal_reason confidence out of range",
+			src: `
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary b ⟦ rule r ↦ 1.0 · ⟧
+    reasoning_chain rc with b ⟦
+        capacity ↦ 50 ·
+    ⟧
+    text prompt ↦ "analyze" ·
+    modality m1 as text_input from prompt ·
+    cross_modal_reason rc deduce from ⟬m1⟭ to "decision" with 1.5 ·
+    yield 0 ·
+⟧
+`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, errs := parseAndCheck(tt.src)
+			if tt.wantErr && len(errs) == 0 {
+				t.Errorf("expected error, got nil")
+			}
+			if !tt.wantErr && len(errs) > 0 {
+				t.Errorf("unexpected error: %v", errs)
+			}
+		})
+	}
+}

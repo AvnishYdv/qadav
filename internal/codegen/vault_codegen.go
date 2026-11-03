@@ -16,8 +16,14 @@ func (g *Generator) genVaultDecl(v *ast.VaultDecl) {
 	}
 	nShares := 5
 
+	var bRef = "null"
+	if v.Boundary != nil {
+		bVal := g.genExpr(v.Boundary)
+		bRef = bVal.Ref
+	}
+
 	resTemp := g.nextTemp()
-	fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_qemwv_create(i32 %d, i32 %d)\n", resTemp, nShares, threshold)
+	fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_qemwv_create(i32 %d, i32 %d, i8* %s)\n", resTemp, nShares, threshold, bRef)
 
 	if v.Name != "" {
 		ptr := fmt.Sprintf("%%%s.ptr", v.Name)
@@ -53,4 +59,3 @@ func (g *Generator) genWipeStmt(s *ast.WipeStmt) {
 	vVal := g.genExpr(s.Vault)
 	fmt.Fprintf(&g.sb, "  call void @qadav_qemwv_wipe(i8* %s)\n", vVal.Ref)
 }
-

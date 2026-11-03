@@ -1,0 +1,9 @@
+process emit_text_val⦅text msg⦆ → int64 ⟦
+    emit msg ·
+    yield 0 ·
+⟧
+
+process emit_int_val⦅int64 n⦆ → int64 ⟦
+    emit n ·
+    yield 0 ·
+⟧

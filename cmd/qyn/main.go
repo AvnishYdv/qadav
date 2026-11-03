@@ -32,6 +32,8 @@ func main() {
 		os.Exit(runSelfCheck(os.Args[2:]))
 	case "verify-training":
 		os.Exit(runVerifyTraining(os.Args[2:]))
+	case "stdlib":
+		os.Exit(runStdlib(os.Args[2:]))
 	case "help", "--help", "-h":
 		showUsage()
 		os.Exit(0)
@@ -55,6 +57,7 @@ Commands:
   fmt <file.ydv>      Format a Qadav source file
   dataset inspect <file.qds> Inspect a QDS binary dataset
   selfcheck <build|verify|strip> Binary integrity operations
+  stdlib <list|build> Manage Qadav standard library modules
   doctor              Check environment health (LLVM, Go, etc.)
   version             Display version
   help                Show this message

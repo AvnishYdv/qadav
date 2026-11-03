@@ -1,0 +1,23 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary reasoning_auth ⟦
+        rule logical_consistency ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain logic with reasoning_auth ⟦
+        capacity ↦ 100 ·
+    ⟧
+
+    reason deduce from "premise" to "conclusion" with 0.95 ·
+    reason deduce from "premise" to "conclusion2" with 0.95 ·
+
+    verify_chain logic ·
+    emit "Initial chain verified" ·
+
+    corrupt_reasoning_step logic⟬0⟭ at ↦ 0 ·
+
+    verify_chain logic ·
+    emit "Unreachable" ·
+
+    yield 0 ·
+⟧
+

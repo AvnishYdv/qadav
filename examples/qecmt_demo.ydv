@@ -1,0 +1,47 @@
+network TeacherNet ⟦
+    dense ⟬4⸴ 8⟭ ·
+    relu ·
+    dense ⟬8⸴ 4⟭ ·
+⟧
+
+network StudentNet ⟦
+    dense ⟬4⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 4⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary teacher_auth ⟦
+        rule allow_distillation ↦ 1.0 ·
+    ⟧
+
+    ethical_boundary student_auth ⟦
+        rule allow_learning ↦ 1.0 ·
+    ⟧
+
+    vault teacher_vault with teacher_auth ⟬ TeacherNet ⟭ threshold ↦ 3 ·
+    seal teacher_vault ·
+    emit "Teacher weights sealed" ·
+
+    license l for teacher_vault on StudentNet ⟦
+        max_epochs ↦ 50 ·
+        max_rate ↦ 0.5 ·
+        expiry ↦ 1735689600 ·
+    ⟧
+    emit "Transfer license issued" ·
+
+    transfer l from teacher_vault to StudentNet layers ⟬0⸴ 1⟭ ·
+    emit "Layers transferred to student" ·
+
+    tensor⟨float64⟩⟬4⸴ 4⟭ x ↦ tensor⟬⟬0.5⸴ 0.5⸴ 0.0⸴ 0.0⟭⸴ ⟬0.5⸴ 0.5⸴ 0.0⸴ 0.0⟭⸴ ⟬0.0⸴ 0.0⸴ 0.5⸴ 0.5⟭⸴ ⟬0.0⸴ 0.0⸴ 0.5⸴ 0.5⟭⟭ ·
+    tensor⟨float64⟩⟬4⸴ 4⟭ y ↦ x ·
+
+    distill l on StudentNet with x ⸴ y ⟦
+        rate ↦ 0.3 ·
+        epochs ↦ 20 ·
+    ⟧
+    emit "Student distilled successfully" ·
+
+    yield 0 ·
+⟧
+

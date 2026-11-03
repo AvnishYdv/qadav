@@ -34,9 +34,65 @@ qadav_ethical_hamiltonian* qadav_qeeh_create(int num_rules, const double* penalt
     for (int i = 0; i < num_rules; i++) {
         h->penalties[i] = (penalties && penalties[i] >= 0.0) ? penalties[i] : 1.0;
         h->conditions[i] = 1.0; // default: compliant
+        if (i < QADAV_QEEH_MAX_RULES) {
+            h->rule_names[i][0] = '\0';
+        }
     }
 
     return h;
+}
+
+void qadav_qeeh_set_rule_name(qadav_ethical_hamiltonian* h, int idx, const char* name) {
+    if (!h || idx < 0 || idx >= h->num_rules || idx >= QADAV_QEEH_MAX_RULES || !name) return;
+    int k = 0;
+    while (name[k] != '\0' && k < QADAV_QEEH_RULE_NAME_MAX - 1) {
+        h->rule_names[idx][k] = name[k];
+        k++;
+    }
+    h->rule_names[idx][k] = '\0';
+}
+
+int qadav_qeeh_boundary_hash(const void* boundary, unsigned char out[32]) {
+    if (!out) return 0;
+    if (!boundary) {
+        for (int i = 0; i < 32; i++) out[i] = 0;
+        return 0;
+    }
+    const qadav_ethical_hamiltonian* h = (const qadav_ethical_hamiltonian*)boundary;
+    unsigned char buf[4096];
+    unsigned long long offset = 0;
+
+    // 1. num_rules (4 bytes Little Endian)
+    buf[offset++] = (unsigned char)(h->num_rules & 0xFF);
+    buf[offset++] = (unsigned char)((h->num_rules >> 8) & 0xFF);
+    buf[offset++] = (unsigned char)((h->num_rules >> 16) & 0xFF);
+    buf[offset++] = (unsigned char)((h->num_rules >> 24) & 0xFF);
+
+    // 2. For each rule: rule_name (null-terminated) || penalty (8 bytes double LE)
+    for (int i = 0; i < h->num_rules; i++) {
+        const char* name = (i < QADAV_QEEH_MAX_RULES) ? h->rule_names[i] : "";
+        if (!name || name[0] == '\0') {
+            const char* def_p = "rule_";
+            for (int k = 0; def_p[k]; k++) buf[offset++] = (unsigned char)def_p[k];
+            buf[offset++] = (unsigned char)('0' + (i % 10));
+            buf[offset++] = '\0';
+        } else {
+            int k = 0;
+            while (name[k] != '\0' && k < QADAV_QEEH_RULE_NAME_MAX - 1) {
+                buf[offset++] = (unsigned char)name[k++];
+            }
+            buf[offset++] = '\0';
+        }
+
+        double p = (h->penalties) ? h->penalties[i] : 1.0;
+        unsigned char* p_bytes = (unsigned char*)&p;
+        for (int k = 0; k < 8; k++) {
+            buf[offset++] = p_bytes[k];
+        }
+    }
+
+    qadav_sha3_256(buf, offset, out);
+    return 1;
 }
 
 int qadav_qeeh_evaluate(qadav_ethical_hamiltonian* h, const double* conditions) {

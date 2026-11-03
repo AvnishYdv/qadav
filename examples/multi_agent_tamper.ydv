@@ -1,0 +1,31 @@
+network AgentA ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+network AgentB ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary authA ⟦
+        rule access_A ↦ 1.0 ·
+    ⟧
+
+    ethical_boundary authB ⟦
+        rule access_B ↦ 1.0 ·
+    ⟧
+
+    vault vault_A with authA ⟬ AgentA ⟭ threshold ↦ 3 ·
+    seal vault_A ·
+    emit "Agent A vault sealed" ·
+
+    unseal vault_A with authB ·
+    emit "Unreachable" ·
+
+    yield 0 ·
+⟧
+

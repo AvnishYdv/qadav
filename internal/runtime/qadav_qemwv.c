@@ -1,6 +1,10 @@
 #include "qadav_qemwv.h"
 #include "qadav_sha3.h"
 
+#ifdef _WIN32
+__declspec(dllimport) void __stdcall ExitProcess(unsigned int uExitCode);
+#endif
+
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
 
@@ -53,7 +57,7 @@ static unsigned char qadav_rand_byte(unsigned long long* seed) {
     return (unsigned char)(*seed & 0xFF);
 }
 
-qadav_vault* qadav_qemwv_create(int n_shares, int threshold) {
+qadav_vault* qadav_qemwv_create(int n_shares, int threshold, void* boundary) {
     if (n_shares <= 0 || n_shares > QADAV_MAX_SHARES) n_shares = QADAV_MAX_SHARES;
     if (threshold < QADAV_MIN_THRESHOLD) threshold = QADAV_MIN_THRESHOLD;
     if (threshold > n_shares) threshold = n_shares;
@@ -67,6 +71,13 @@ qadav_vault* qadav_qemwv_create(int n_shares, int threshold) {
     v->weights = 0;
     v->n_weights = 0;
 
+    // F6 & F7: Embed content-based SHA3 hash of authorized boundary at vault creation (ASLR-free)
+    if (boundary) {
+        qadav_qeeh_boundary_hash(boundary, v->authorized_boundary_id);
+    } else {
+        qadav_zero_mem(v->authorized_boundary_id, 32);
+    }
+
     for (int i = 0; i < QADAV_MAX_SHARES; i++) {
         v->shares[i].bytes = 0;
         v->shares[i].size = 0;
@@ -78,6 +89,10 @@ qadav_vault* qadav_qemwv_create(int n_shares, int threshold) {
 }
 
 int qadav_qemwv_seal(qadav_vault* v, qadav_tensor** weights, int n_weights) {
+    return qadav_qemwv_seal_with_seed(v, weights, n_weights, __builtin_readcyclecounter());
+}
+
+int qadav_qemwv_seal_with_seed(qadav_vault* v, qadav_tensor** weights, int n_weights, unsigned long long seed) {
     if (!v) return -1;
 
     // Calculate total byte size of weights
@@ -113,8 +128,6 @@ int qadav_qemwv_seal(qadav_vault* v, qadav_tensor** weights, int n_weights) {
         flat[offset++] = 0xAA;
     }
 
-    // Initialize PRNG seed from CPU cycles
-    unsigned long long seed = __builtin_readcyclecounter();
     if (seed == 0) seed = 0xDEADBEEFCAFE1234ULL;
 
     // Allocate and generate shares
@@ -165,7 +178,23 @@ qadav_tensor** qadav_qemwv_unseal(qadav_vault* v, qadav_ethical_hamiltonian* bou
     // Verify QEEH Boundary authorization
     if (!boundary) {
         qadav_qeeh_trigger_decoherence(0);
+#ifdef _WIN32
+        ExitProcess((unsigned int)0xDEADBEEF);
+#endif
         return 0;
+    }
+
+    // F6 & F7: Verify boundary content hash matches creation boundary (ASLR-free)
+    unsigned char boundary_hash[32];
+    qadav_qeeh_boundary_hash(boundary, boundary_hash);
+    for (int i = 0; i < 32; i++) {
+        if (boundary_hash[i] != v->authorized_boundary_id[i]) {
+            qadav_qeeh_trigger_decoherence(0);
+#ifdef _WIN32
+            ExitProcess((unsigned int)0xDEADBEEF);
+#endif
+            return 0;
+        }
     }
 
     // Evaluate ethical boundary conditions
@@ -173,6 +202,9 @@ qadav_tensor** qadav_qemwv_unseal(qadav_vault* v, qadav_ethical_hamiltonian* bou
     if (is_violated != 0) {
         // Unauthorized access breach: trigger quantum decoherence immediately
         qadav_qeeh_trigger_decoherence(0);
+#ifdef _WIN32
+        ExitProcess((unsigned int)0xDEADBEEF);
+#endif
         return 0;
     }
 

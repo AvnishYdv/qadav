@@ -43,6 +43,12 @@ const (
 	KindHamiltonian     // QEEH Hamiltonian operator
 	KindVault           // QEMWV model weight vault handle
 	KindProvenance      // MCTP training provenance tracker handle
+	KindMemoryProv      // QEMP quantum-entangled memory provenance handle
+	KindLicense         // QECMT transfer license handle
+	KindReasoningChain  // QERA quantum-entangled reasoning attestation chain
+	KindModality        // QECMA multimodal input binding
+	KindQECMemory       // QEC-QEMP quantum error-corrected memory handle
+	KindSyndrome        // QEC syndrome handle
 )
 
 // Type represents a concrete Qadav type.
@@ -88,7 +94,38 @@ var (
 	Hamiltonian     = &Type{Kind: KindHamiltonian, Name: "hamiltonian"}
 	Vault           = &Type{Kind: KindVault, Name: "vault"}
 	Provenance      = &Type{Kind: KindProvenance, Name: "provenance"}
+	MemoryProv      = &Type{Kind: KindMemoryProv, Name: "memory_prov"}
+	License         = &Type{Kind: KindLicense, Name: "license"}
+	ReasoningChain  = &Type{Kind: KindReasoningChain, Name: "reasoning_chain"}
+	Modality        = &Type{Kind: KindModality, Name: "modality"}
+	QECMemory       = &Type{Kind: KindQECMemory, Name: "qec_memory"}
+	Syndrome        = &Type{Kind: KindSyndrome, Name: "syndrome"}
 )
+
+// QECMemoryT returns the qec_memory Type singleton.
+func QECMemoryT() *Type {
+	return QECMemory
+}
+
+// SyndromeT returns the syndrome Type singleton.
+func SyndromeT() *Type {
+	return Syndrome
+}
+
+// ModalityT returns the modality Type singleton.
+func ModalityT() *Type {
+	return Modality
+}
+
+// ReasoningChainT returns the reasoning_chain Type singleton.
+func ReasoningChainT() *Type {
+	return ReasoningChain
+}
+
+// MemoryProvT returns the memory_prov Type singleton.
+func MemoryProvT() *Type {
+	return MemoryProv
+}
 
 // VaultT returns the vault Type singleton.
 func VaultT() *Type {

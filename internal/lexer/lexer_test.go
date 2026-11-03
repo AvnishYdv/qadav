@@ -335,6 +335,32 @@ func TestBannedKeywordsNotTokenized(t *testing.T) {
 	}
 }
 
+func TestAtAnnotationEdgeCases(t *testing.T) {
+	l1 := New("@unknown", "test.ydv")
+	tok1 := l1.NextToken()
+	if tok1.Type != token.ILLEGAL || tok1.Literal != "@unknown" {
+		t.Fatalf("expected ILLEGAL @unknown, got %+v", tok1)
+	}
+
+	l2 := New("@ ", "test.ydv")
+	tok2 := l2.NextToken()
+	if tok2.Type != token.ILLEGAL || tok2.Literal != "@" {
+		t.Fatalf("expected ILLEGAL @, got %+v", tok2)
+	}
+
+	l3 := New(`\unknown`, "test.ydv")
+	tok3 := l3.NextToken()
+	if tok3.Type != token.UNKNOWN {
+		t.Fatalf("expected UNKNOWN \\unknown, got %+v", tok3)
+	}
+
+	l4 := New("", "test.ydv")
+	if l4.peek() != 0 {
+		t.Fatalf("expected 0 for peek at EOF")
+	}
+	l4.advance()
+}
+
 func BenchmarkLexer(b *testing.B) {
 	// Construct ~1KB sample of quantum-native Qadav code
 	line := "int32 res ↦ a ⊕ b ⊗ c ⊘ d ⊙ e ↑ f·\n"

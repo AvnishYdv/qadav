@@ -1,0 +1,12 @@
+process dot_product_4⦅tensor⟨float64⟩⟬4⟭ a⸴ tensor⟨float64⟩⟬4⟭ b⦆ → float64 ⟦
+    yield ∑ ⦅a ⊗ b⦆ ·
+⟧
+
+process vec_add_4⦅tensor⟨float64⟩⟬4⟭ a⸴ tensor⟨float64⟩⟬4⟭ b⦆ → tensor⟨float64⟩⟬4⟭ ⟦
+    yield a ⊕ b ·
+⟧
+
+process vec_scale_4⦅tensor⟨float64⟩⟬4⟭ a⸴ float64 s⦆ → tensor⟨float64⟩⟬4⟭ ⟦
+    yield a ⊗ s ·
+⟧
+

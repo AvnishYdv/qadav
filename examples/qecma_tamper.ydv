@@ -1,0 +1,25 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary multiauth ⟦
+        rule cross_modal_integrity ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain cross_modal_chain with multiauth ⟦
+        capacity ↦ 50 ·
+    ⟧
+
+    text sensory_description ↦ "Camera detected obstacle at 2 meters" ·
+    modality text_mod as text_input from sensory_description ·
+
+    cross_modal_reason cross_modal_chain deduce from ⟬text_mod⟭ to "Obstacle confirmed: initiate braking maneuver" with 0.98 ·
+
+    verify_chain cross_modal_chain ·
+    emit "Initial cross-modal reasoning verified" ·
+
+    corrupt_reasoning_step cross_modal_chain⟬0⟭ at ↦ 0 ·
+
+    verify_chain cross_modal_chain ·
+    emit "Unreachable: tampered cross-modal step passed" ·
+
+    yield 0 ·
+⟧
+

@@ -51,8 +51,8 @@ func TestBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() failed: %v", err)
 	}
-	if len(objs) != 24 {
-		t.Fatalf("expected 24 runtime objects, got %d", len(objs))
+	if len(objs) != 30 {
+		t.Fatalf("expected 30 runtime objects, got %d", len(objs))
 	}
 
 	for _, objPath := range objs {
@@ -70,8 +70,8 @@ func TestBuild(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cached Build() failed: %v", err)
 	}
-	if len(cachedObjs) != 24 {
-		t.Fatalf("expected 24 cached objects, got %d", len(cachedObjs))
+	if len(cachedObjs) != 30 {
+		t.Fatalf("expected 30 cached objects, got %d", len(cachedObjs))
 	}
 	for i := range objs {
 		if cachedObjs[i] != objs[i] {
@@ -90,8 +90,8 @@ func TestBuildDefaultCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build(tc, \"\") failed: %v", err)
 	}
-	if len(objs) != 24 {
-		t.Fatalf("expected 24 runtime objects, got %d", len(objs))
+	if len(objs) != 30 {
+		t.Fatalf("expected 30 runtime objects, got %d", len(objs))
 	}
 
 	// Test with nil toolchain (auto-detect)
@@ -99,7 +99,7 @@ func TestBuildDefaultCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build(nil, \"\") failed: %v", err)
 	}
-	if len(objs2) != 24 || objs2[0] != objs[0] {
+	if len(objs2) != 30 || objs2[0] != objs[0] {
 		t.Fatalf("expected same objPath from cache, got %v vs %v", objs, objs2)
 	}
 }

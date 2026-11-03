@@ -27,6 +27,12 @@ func (g *Generator) genEthicalBoundaryDecl(b *ast.EthicalBoundaryDecl) {
 	resTemp := g.nextTemp()
 	fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_qeeh_create(i32 %d, double* %s)\n", resTemp, numRules, castPtr)
 
+	for i, rule := range b.Rules {
+		nameConst, nameLen := g.addStringConstant(rule.Name)
+		fmt.Fprintf(&g.sb, "  call void @qadav_qeeh_set_rule_name(i8* %s, i32 %d, i8* getelementptr inbounds ([%d x i8], [%d x i8]* %s, i64 0, i64 0))\n",
+			resTemp, i, nameLen, nameLen, nameConst)
+	}
+
 	if b.Name != "" {
 		ptr := fmt.Sprintf("%%%s.ptr", b.Name)
 		fmt.Fprintf(&g.sb, "  %s = alloca i8*\n", ptr)

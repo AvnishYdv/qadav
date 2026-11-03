@@ -43,4 +43,3 @@ func (g *Generator) genVerifyTrainingExpr(e *ast.VerifyTrainingExpr) Value {
 		QType: types.Logic,
 	}
 }
-

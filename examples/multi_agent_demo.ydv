@@ -1,0 +1,64 @@
+network AgentA ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+network AgentB ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    // Setup: ethics
+    ethical_boundary collab_auth ⟦
+        rule multi_agent_collab ↦ 1.0 ·
+    ⟧
+
+    // Agent A: sealed weights in vault
+    vault vault_A with collab_auth ⟬ AgentA ⟭ threshold ↦ 3 ·
+    seal vault_A ·
+
+    // Agent B: sealed weights in vault
+    vault vault_B with collab_auth ⟬ AgentB ⟭ threshold ↦ 3 ·
+    seal vault_B ·
+
+    emit "Both agent weight vaults sealed" ·
+
+    // Agent A: episodic memory with provenance
+    memory_prov mem_A with collab_auth ⟦ capacity ↦ 100 · ⟧
+    remember mem_A⟬"observation"⟭ ↦ "sensor_reading_42" ·
+    remember mem_A⟬"decision"⟭ ↦ "act_forward" ·
+
+    // Agent B: episodic memory
+    memory_prov mem_B with collab_auth ⟦ capacity ↦ 100 · ⟧
+    remember mem_B⟬"observation"⟭ ↦ "sensor_reading_43" ·
+
+    emit "Agent memories initialized with provenance" ·
+
+    // Cross-agent transfer: Agent A transfers layer to Agent B (with license)
+    license collab_license for vault_A on AgentB ⟦
+        max_epochs ↦ 30 ·
+        max_rate ↦ 0.2 ·
+        expiry ↦ 1735689600 ·
+    ⟧
+    emit "Cross-agent transfer license issued" ·
+
+    transfer collab_license from vault_A to AgentB layers ⟬0⟭ ·
+    emit "Layer transferred from A to B" ·
+
+    // Verify all memory integrity
+    verify_memory mem_A ·
+    verify_memory mem_B ·
+    emit "All memory provenance verified" ·
+
+    // Recall from both memories
+    text a_dec ↦ recall mem_A⟬"decision"⟭ ·
+    text b_obs ↦ recall mem_B⟬"observation"⟭ ·
+    emit a_dec ·
+    emit b_obs ·
+
+    yield 0 ·
+⟧
+

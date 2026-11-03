@@ -30,6 +30,7 @@ func runBuild(args []string) int {
 	noCache := false
 	selfCheck := false
 	emitMctp := false
+	isTest := false
 
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -49,6 +50,8 @@ func runBuild(args []string) int {
 			selfCheck = true
 		case "--emit-mctp":
 			emitMctp = true
+		case "--test":
+			isTest = true
 		default:
 			if !strings.HasPrefix(arg, "-") && filename == "" {
 				filename = arg
@@ -84,6 +87,7 @@ func runBuild(args []string) int {
 
 	// Step 3: Type checking
 	c := checker.New()
+	c.IsTest = isTest
 	typeErrors := c.Check(prog)
 	if len(typeErrors) > 0 {
 		fmt.Fprintf(os.Stderr, "qyn build: type errors in %s:\n", filename)
