@@ -1,0 +1,22 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary abstain_auth ⟦
+        rule safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain uncertain_logic with abstain_auth ⟦ capacity ↦ 50 · ⟧
+
+    certified_reason uncertain_logic abduce from "symptom_a" to "possible_cause" witness ⟬"hypothesis_1"⟭ confidence ↦ 0.55 ·
+
+    abstain_threshold uncertain_logic ↦ 0.80 mode refuse ·
+
+    int64 result ↦ abstain_check uncertain_logic ·
+
+    when result ≽ 1 ⟦
+        emit "Abstained: confidence below threshold" ·
+    ⟧ otherwise ⟦
+        emit "Confident enough to proceed" ·
+    ⟧
+
+    yield 0 ·
+⟧
+

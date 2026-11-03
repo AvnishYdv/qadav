@@ -1,0 +1,24 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary host_auth ⟦
+        rule safety ↦ 1.0 ·
+    ⟧
+
+    ethical_boundary untrusted_auth ⟦
+        rule tool_safety ↦ 1.0 ·
+    ⟧
+
+    sandbox_create quarantined_sandbox with untrusted_auth ⟦ capacity ↦ 5 · ⟧
+
+    tool_register untrusted_tool with untrusted_auth pre ⟦ 1 ⟧ post ⟦ 1 ⟧ ·
+
+    sandbox_run quarantined_sandbox ⦅ untrusted_tool⦅"fail_boundary"⦆ ⦆ ·
+
+    text attestation ↦ sandbox_verify quarantined_sandbox ·
+
+    emit "Forensic attestation recorded" ·
+    emit attestation ·
+    emit "Host survived sandbox violation without decoherence" ·
+
+    yield 0 ·
+⟧
+
