@@ -237,6 +237,24 @@ CDAGAVerifyStmt     ::= "cdaga_verify" Ident ("into" Ident)? "·"
 CorruptCDAGAStmt    ::= "corrupt_cdaga" Ident "at" "↦" Expr "·"  // --test only
 ```
 
+### 24. Distributed Training Grammar (M6.5)
+In-process distributed ring reduction and parameter server operations:
+```bnf
+AllReduceStmt       ::= "all_reduce" (("from" "⟬" (Expr ("⸴" Expr)*)? "⟭" "into" Ident) | Expr) ("into" Ident)? "·"
+PserverInitStmt     ::= "pserver_init" "into" Ident "with" Expr ("workers")? "·"
+PserverAggStmt      ::= "pserver_aggregate" Ident "·"
+DistAnnotation      ::= "@distributed"
+```
+
+### 25. Byzantine-Attested Robust Aggregation (BARAT) Grammar (M6.6)
+Invention #19 enables Byzantine-resilient trimmed-mean aggregation with transparency proofs:
+```bnf
+BaratSubmitStmt     ::= "barat_submit" ((Expr "into" Ident "with" Expr) | ("from" Expr "into" Ident)) "·"
+BaratAggregateStmt  ::= "barat_aggregate" Ident "into" Ident ("cert" | "with") ("into")? Ident "·"
+BaratVerifyStmt     ::= "barat_verify" Ident ("into" Ident)? "·"
+CorruptBaratStmt    ::= "corrupt_barat" Ident "at" "↦" Expr "·"  // --test only
+```
+
 ### Compiler Testing Flags:
 - `--test`: Enables test-only AST statements (e.g. `corrupt_memory_share`, `corrupt_reasoning_step`, `corrupt_syndrome`) for cryptographic tamper resilience verification. In normal builds, test-only statements are rejected with a checker error.
 

@@ -971,6 +971,62 @@ process main ⦅ ⦆ → int64 ⟦
 ⟧
 ```
 
+---
+
+## 34. Distributed Training: In-Process Ring AllReduce & Parameter Server (M6.5)
+
+Qadav introduces high-performance, deterministic distributed training primitives operating without heavy networking dependencies (no WinSock, no external C socket libraries). Virtual worker threads share zero-libc ring buffers with bfloat16 compression support.
+
+### Capabilities:
+1. **Ring AllReduce:** Scatter-reduce and all-gather phases cycle through adjacent workers in an in-process ring topology.
+2. **Parameter Server:** Centralized parameter server aggregation accumulates parameter deltas across worker pools and redistributes synchronized weights.
+3. **Graceful Single-Worker Fallback:** Running in single-worker mode completes safely as an optimized zero-overhead no-op without memory faults or crashes.
+
+```qadav
+@distributed
+process main ⦅ ⦆ → int64 ⟦
+    pserver_init into ps with 4 workers ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w0 ↦ tensor⟬⟬0.1⸴ 0.2⟭⸴ ⟬0.3⸴ 0.4⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w1 ↦ tensor⟬⟬0.5⸴ 0.6⟭⸴ ⟬0.7⸴ 0.8⟭⟭ ·
+    all_reduce from ⟬grad_w0⸴ grad_w1⟭ into reduced_grad ·
+    pserver_aggregate ps ·
+    emit "Distributed Training Completed" ·
+    yield 0 ·
+⟧
+```
+
+---
+
+## 35. Byzantine-Attested Robust Aggregation (BARAT — Invention #19)
+
+BARAT (Invention #19, Patent Pending) guarantees Byzantine fault tolerance and cryptographic transparency during distributed gradient reduction.
+
+### Key Innovations:
+1. **Verifiable 20% Trimmed-Mean Selection ($\alpha = 0.20$):** Discards outlier gradients from faulty or malicious workers based on dispersion norms, keeping central gradient distributions untainted.
+2. **Deterministic Canonical Ordering:** Worker UUIDs are sorted lexicographically before evaluating commitments, guaranteeing identical inclusion masks and proofs regardless of transmission order.
+3. **896-Byte Transparency Certificate:** Encapsulates step index, inclusion mask, worker UUIDs, individual gradient digests, selection proof, and tensor hash.
+4. **Active Quantum Decoherence:** Tampered gradient bytes or forged certificates cause instant fail-stop process termination (`ExitProcess(0xDEADBEEF)`).
+
+```qadav
+process main ⦅ ⦆ → int64 ⟦
+    ethical_boundary auth ⟦ rule execution_safety ↦ 1.0 · ⟧
+    reasoning_chain training_log with auth ⟦ capacity ↦ 20 · ⟧
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w0 ↦ tensor⟬⟬0.01⸴ 0.02⟭⸴ ⟬0.03⸴ 0.04⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w1 ↦ tensor⟬⟬0.05⸴ 0.06⟭⸴ ⟬0.07⸴ 0.08⟭⟭ ·
+
+    barat_submit 0 into barat_grp with grad_w0 ·
+    barat_submit 1 into barat_grp with grad_w1 ·
+
+    barat_aggregate barat_grp into agg_grad cert into b_cert ·
+    barat_verify b_cert into is_valid ·
+
+    emit "BARAT Robust Aggregation Success" ·
+    yield 0 ·
+⟧
+```
+
+
 
 
 

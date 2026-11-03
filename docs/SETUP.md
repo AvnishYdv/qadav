@@ -159,7 +159,7 @@ Qadav provides native cryptographic tamper simulation statements (such as `corru
 In standard builds without `--test`, any test-only statement produces a compile-time type-checker error.
 
 ### Runtime Modules
-Qadav features 32 modular zero-libc runtime objects compiled on demand (expanded from 30 objects in M6.3+M6.4):
+Qadav features 34 modular zero-libc runtime objects compiled on demand (expanded from 30 in M6.3+M6.4 and 32 in M6.5+M6.6):
 1. `qadav_alloc` (Zero-libc arena & page allocator)
 2. `qadav_sha3` (Keccak-f1600 / SHA3-256 cryptographic sponge)
 3. `qadav_merkle` (Merkle tree builder & root authentication)
@@ -192,8 +192,12 @@ Qadav features 32 modular zero-libc runtime objects compiled on demand (expanded
 30. `qadav_gpu_matmul` (Zero-libc fallback matrix kernels)
 31. `qadav_multigpu` (Multi-GPU DXGI pipeline parallelism, added in M6.3)
 32. `qadav_cdaga` (Cross-Device Attested Gradient Aggregation - Invention #18, added in M6.4)
+33. `qadav_distributed` (In-process Ring AllReduce & Parameter Server, added in M6.5)
+34. `qadav_barat` (Byzantine-Attested Robust Aggregation with Transparent selection - Invention #19, added in M6.6)
 
-*Transition Note (30 → 32):* In M6.3 and M6.4, the runtime was modularly expanded from 30 to 32 compiled C objects by adding `qadav_multigpu.c` (DXGI device topology & pipeline execution) and `qadav_cdaga.c` (canonical device-sorted gradient aggregation attestation).
+*Transition Notes:*
+- *30 → 32 (M6.3 + M6.4):* Added `qadav_multigpu.c` (DXGI device topology & pipeline execution) and `qadav_cdaga.c` (canonical device-sorted gradient aggregation attestation).
+- *32 → 34 (M6.5 + M6.6):* Added `qadav_distributed.c` (in-process zero-socket ring allreduce and parameter server) and `qadav_barat.c` (Byzantine-attested robust trimmed-mean aggregation with transparency certificate and catastrophic decoherence).
 
 ### Standard Library Management:
 ```powershell
