@@ -1,0 +1,10 @@
+@distributed
+process main⦅⦆ → int64 ⟦
+    pserver_init into ps with 4 workers ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w0 ↦ tensor⟬⟬0.1⸴ 0.2⟭⸴ ⟬0.3⸴ 0.4⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w1 ↦ tensor⟬⟬0.5⸴ 0.6⟭⸴ ⟬0.7⸴ 0.8⟭⟭ ·
+    all_reduce from ⟬grad_w0⸴ grad_w1⟭ into reduced_grad ·
+    pserver_aggregate ps ·
+    emit "Distributed Ring AllReduce and Parameter Server Completed" ·
+    yield 0 ·
+⟧

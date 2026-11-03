@@ -154,6 +154,9 @@ func (p *Parser) Parse() *ast.Program {
 			if decl != nil {
 				prog.Decls = append(prog.Decls, decl)
 			}
+		case token.DIST_INIT, token.AT_GPU, token.MULTI_DEVICE:
+			p.nextToken()
+			continue
 		default:
 			p.errorf(p.curPos(), "unexpected top-level token: %s (%q)", p.current.Type, p.current.Literal)
 			p.nextToken()

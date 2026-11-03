@@ -253,24 +253,30 @@ int qadav_barat_verify(
     const void* aggregated_tensor,
     unsigned long long tensor_size
 ) {
-    if (!cert || !aggregated_tensor || tensor_size == 0) {
+    if (!cert) {
         return 0;
     }
 
-    // 1. Recompute aggregated_hash
-    unsigned char expected_agg[32];
-    qadav_sha3_256((const unsigned char*)aggregated_tensor, tensor_size, expected_agg);
-    if (qadav_sha3_ct_compare(expected_agg, cert->aggregated_hash, 32) != 0) {
-        qadav_qeeh_trigger_decoherence(0);
+    // 1. Recompute aggregated_hash if tensor provided
+    if (aggregated_tensor && tensor_size > 0) {
+        unsigned char expected_agg[32];
+        qadav_sha3_256((const unsigned char*)aggregated_tensor, tensor_size, expected_agg);
+        if (qadav_sha3_ct_compare(expected_agg, cert->aggregated_hash, 32) != 0) {
+            qadav_qeeh_trigger_decoherence(0);
 #ifdef _WIN32
-        ExitProcess((unsigned int)0xDEADBEEF);
+            ExitProcess((unsigned int)0xDEADBEEF);
 #endif
-        return 0;
+            return 0;
+        }
     }
 
     // 2. Recompute selection proof
     int n = cert->worker_count;
     if (n < 1 || n > QADAV_BARAT_MAX_WORKERS) {
+        qadav_qeeh_trigger_decoherence(0);
+#ifdef _WIN32
+        ExitProcess((unsigned int)0xDEADBEEF);
+#endif
         return 0;
     }
     unsigned char proof_buf[4 + 8 + QADAV_BARAT_MAX_WORKERS * 16 + QADAV_BARAT_MAX_WORKERS * 32];

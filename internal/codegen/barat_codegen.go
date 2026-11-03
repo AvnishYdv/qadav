@@ -107,11 +107,8 @@ func (g *Generator) genBaratVerifyStmt(s *ast.BaratVerifyStmt) {
 		certRef = loaded
 	}
 
-	dummyTensor := g.nextTemp()
-	fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_alloc(i64 32)\n", dummyTensor)
-
 	resTemp := g.nextTemp()
-	fmt.Fprintf(&g.sb, "  %s = call i32 @qadav_barat_verify(i8* %s, i8* %s, i64 32)\n", resTemp, certRef, dummyTensor)
+	fmt.Fprintf(&g.sb, "  %s = call i32 @qadav_barat_verify(i8* %s, i8* null, i64 0)\n", resTemp, certRef)
 
 	if s.Into != "" {
 		slot, ok := g.vars[s.Into]

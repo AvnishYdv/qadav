@@ -68,6 +68,8 @@ func runCryptoTestHarness(t *testing.T, testName string) string {
 #include "qadav_agke.h"
 #include "qadav_multigpu.h"
 #include "qadav_cdaga.h"
+#include "qadav_distributed.h"
+#include "qadav_barat.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -681,7 +683,7 @@ int main(void) {
         qadav_write_raw("LAMPORT_OK_10\n", 14);
         return 0;
     }
-    if (req[0] == 'b') { // bench_sha3
+    if (qadav_streq(req, "bench_sha3")) {
         unsigned char out[32];
         unsigned long long t0 = __builtin_readcyclecounter();
         for (int i = 0; i < 1000; i++) {
@@ -1733,6 +1735,234 @@ int main(void) {
         qadav_write_raw("CDAGA_ASLR_DETERMINISM_OK\n", 26);
         return 0;
     }
+    if (qadav_streq(req, "dist_init_single_worker")) {
+        qadav_dist_ctx* ctx = qadav_dist_init(1);
+        if (!ctx || ctx->worker_count != 1 || !ctx->single_worker_mode) return 1;
+        if (qadav_dist_get_worker_count() != 1) return 2;
+        qadav_dist_shutdown(ctx);
+        qadav_write_raw("DIST_INIT_SINGLE_WORKER_OK\n", 27);
+        return 0;
+    }
+    if (qadav_streq(req, "dist_ring_allreduce_2workers")) {
+        qadav_dist_ctx* ctx = qadav_dist_init(2);
+        if (!ctx) return 1;
+        double* w0 = (double*)ctx->workers[0].grad_buf;
+        double* w1 = (double*)ctx->workers[1].grad_buf;
+        w0[0] = 1.0; w0[1] = 2.0; w0[2] = 3.0; w0[3] = 4.0;
+        w1[0] = 3.0; w1[1] = 4.0; w1[2] = 5.0; w1[3] = 6.0;
+        ctx->workers[0].grad_size = 4 * sizeof(double);
+        ctx->workers[1].grad_size = 4 * sizeof(double);
+
+        int r = qadav_dist_ring_allreduce(ctx);
+        if (r != 0) return 2;
+        if (w0[0] != 2.0 || w0[1] != 3.0 || w0[2] != 4.0 || w0[3] != 5.0) return 3;
+        if (w1[0] != 2.0 || w1[1] != 3.0 || w1[2] != 4.0 || w1[3] != 5.0) return 4;
+        qadav_dist_shutdown(ctx);
+        qadav_write_raw("DIST_RING_ALLREDUCE_2WORKERS_OK\n", 32);
+        return 0;
+    }
+    if (qadav_streq(req, "dist_ring_allreduce_4workers")) {
+        qadav_dist_ctx* ctx = qadav_dist_init(4);
+        if (!ctx) return 1;
+        for (int i = 0; i < 4; i++) {
+            double* buf = (double*)ctx->workers[i].grad_buf;
+            buf[0] = (double)(i + 1);
+            buf[1] = (double)(i + 1);
+            ctx->workers[i].grad_size = 2 * sizeof(double);
+        }
+        int r = qadav_dist_ring_allreduce(ctx);
+        if (r != 0) return 2;
+        for (int i = 0; i < 4; i++) {
+            double* buf = (double*)ctx->workers[i].grad_buf;
+            if (buf[0] != 2.5 || buf[1] != 2.5) return 3;
+        }
+        qadav_dist_shutdown(ctx);
+        qadav_write_raw("DIST_RING_ALLREDUCE_4WORKERS_OK\n", 32);
+        return 0;
+    }
+    if (qadav_streq(req, "dist_pserver_aggregate")) {
+        qadav_dist_ctx* ctx = qadav_dist_init(3);
+        if (!ctx) return 1;
+        double* w0 = (double*)ctx->workers[0].grad_buf;
+        double* w1 = (double*)ctx->workers[1].grad_buf;
+        double* w2 = (double*)ctx->workers[2].grad_buf;
+        w0[0] = 10.0; w0[1] = 20.0;
+        w1[0] = 20.0; w1[1] = 40.0;
+        w2[0] = 30.0; w2[1] = 60.0;
+        ctx->workers[0].grad_size = 2 * sizeof(double);
+        ctx->workers[1].grad_size = 2 * sizeof(double);
+        ctx->workers[2].grad_size = 2 * sizeof(double);
+
+        int r = qadav_dist_pserver_aggregate(ctx);
+        if (r != 0) return 2;
+        if (w0[0] != 20.0 || w0[1] != 40.0) return 3;
+        qadav_dist_shutdown(ctx);
+        qadav_write_raw("DIST_PSERVER_AGGREGATE_OK\n", 26);
+        return 0;
+    }
+    if (qadav_streq(req, "dist_fallback_single_worker")) {
+        qadav_dist_ctx* ctx = qadav_dist_init(1);
+        if (!ctx) return 1;
+        double* g = (double*)ctx->workers[0].grad_buf;
+        g[0] = 42.0;
+        ctx->workers[0].grad_size = sizeof(double);
+        int r = qadav_dist_ring_allreduce(ctx);
+        if (r != 0 || g[0] != 42.0) return 2;
+        r = qadav_dist_pserver_aggregate(ctx);
+        if (r != 0 || g[0] != 42.0) return 3;
+        qadav_dist_shutdown(ctx);
+        qadav_write_raw("DIST_FALLBACK_SINGLE_WORKER_OK\n", 31);
+        return 0;
+    }
+    if (qadav_streq(req, "barat_submit_aggregate")) {
+        qadav_barat_group* grp = qadav_barat_create_group(1);
+        double g0[2] = {1.0, 2.0};
+        double g1[2] = {3.0, 4.0};
+        qadav_barat_submit(grp, 0, g0, sizeof(g0));
+        qadav_barat_submit(grp, 1, g1, sizeof(g1));
+
+        double out[2];
+        qadav_barat_cert cert;
+        int r = qadav_barat_aggregate(grp, out, sizeof(out), &cert);
+        if (r != 0) return 1;
+        if (out[0] != 2.0 || out[1] != 3.0) return 2;
+        if (!qadav_barat_verify(&cert, out, sizeof(out))) return 3;
+        qadav_barat_destroy_group(grp);
+        qadav_write_raw("BARAT_SUBMIT_AGGREGATE_OK\n", 26);
+        return 0;
+    }
+    if (qadav_streq(req, "barat_trimmed_mean")) {
+        qadav_barat_group* grp = qadav_barat_create_group(2);
+        double g0[2] = {100.0, 100.0}; // norm 200 (outlier)
+        double g1[2] = {10.0, 10.0};   // norm 20
+        double g2[2] = {12.0, 12.0};   // norm 24
+        double g3[2] = {14.0, 14.0};   // norm 28
+        double g4[2] = {0.01, 0.01};   // norm 0.02 (outlier)
+
+        qadav_barat_submit(grp, 0, g0, sizeof(g0));
+        qadav_barat_submit(grp, 1, g1, sizeof(g1));
+        qadav_barat_submit(grp, 2, g2, sizeof(g2));
+        qadav_barat_submit(grp, 3, g3, sizeof(g3));
+        qadav_barat_submit(grp, 4, g4, sizeof(g4));
+
+        double out[2];
+        qadav_barat_cert cert;
+        int r = qadav_barat_aggregate(grp, out, sizeof(out), &cert);
+        if (r != 0) return 1;
+        // Central 3: (10 + 12 + 14) / 3 = 12.0
+        if (out[0] != 12.0 || out[1] != 12.0) return 2;
+        if (!qadav_barat_verify(&cert, out, sizeof(out))) return 3;
+        qadav_barat_destroy_group(grp);
+        qadav_write_raw("BARAT_TRIMMED_MEAN_OK\n", 22);
+        return 0;
+    }
+    if (qadav_streq(req, "barat_selection_proof_valid")) {
+        qadav_barat_group* grp = qadav_barat_create_group(3);
+        double g0[2] = {1.0, 2.0};
+        double g1[2] = {3.0, 4.0};
+        qadav_barat_submit(grp, 0, g0, sizeof(g0));
+        qadav_barat_submit(grp, 1, g1, sizeof(g1));
+        double out[2];
+        qadav_barat_cert cert;
+        qadav_barat_aggregate(grp, out, sizeof(out), &cert);
+        int zeros = 1;
+        for (int i = 0; i < 32; i++) {
+            if (cert.selection_proof[i] != 0) zeros = 0;
+        }
+        if (zeros) return 1;
+        if (!qadav_barat_verify(&cert, out, sizeof(out))) return 2;
+        qadav_barat_destroy_group(grp);
+        qadav_write_raw("BARAT_SELECTION_PROOF_VALID_OK\n", 31);
+        return 0;
+    }
+    if (qadav_streq(req, "barat_tampered_cert")) {
+        qadav_barat_group* grp = qadav_barat_create_group(4);
+        double g0[2] = {1.0, 2.0};
+        qadav_barat_submit(grp, 0, g0, sizeof(g0));
+        double out[2];
+        qadav_barat_cert cert;
+        qadav_barat_aggregate(grp, out, sizeof(out), &cert);
+        qadav_barat_corrupt(&cert, 16);
+        // Should trigger decoherence and ExitProcess(0xDEADBEEF)
+        qadav_barat_verify(&cert, out, sizeof(out));
+        qadav_barat_destroy_group(grp);
+        return 0;
+    }
+    if (qadav_streq(req, "barat_attest_success")) {
+        double pen = 1.0;
+        qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
+        qadav_reasoning_chain* chain = qadav_qera_create("barat_chain", 10, auth);
+        qadav_barat_group* grp = qadav_barat_create_group(5);
+        double g0[2] = {5.0, 10.0};
+        qadav_barat_submit(grp, 0, g0, sizeof(g0));
+        double out[2];
+        qadav_barat_cert cert;
+        qadav_barat_aggregate(grp, out, sizeof(out), &cert);
+        int r = qadav_barat_attest(chain, &cert, out, sizeof(out));
+        if (r != 1) return 1;
+        qadav_barat_destroy_group(grp);
+        qadav_qera_free(chain);
+        qadav_qeeh_free(auth);
+        qadav_write_raw("BARAT_ATTEST_SUCCESS_OK\n", 24);
+        return 0;
+    }
+    if (qadav_streq(req, "barat_canonical_sort")) {
+        qadav_barat_group* gA = qadav_barat_create_group(10);
+        qadav_barat_group* gB = qadav_barat_create_group(11);
+        double w0[2] = {1.0, 2.0};
+        double w1[2] = {3.0, 4.0};
+        double w2[2] = {5.0, 6.0};
+
+        // Group A: 0, 1, 2
+        qadav_barat_submit(gA, 0, w0, sizeof(w0));
+        qadav_barat_submit(gA, 1, w1, sizeof(w1));
+        qadav_barat_submit(gA, 2, w2, sizeof(w2));
+
+        // Group B: 2, 0, 1
+        qadav_barat_submit(gB, 2, w2, sizeof(w2));
+        qadav_barat_submit(gB, 0, w0, sizeof(w0));
+        qadav_barat_submit(gB, 1, w1, sizeof(w1));
+
+        double outA[2], outB[2];
+        qadav_barat_cert certA, certB;
+        qadav_barat_aggregate(gA, outA, sizeof(outA), &certA);
+        qadav_barat_aggregate(gB, outB, sizeof(outB), &certB);
+
+        if (qadav_sha3_ct_compare(certA.record_hash, certB.record_hash, 32) != 0) return 1;
+        if (qadav_sha3_ct_compare(certA.selection_proof, certB.selection_proof, 32) != 0) return 2;
+        if (qadav_sha3_ct_compare(certA.aggregated_hash, certB.aggregated_hash, 32) != 0) return 3;
+
+        qadav_barat_destroy_group(gA);
+        qadav_barat_destroy_group(gB);
+        qadav_write_raw("BARAT_CANONICAL_SORT_OK\n", 24);
+        return 0;
+    }
+    if (qadav_streq(req, "barat_aslr_determinism")) {
+        unsigned char first_hash[32];
+        for (int iter = 0; iter < 100; iter++) {
+            void* pad = qadav_alloc((iter %% 19 + 1) * 32);
+            qadav_barat_group* grp = qadav_barat_create_group(20);
+            double g[2] = {0.123, 0.456};
+            qadav_barat_submit(grp, 0, g, sizeof(g));
+            double out[2];
+            qadav_barat_cert cert;
+            qadav_barat_aggregate(grp, out, sizeof(out), &cert);
+
+            if (iter == 0) {
+                qadav_copy_bytes(first_hash, cert.record_hash, 32);
+            } else {
+                if (qadav_sha3_ct_compare(first_hash, cert.record_hash, 32) != 0) {
+                    qadav_barat_destroy_group(grp);
+                    qadav_free(pad);
+                    return 1;
+                }
+            }
+            qadav_barat_destroy_group(grp);
+            qadav_free(pad);
+        }
+        qadav_write_raw("BARAT_ASLR_DETERMINISM_OK\n", 26);
+        return 0;
+    }
     if (qadav_streq(req, "integration_vault_reasoning")) {
         double pen = 1.0;
         qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
@@ -1943,6 +2173,8 @@ func runCryptoTestHarnessExpectExit(t *testing.T, testName string) (string, erro
 #include "qadav_agke.h"
 #include "qadav_multigpu.h"
 #include "qadav_cdaga.h"
+#include "qadav_distributed.h"
+#include "qadav_barat.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -1992,6 +2224,17 @@ int main(void) {
         qadav_cdaga_attest(chain, &rec, ctx);
         qadav_cdaga_corrupt(&rec, 16);
         qadav_cdaga_verify(&rec, ctx);
+        return 0;
+    }
+    if (qadav_streq(req, "barat_tampered_cert")) {
+        qadav_barat_group* grp = qadav_barat_create_group(4);
+        double g0[2] = {1.0, 2.0};
+        qadav_barat_submit(grp, 0, g0, sizeof(g0));
+        double out[2];
+        qadav_barat_cert cert;
+        qadav_barat_aggregate(grp, out, sizeof(out), &cert);
+        qadav_barat_corrupt(&cert, 16);
+        qadav_barat_verify(&cert, out, sizeof(out));
         return 0;
     }
     return 0;
