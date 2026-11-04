@@ -51,6 +51,10 @@ void qadav_free(void* p) {
     (void)p;
 }
 
+long long get_target_kind(void) {
+    return 0;
+}
+
 static int int_to_str(long long v, char* buf) {
     int i = 0;
     if (v == 0) {

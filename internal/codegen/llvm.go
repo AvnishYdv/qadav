@@ -46,6 +46,7 @@ type Generator struct {
 	activeReasoningChain string
 	modalities           map[string]modalityInfo
 	abstainPolicies      map[string]string
+	usesGetTargetKind    bool
 	sb                   strings.Builder
 }
 
@@ -533,6 +534,15 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 	header.WriteString("declare i32 @qadav_ctsa_attest(i8*, i8*, i8*, i64, i64)\n")
 	header.WriteString("declare i32 @qadav_ctsa_verify()\n")
 	header.WriteString("declare i32 @qadav_ctsa_corrupt(i32)\n\n")
+
+	// PCC (M8.4c - Invention #25)
+	header.WriteString("declare i32 @qadav_pcc_attest(i8*, i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_pcc_verify()\n")
+	header.WriteString("declare i32 @qadav_pcc_corrupt(i32)\n\n")
+
+	if g.usesGetTargetKind {
+		header.WriteString("declare i64 @get_target_kind()\n\n")
+	}
 
 	// Quantum global state
 	header.WriteString(g.generateQuantumGlobal())
@@ -1062,6 +1072,12 @@ func (g *Generator) genStmt(stmt ast.Stmt) {
 		g.genCTSAVerifyStmt(s)
 	case *ast.CorruptCTSAStmt:
 		g.genCorruptCTSAStmt(s)
+	case *ast.PCCAttestStmt:
+		g.genPCCAttestStmt(s)
+	case *ast.PCCVerifyStmt:
+		g.genPCCVerifyStmt(s)
+	case *ast.CorruptPCCStmt:
+		g.genCorruptPCCStmt(s)
 	case *ast.QHALBackendAnnotation:
 		// No-op
 	case *ast.TileStmt, *ast.EnergyDecl:
@@ -1675,6 +1691,9 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 
 	case *ast.CallExpr:
 		if ident, ok := e.Func.(*ast.Ident); ok {
+			if ident.Name == "get_target_kind" {
+				g.usesGetTargetKind = true
+			}
 			if g.checker != nil && g.checker.Networks() != nil {
 				if netInfo, ok := g.checker.Networks()[ident.Name]; ok && len(e.Args) == 1 {
 					return g.genNetworkForward(netInfo, ident.Name, e.Args[0])

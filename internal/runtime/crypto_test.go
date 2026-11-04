@@ -80,6 +80,7 @@ func runCryptoTestHarness(t *testing.T, testName string) string {
 #include "qadav_variant.h"
 #include "qadav_rsca.h"
 #include "qadav_ctsa.h"
+#include "qadav_pcc.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -2801,6 +2802,21 @@ int main(void) {
         qadav_write_raw("CTSA_VERIFY_FAIL_UNATTESTED_OK\n", 31);
         return 0;
     }
+    if (qadav_streq(req, "pcc_creation_and_verify")) {
+        qadav_pcc_reset();
+        unsigned char a[32] = {1}, c[32] = {2}, ir[32] = {3};
+        if (!qadav_pcc_attest(a, c, ir)) return 1;
+        if (!qadav_pcc_verify()) return 2;
+        if (qadav_pcc_get_status() != 1) return 3;
+        qadav_write_raw("PCC_CREATION_AND_VERIFY_OK\n", 27);
+        return 0;
+    }
+    if (qadav_streq(req, "pcc_verify_fail_unattested")) {
+        qadav_pcc_reset();
+        if (qadav_pcc_verify() != 0) return 1;
+        qadav_write_raw("PCC_VERIFY_FAIL_UNATTESTED_OK\n", 30);
+        return 0;
+    }
     if (qadav_streq(req, "integration_vault_reasoning")) {
         double pen = 1.0;
         qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
@@ -3023,6 +3039,7 @@ func runCryptoTestHarnessExpectExit(t *testing.T, testName string) (string, erro
 #include "qadav_variant.h"
 #include "qadav_rsca.h"
 #include "qadav_ctsa.h"
+#include "qadav_pcc.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -3224,10 +3241,33 @@ int main(void) {
         qadav_ctsa_verify(); // triggers ExitProcess(0xDEADBEEF)
         return 0;
     }
+    if (qadav_streq(req, "pcc_tamper_detection")) {
+        qadav_pcc_reset();
+        unsigned char a[32] = {1}, c[32] = {2}, ir[32] = {3};
+        qadav_pcc_attest(a, c, ir);
+        qadav_pcc_corrupt(1);
+        qadav_pcc_verify(); // triggers ExitProcess(0xDEADBEEF)
+        return 0;
+    }
     if (qadav_streq(req, "ctsa_verify_fail_unattested")) {
         qadav_ctsa_reset();
         if (qadav_ctsa_verify() != 0) return 1;
         qadav_write_raw("CTSA_VERIFY_FAIL_UNATTESTED_OK\n", 31);
+        return 0;
+    }
+    if (qadav_streq(req, "pcc_creation_and_verify")) {
+        qadav_pcc_reset();
+        unsigned char a[32] = {1}, c[32] = {2}, ir[32] = {3};
+        if (!qadav_pcc_attest(a, c, ir)) return 1;
+        if (!qadav_pcc_verify()) return 2;
+        if (qadav_pcc_get_status() != 1) return 3;
+        qadav_write_raw("PCC_CREATION_AND_VERIFY_OK\n", 27);
+        return 0;
+    }
+    if (qadav_streq(req, "pcc_verify_fail_unattested")) {
+        qadav_pcc_reset();
+        if (qadav_pcc_verify() != 0) return 1;
+        qadav_write_raw("PCC_VERIFY_FAIL_UNATTESTED_OK\n", 30);
         return 0;
     }
     return 0;

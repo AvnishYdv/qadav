@@ -1,0 +1,8 @@
+process main⦅⦆ → int64 ⟦
+    pcc_attest ast ↦ "ast_hello" codegen ↦ "codegen_path_v2" ir ↦ "llvm_ir_hello" into cert0 ·
+    pcc_verify cert0 into v0 ·
+    emit "PCC certificate verified: AST and codegen path provenance cryptographically bound" ·
+    emit v0 ·
+    yield 0 ·
+⟧
+

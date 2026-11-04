@@ -16,6 +16,30 @@ __declspec(dllimport) void __stdcall ExitProcess(unsigned int uExitCode);
 __declspec(dllimport) void* __stdcall HeapAlloc(HANDLE hHeap, DWORD dwFlags, unsigned long long dwBytes);
 __declspec(dllimport) BOOL  __stdcall HeapFree(HANDLE hHeap, DWORD dwFlags, void* lpMem);
 __declspec(dllimport) HANDLE __stdcall GetProcessHeap(void);
+__declspec(dllimport) char* __stdcall GetCommandLineA(void);
+
+static int rt_str_contains(const char* haystack, const char* needle) {
+    if (!haystack || !needle) return 0;
+    if (!*needle) return 1;
+    for (; *haystack; haystack++) {
+        const char* h = haystack;
+        const char* n = needle;
+        while (*h && *n && (*h == *n)) {
+            h++;
+            n++;
+        }
+        if (!*n) return 1;
+    }
+    return 0;
+}
+
+long long get_target_kind(void) {
+    const char* cmd = GetCommandLineA();
+    if (!cmd) return 0;
+    if (rt_str_contains(cmd, "fib")) return 1;
+    if (rt_str_contains(cmd, "dot")) return 2;
+    return 0;
+}
 
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);

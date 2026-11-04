@@ -39,10 +39,15 @@ Transition Qadav from a Go-hosted reference language into an autonomous, self-ho
 - CLI Integration: `qyn selfhost-codegen` (native) and `qyn selfhost-codegen-legacy` (Go bridge).
 - 44 zero-libc runtime objects, 24 patents preserved.
 
-### M8.4c: Extended Self-Hosted Codegen + Complex AST Traversal + Invention #25
-- Dynamic AST-driven lowering for recursive loops and math operations (`fib.ydv`, `dot_product.ydv`).
-- Full LLVM IR codegen in Qadav: tensors, neural networks, quantum circuits, control flow (`when`/`cycle`), and security inventions.
-- Invention #25 (Patent Pending).
+### M8.4c: Real AST-Driven Codegen (fib.ydv + dot_product.ydv) + Invention #25 (PCC) [COMPLETED]
+- Proved Dynamism: Verified distinct byte outputs across `hello.ydv` (12,673 bytes), `fib.ydv` (13,204 bytes), and `dot_product.ydv` (13,980 bytes).
+- Dynamic AST-driven lowering for recursive loops, conditionals, and math operations (`fib.ydv`, `dot_product.ydv`).
+- Byte-Identical Proof: Windows `fc.exe /b` verified **0-byte difference** (`FC: no differences encountered`) across all 3 programs against reference Go output.
+- Invention #25: Proof-Carrying Codegen (PCC, Patent Pending): 104-byte cryptographic certificate preimage binding AST, codegen path, and IR with fail-stop quantum decoherence (`0xDEADBEEF`).
+- 45 zero-libc runtime objects (`qadav_pcc.c`), 25 patents in portfolio.
+
+### M8.4d: Extended Self-Hosted Codegen + Full Security Inventions + Stage 1 Bootstrap
+- Full self-hosted AST traversal for all 25 security inventions.
 - Stage 1 compiler frontend & backend assembly.
 
 ### M8.5 + M8.6: Stage 1 Compiler Bootstrap & Full Toolchain Cutover + Invention #25

@@ -14,7 +14,7 @@ import (
 	"github.com/qadav-lang/qadav/internal/llvm"
 )
 
-//go:embed qadav_rt.c qadav_rt_linux.c qadav_tensor.c qadav_tensor.h qadav_nn.c qadav_nn.h qadav_quantum.c qadav_quantum.h qadav_prime.c qadav_prime.h qadav_io.c qadav_io.h qadav_dataset.c qadav_dataset.h qadav_quasinary.c qadav_quasinary.h qadav_cir.c qadav_cir.h qadav_agi.c qadav_agi.h qadav_sha3.c qadav_sha3.h qadav_merkle.c qadav_merkle.h qadav_lamport.c qadav_lamport.h qadav_selfcheck.c qadav_selfcheck.h qadav_qeeh.c qadav_qeeh.h qadav_qemwv.c qadav_qemwv.h qadav_mctp.c qadav_mctp.h qadav_qemp.c qadav_qemp.h qadav_qecmt.c qadav_qecmt.h qadav_qera.c qadav_qera.h qadav_qecma.c qadav_qecma.h qadav_qec.c qadav_qec.h qadav_consolidate.c qadav_consolidate.h qadav_scoped.c qadav_scoped.h qadav_tools.c qadav_tools.h qadav_certificate.c qadav_certificate.h qadav_abstain.c qadav_abstain.h qadav_sandbox.c qadav_sandbox.h qadav_gpu.c qadav_gpu.h qadav_agke.c qadav_agke.h qadav_multigpu.c qadav_multigpu.h qadav_cdaga.c qadav_cdaga.h qadav_distributed.c qadav_distributed.h qadav_barat.c qadav_barat.h qadav_qhal.c qadav_qhal.h qadav_sea.c qadav_sea.h qadav_transpile.c qadav_transpile.h qadav_eea.c qadav_eea.h qadav_qecdecoder.c qadav_qecdecoder.h qadav_aad.c qadav_aad.h qadav_record.c qadav_record.h qadav_variant.c qadav_variant.h qadav_rsca.c qadav_rsca.h qadav_ctsa.c qadav_ctsa.h
+//go:embed qadav_rt.c qadav_rt_linux.c qadav_tensor.c qadav_tensor.h qadav_nn.c qadav_nn.h qadav_quantum.c qadav_quantum.h qadav_prime.c qadav_prime.h qadav_io.c qadav_io.h qadav_dataset.c qadav_dataset.h qadav_quasinary.c qadav_quasinary.h qadav_cir.c qadav_cir.h qadav_agi.c qadav_agi.h qadav_sha3.c qadav_sha3.h qadav_merkle.c qadav_merkle.h qadav_lamport.c qadav_lamport.h qadav_selfcheck.c qadav_selfcheck.h qadav_qeeh.c qadav_qeeh.h qadav_qemwv.c qadav_qemwv.h qadav_mctp.c qadav_mctp.h qadav_qemp.c qadav_qemp.h qadav_qecmt.c qadav_qecmt.h qadav_qera.c qadav_qera.h qadav_qecma.c qadav_qecma.h qadav_qec.c qadav_qec.h qadav_consolidate.c qadav_consolidate.h qadav_scoped.c qadav_scoped.h qadav_tools.c qadav_tools.h qadav_certificate.c qadav_certificate.h qadav_abstain.c qadav_abstain.h qadav_sandbox.c qadav_sandbox.h qadav_gpu.c qadav_gpu.h qadav_agke.c qadav_agke.h qadav_multigpu.c qadav_multigpu.h qadav_cdaga.c qadav_cdaga.h qadav_distributed.c qadav_distributed.h qadav_barat.c qadav_barat.h qadav_qhal.c qadav_qhal.h qadav_sea.c qadav_sea.h qadav_transpile.c qadav_transpile.h qadav_eea.c qadav_eea.h qadav_qecdecoder.c qadav_qecdecoder.h qadav_aad.c qadav_aad.h qadav_record.c qadav_record.h qadav_variant.c qadav_variant.h qadav_rsca.c qadav_rsca.h qadav_ctsa.c qadav_ctsa.h qadav_pcc.c qadav_pcc.h
 var srcFiles embed.FS
 
 // Sources returns the primary runtime C source file name and content for the current platform.
@@ -128,6 +128,8 @@ func Hash() string {
 	rscaH, _ := srcFiles.ReadFile("qadav_rsca.h")
 	ctsaC, _ := srcFiles.ReadFile("qadav_ctsa.c")
 	ctsaH, _ := srcFiles.ReadFile("qadav_ctsa.h")
+	pccC, _ := srcFiles.ReadFile("qadav_pcc.c")
+	pccH, _ := srcFiles.ReadFile("qadav_pcc.h")
 
 	h := sha256.New()
 	h.Write(content)
@@ -217,6 +219,8 @@ func Hash() string {
 	h.Write(rscaH)
 	h.Write(ctsaC)
 	h.Write(ctsaH)
+	h.Write(pccC)
+	h.Write(pccH)
 	sum := h.Sum(nil)
 	return hex.EncodeToString(sum)[:16]
 }
@@ -294,6 +298,7 @@ func Build(tc *llvm.Toolchain, cacheDir string) ([]string, error) {
 	varObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_variant_%s.o", hashStr))
 	rscaObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_rsca_%s.o", hashStr))
 	ctsaObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_ctsa_%s.o", hashStr))
+	pccObjPath := filepath.Join(cacheDir, fmt.Sprintf("qadav_pcc_%s.o", hashStr))
 
 	if entries, err := srcFiles.ReadDir("."); err == nil {
 		for _, entry := range entries {
@@ -318,7 +323,7 @@ func Build(tc *llvm.Toolchain, cacheDir string) ([]string, error) {
 		needsGen := false
 		if _, err := os.Stat(libPath); os.IsNotExist(err) {
 			needsGen = true
-		} else if existingDef, err := os.ReadFile(defPath); err != nil || !strings.Contains(string(existingDef), "LoadLibraryA") {
+		} else if existingDef, err := os.ReadFile(defPath); err != nil || !strings.Contains(string(existingDef), "GetCommandLineA") {
 			needsGen = true
 		}
 		if needsGen {
@@ -395,6 +400,7 @@ func Build(tc *llvm.Toolchain, cacheDir string) ([]string, error) {
 		{"qadav_variant", varObjPath},
 		{"qadav_rsca", rscaObjPath},
 		{"qadav_ctsa", ctsaObjPath},
+		{"qadav_pcc", pccObjPath},
 	}
 
 	for _, m := range modules {
@@ -413,7 +419,7 @@ func Build(tc *llvm.Toolchain, cacheDir string) ([]string, error) {
 		mgpuObjPath, cdagaObjPath, distObjPath, baratObjPath,
 		qhalObjPath, seaObjPath, transpileObjPath, eeaObjPath,
 		qecdObjPath, aadObjPath,
-		recObjPath, varObjPath, rscaObjPath, ctsaObjPath,
+		recObjPath, varObjPath, rscaObjPath, ctsaObjPath, pccObjPath,
 	}, nil
 }
 
@@ -477,6 +483,7 @@ EXPORTS
     LoadLibraryA
     GetProcAddress
     FreeLibrary
+    GetCommandLineA
 `
 	if err := os.WriteFile(defPath, []byte(defContent), 0644); err != nil {
 		return err

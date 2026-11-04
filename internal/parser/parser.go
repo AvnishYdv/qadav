@@ -663,6 +663,12 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseCTSAVerifyStmt()
 	case p.current.Type == token.CORRUPT_CTSA:
 		return p.parseCorruptCTSAStmt()
+	case p.current.Type == token.PCC_ATTEST:
+		return p.parsePCCAttestStmt()
+	case p.current.Type == token.PCC_VERIFY:
+		return p.parsePCCVerifyStmt()
+	case p.current.Type == token.CORRUPT_PCC:
+		return p.parseCorruptPCCStmt()
 	case isTypeToken(p.current.Type) || (p.current.Type == token.IDENT && p.peeked.Type == token.IDENT):
 		return p.parseBindStmt()
 	case p.current.Type == token.EMIT:
@@ -5378,6 +5384,127 @@ func (p *Parser) parseCorruptCTSAStmt() *ast.CorruptCTSAStmt {
 	}
 
 	return &ast.CorruptCTSAStmt{
+		Pos_:  pos,
+		Cert:  certName,
+		Field: fieldExpr,
+	}
+}
+
+func (p *Parser) parsePCCAttestStmt() *ast.PCCAttestStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'pcc_attest'
+
+	astName := ""
+	codegenName := ""
+	irName := ""
+	intoName := ""
+
+	for p.current.Type != token.STMT_END && p.current.Type != token.EOF {
+		lit := p.current.Literal
+		if lit == "ast" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT || p.current.Type == token.STRING {
+				astName = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "codegen" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT || p.current.Type == token.STRING {
+				codegenName = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "ir" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT || p.current.Type == token.STRING {
+				irName = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "into" {
+			p.nextToken()
+			if p.current.Type == token.IDENT {
+				intoName = p.current.Literal
+				p.nextToken()
+			}
+		} else {
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.PCCAttestStmt{
+		Pos_:    pos,
+		Ast:     astName,
+		Codegen: codegenName,
+		IR:      irName,
+		Into:    intoName,
+	}
+}
+
+func (p *Parser) parsePCCVerifyStmt() *ast.PCCVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'pcc_verify'
+
+	certName := ""
+	if p.current.Type == token.IDENT {
+		certName = p.current.Literal
+		p.nextToken()
+	}
+
+	intoName := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			intoName = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.PCCVerifyStmt{
+		Pos_: pos,
+		Cert: certName,
+		Into: intoName,
+	}
+}
+
+func (p *Parser) parseCorruptPCCStmt() *ast.CorruptPCCStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_pcc'
+
+	certName := ""
+	if p.current.Type == token.IDENT {
+		certName = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Literal == "field" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+
+	fieldExpr := p.parseExpression(LOWEST)
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.CorruptPCCStmt{
 		Pos_:  pos,
 		Cert:  certName,
 		Field: fieldExpr,

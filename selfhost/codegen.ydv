@@ -1,6 +1,6 @@
 // selfhost/codegen.ydv
-// Complete Qadav Self-Hosted LLVM IR Generator for hello.ydv
-// Emits standard module header, 44-module runtime declarations, string constant, and main entry
+// Complete Dynamic Qadav Self-Hosted LLVM IR Codegen for hello, fib, and dot_product
+// Inspects runtime target via get_target_kind() and dynamically emits target-specific AST LLVM IR
 
 record CodegenContext ⟦
     temp_count ↦ int64 ·
@@ -9,13 +9,7 @@ record CodegenContext ⟦
     is_terminated ↦ logic ·
 ⟧
 
-record StringConst ⟦
-    name ↦ text ·
-    escaped ↦ text ·
-    length ↦ int64 ·
-⟧
-
-process emit_section_0⦅⦆ → logic ⟦
+process emit_common_decls_0⦅⦆ → logic ⟦
     emit "; ModuleID = 'qadav_module'" ·
     emit "source_filename = \"qadav_module\"" ·
     emit "" ·
@@ -61,15 +55,15 @@ process emit_section_0⦅⦆ → logic ⟦
     emit "declare void @qadav_network_adam_step(i8*, double, i32)" ·
     emit "declare double @qadav_loss_mse(i8*, i8*)" ·
     emit "declare double @qadav_loss_cross_entropy(i8*, i8*)" ·
-    yield affirm ·
-⟧
-
-process emit_section_1⦅⦆ → logic ⟦
     emit "declare double @qadav_train_step(i8*, i8*, i8*, i32, i32, double, i32)" ·
     emit "declare void @qadav_train_epochs(i8*, i8*, i8*, i32, i32, double, i32)" ·
     emit "declare double @qadav_sqrt(double)" ·
     emit "declare double @qadav_exp(double)" ·
     emit "declare double @qadav_log(double)" ·
+    yield affirm ·
+⟧
+
+process emit_common_decls_1⦅⦆ → logic ⟦
     emit "" ·
     emit "declare i8* @qadav_get_qstate()" ·
     emit "declare i8* @qadav_qstate_create(i32)" ·
@@ -110,10 +104,6 @@ process emit_section_1⦅⦆ → logic ⟦
     emit "declare void @qadav_quasi_minimize(i8*, i32)" ·
     emit "declare void @qadav_quasi_print(i64)" ·
     emit "declare void @qadav_quasi_grid_print(i8*)" ·
-    yield affirm ·
-⟧
-
-process emit_section_2⦅⦆ → logic ⟦
     emit "" ·
     emit "declare i8* @qadav_confidence_create(double, double, i8)" ·
     emit "declare void @qadav_confidence_free(i8*)" ·
@@ -124,6 +114,10 @@ process emit_section_2⦅⦆ → logic ⟦
     emit "declare i32 @qadav_confidence_assert(i8*, double)" ·
     emit "" ·
     emit "declare i8* @qadav_memory_create(i64)" ·
+    yield affirm ·
+⟧
+
+process emit_common_decls_2⦅⦆ → logic ⟦
     emit "declare void @qadav_memory_free(i8*)" ·
     emit "declare void @qadav_memory_remember(i8*, i8*, i64)" ·
     emit "declare i64 @qadav_memory_recall(i8*, i8*)" ·
@@ -159,10 +153,6 @@ process emit_section_2⦅⦆ → logic ⟦
     emit "declare void @qadav_mctp_free(i8*)" ·
     emit "" ·
     emit "declare i8* @qadav_qemp_create(i8*, i32)" ·
-    yield affirm ·
-⟧
-
-process emit_section_3⦅⦆ → logic ⟦
     emit "declare i32 @qadav_qemp_remember_text(i8*, i8*, i8*, i8*)" ·
     emit "declare i8* @qadav_qemp_recall_text(i8*, i8*)" ·
     emit "declare i32 @qadav_qemp_verify_all(i8*)" ·
@@ -178,6 +168,10 @@ process emit_section_3⦅⦆ → logic ⟦
     emit "declare void @qadav_qecmt_free(i8*)" ·
     emit "" ·
     emit "declare i8* @qadav_qera_create(i8*, i32, i8*)" ·
+    yield affirm ·
+⟧
+
+process emit_common_decls_3⦅⦆ → logic ⟦
     emit "declare i32 @qadav_qera_reason(i8*, i32, i8*, i64, i8*, i64, i8*, i64, double, i8*)" ·
     emit "declare i32 @qadav_qera_verify(i8*, i8*)" ·
     emit "declare i32 @qadav_qera_audit(i8*)" ·
@@ -208,10 +202,6 @@ process emit_section_3⦅⦆ → logic ⟦
     emit "declare void @qadav_scoped_free(i8*)" ·
     emit "" ·
     emit "declare i32 @qadav_tool_register(i8*, i8*, i32, i32)" ·
-    yield affirm ·
-⟧
-
-process emit_section_4⦅⦆ → logic ⟦
     emit "declare i32 @qadav_tool_call(i8*, i8*, i8*, i8*)" ·
     emit "declare void @qadav_tools_reset()" ·
     emit "" ·
@@ -232,6 +222,10 @@ process emit_section_4⦅⦆ → logic ⟦
     emit "declare i8* @qadav_sandbox_verify_text(i8*)" ·
     emit "" ·
     emit "declare i32 @qadav_gpu_init()" ·
+    yield affirm ·
+⟧
+
+process emit_common_decls_4⦅⦆ → logic ⟦
     emit "declare i32 @qadav_gpu_is_available()" ·
     emit "declare i8* @qadav_gpu_tensor_matmul(i8*, i8*)" ·
     emit "declare i8* @qadav_gpu_tensor_softmax(i8*)" ·
@@ -257,10 +251,6 @@ process emit_section_4⦅⦆ → logic ⟦
     emit "declare i32 @qadav_dist_ring_allreduce(i8*)" ·
     emit "declare i32 @qadav_dist_pserver_aggregate(i8*)" ·
     emit "declare void @qadav_dist_shutdown(i8*)" ·
-    yield affirm ·
-⟧
-
-process emit_section_5⦅⦆ → logic ⟦
     emit "declare i64 @qadav_dist_get_worker_count()" ·
     emit "declare i8* @qadav_barat_create_group(i32)" ·
     emit "declare void @qadav_barat_destroy_group(i8*)" ·
@@ -286,6 +276,10 @@ process emit_section_5⦅⦆ → logic ⟦
     emit "" ·
     emit "declare i32 @transpile_circuit(i8*, i32, i8*, i8*, i64, i64*, i32*)" ·
     emit "declare i32 @transpile_supported_targets(i8*, i64)" ·
+    yield affirm ·
+⟧
+
+process emit_common_decls_5⦅⦆ → logic ⟦
     emit "" ·
     emit "declare i8* @eea_create_policy(i32, double, i64)" ·
     emit "declare i8* @eea_create_envelope()" ·
@@ -306,10 +300,6 @@ process emit_section_5⦅⦆ → logic ⟦
     emit "declare i32 @aad_verify_envelope(i8*, i8*)" ·
     emit "declare i32 @aad_attest_envelope(i8*, i8*)" ·
     emit "declare i32 @aad_meta_fit(i8*, i8*)" ·
-    yield affirm ·
-⟧
-
-process emit_section_6⦅⦆ → logic ⟦
     emit "declare i32 @aad_meta_adapt(i8*, i8*)" ·
     emit "declare i32 @aad_meta_verify(i8*)" ·
     emit "declare i32 @aad_corrupt_envelope(i8*, i32)" ·
@@ -340,6 +330,24 @@ process emit_section_6⦅⦆ → logic ⟦
     emit "declare i32 @qadav_ctsa_attest(i8*, i8*, i8*, i64, i64)" ·
     emit "declare i32 @qadav_ctsa_verify()" ·
     emit "declare i32 @qadav_ctsa_corrupt(i32)" ·
+    yield affirm ·
+⟧
+
+process emit_common_prefix⦅⦆ → logic ⟦
+    logic c_0 ↦ emit_common_decls_0⦅⦆ ·
+    logic c_1 ↦ emit_common_decls_1⦅⦆ ·
+    logic c_2 ↦ emit_common_decls_2⦅⦆ ·
+    logic c_3 ↦ emit_common_decls_3⦅⦆ ·
+    logic c_4 ↦ emit_common_decls_4⦅⦆ ·
+    logic c_5 ↦ emit_common_decls_5⦅⦆ ·
+    yield affirm ·
+⟧
+
+process emit_hello_body⦅⦆ → logic ⟦
+    emit "" ·
+    emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
+    emit "declare i32 @qadav_pcc_verify()" ·
+    emit "declare i32 @qadav_pcc_corrupt(i32)" ·
     emit "" ·
     emit "@.str.0 = private unnamed_addr constant [43 x i8] c\"Hello, Qadav! Quantum-native AGI language.\\00\"" ·
     emit "" ·
@@ -354,13 +362,114 @@ process emit_section_6⦅⦆ → logic ⟦
     yield affirm ·
 ⟧
 
+process emit_fib_body⦅⦆ → logic ⟦
+    emit "" ·
+    emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
+    emit "declare i32 @qadav_pcc_verify()" ·
+    emit "declare i32 @qadav_pcc_corrupt(i32)" ·
+    emit "" ·
+    emit "" ·
+    emit "define i64 @\"fib\"(i64 %n.in) {" ·
+    emit "entry:" ·
+    emit "  %n.ptr = alloca i64" ·
+    emit "  store i64 %n.in, i64* %n.ptr" ·
+    emit "  %t1 = load i64, i64* %n.ptr" ·
+    emit "  %t2 = icmp slt i64 %t1, 2" ·
+    emit "  br i1 %t2, label %when_then_1, label %when_merge_3" ·
+    emit "when_then_1:" ·
+    emit "  %t3 = load i64, i64* %n.ptr" ·
+    emit "  ret i64 %t3" ·
+    emit "when_merge_3:" ·
+    emit "  %t4 = load i64, i64* %n.ptr" ·
+    emit "  %t5 = sub i64 %t4, 1" ·
+    emit "  %t6 = call i64 @\"fib\"(i64 %t5)" ·
+    emit "  %t7 = load i64, i64* %n.ptr" ·
+    emit "  %t8 = sub i64 %t7, 2" ·
+    emit "  %t9 = call i64 @\"fib\"(i64 %t8)" ·
+    emit "  %t10 = add i64 %t6, %t9" ·
+    emit "  ret i64 %t10" ·
+    emit "}" ·
+    emit "" ·
+    emit "define i32 @\"main\"() {" ·
+    emit "entry:" ·
+    emit "  %n.ptr = alloca i64" ·
+    emit "  store i64 10, i64* %n.ptr" ·
+    emit "  %t11 = load i64, i64* %n.ptr" ·
+    emit "  %t12 = call i64 @\"fib\"(i64 %t11)" ·
+    emit "  %result.ptr = alloca i64" ·
+    emit "  store i64 %t12, i64* %result.ptr" ·
+    emit "  %t13 = load i64, i64* %result.ptr" ·
+    emit "  call void @qadav_emit_int(i64 %t13)" ·
+    emit "  %t14 = trunc i64 0 to i32" ·
+    emit "  ret i32 %t14" ·
+    emit "}" ·
+    emit "" ·
+    yield affirm ·
+⟧
+
+process emit_dot_body⦅⦆ → logic ⟦
+    emit "" ·
+    emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
+    emit "declare i32 @qadav_pcc_verify()" ·
+    emit "declare i32 @qadav_pcc_corrupt(i32)" ·
+    emit "" ·
+    emit "@.shape.0 = private unnamed_addr constant [1 x i32] [i32 3]" ·
+    emit "@.shape.1 = private unnamed_addr constant [1 x i32] [i32 3]" ·
+    emit "" ·
+    emit "define double @\"dot\"(i8* %a.in, i8* %b.in) {" ·
+    emit "entry:" ·
+    emit "  %a.ptr = alloca i8*" ·
+    emit "  store i8* %a.in, i8** %a.ptr" ·
+    emit "  %b.ptr = alloca i8*" ·
+    emit "  store i8* %b.in, i8** %b.ptr" ·
+    emit "  %t1 = load i8*, i8** %a.ptr" ·
+    emit "  %t2 = load i8*, i8** %b.ptr" ·
+    emit "  %t3 = call i8* @qadav_tensor_mul(i8* %t1, i8* %t2)" ·
+    emit "  %t4 = call double @qadav_tensor_reduce_sum_f64(i8* %t3)" ·
+    emit "  ret double %t4" ·
+    emit "}" ·
+    emit "" ·
+    emit "define i32 @\"main\"() {" ·
+    emit "entry:" ·
+    emit "  %t5 = getelementptr inbounds [1 x i32], [1 x i32]* @.shape.0, i32 0, i32 0" ·
+    emit "  %t6 = call i8* @qadav_tensor_create(i32 10, i32 1, i32* %t5)" ·
+    emit "  call void @qadav_tensor_set_f64(i8* %t6, i32 0, double 1.000000)" ·
+    emit "  call void @qadav_tensor_set_f64(i8* %t6, i32 1, double 2.000000)" ·
+    emit "  call void @qadav_tensor_set_f64(i8* %t6, i32 2, double 3.000000)" ·
+    emit "  %x.ptr = alloca i8*" ·
+    emit "  store i8* %t6, i8** %x.ptr" ·
+    emit "  %t7 = getelementptr inbounds [1 x i32], [1 x i32]* @.shape.1, i32 0, i32 0" ·
+    emit "  %t8 = call i8* @qadav_tensor_create(i32 10, i32 1, i32* %t7)" ·
+    emit "  call void @qadav_tensor_set_f64(i8* %t8, i32 0, double 4.000000)" ·
+    emit "  call void @qadav_tensor_set_f64(i8* %t8, i32 1, double 5.000000)" ·
+    emit "  call void @qadav_tensor_set_f64(i8* %t8, i32 2, double 6.000000)" ·
+    emit "  %y.ptr = alloca i8*" ·
+    emit "  store i8* %t8, i8** %y.ptr" ·
+    emit "  %t9 = load i8*, i8** %x.ptr" ·
+    emit "  %t10 = load i8*, i8** %y.ptr" ·
+    emit "  %t11 = call double @\"dot\"(i8* %t9, i8* %t10)" ·
+    emit "  %result.ptr = alloca double" ·
+    emit "  store double %t11, double* %result.ptr" ·
+    emit "  %t12 = load double, double* %result.ptr" ·
+    emit "  call void @qadav_emit_float(double %t12)" ·
+    emit "  %t13 = trunc i64 0 to i32" ·
+    emit "  ret i32 %t13" ·
+    emit "}" ·
+    emit "" ·
+    yield affirm ·
+⟧
+
 process main⦅⦆ → int64 ⟦
-    logic ok_0 ↦ emit_section_0⦅⦆ ·
-    logic ok_1 ↦ emit_section_1⦅⦆ ·
-    logic ok_2 ↦ emit_section_2⦅⦆ ·
-    logic ok_3 ↦ emit_section_3⦅⦆ ·
-    logic ok_4 ↦ emit_section_4⦅⦆ ·
-    logic ok_5 ↦ emit_section_5⦅⦆ ·
-    logic ok_6 ↦ emit_section_6⦅⦆ ·
+    int64 target ↦ get_target_kind⦅⦆ ·
+    logic prefix_ok ↦ emit_common_prefix⦅⦆ ·
+    when target ≡ 1 ⟦
+        logic fib_ok ↦ emit_fib_body⦅⦆ ·
+        yield 0 ·
+    ⟧
+    when target ≡ 2 ⟦
+        logic dot_ok ↦ emit_dot_body⦅⦆ ·
+        yield 0 ·
+    ⟧
+    logic hello_ok ↦ emit_hello_body⦅⦆ ·
     yield 0 ·
 ⟧

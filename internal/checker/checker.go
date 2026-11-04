@@ -40,6 +40,13 @@ type Checker struct {
 // New creates an initialized Checker.
 func New() *Checker {
 	global := NewScope(nil)
+	_ = global.Define(&Symbol{
+		Name: "get_target_kind",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Results: []*types.Type{types.Int64},
+		},
+	})
 	return &Checker{
 		globalScope:       global,
 		curScope:          global,
@@ -771,6 +778,15 @@ func (c *Checker) checkStmt(stmt ast.Stmt) {
 
 	case *ast.CorruptCTSAStmt:
 		c.checkCorruptCTSAStmt(s)
+
+	case *ast.PCCAttestStmt:
+		c.checkPCCAttestStmt(s)
+
+	case *ast.PCCVerifyStmt:
+		c.checkPCCVerifyStmt(s)
+
+	case *ast.CorruptPCCStmt:
+		c.checkCorruptPCCStmt(s)
 
 	case *ast.ExprStmt:
 		c.checkExpr(s.Expr)
