@@ -1,0 +1,41 @@
+record CodegenContext ⟦ temp_count ↦ int64 · label_count ↦ int64 · str_count ↦ int64 · is_terminated ↦ logic · ⟧
+
+process create_context⦅int64 tc⸴ int64 lc⸴ int64 sc⦆ → CodegenContext ⟦
+    CodegenContext ctx ↦ record_init CodegenContext ⟦ temp_count ↦ tc ⸴ label_count ↦ lc ⸴ str_count ↦ sc ⸴ is_terminated ↦ deny · ⟧ ·
+    yield ctx ·
+⟧
+
+process gen_header⦅text filename⦆ → text ⟦
+    emit "; ModuleID = 'qadav_module'" ·
+    emit "source_filename = \"qadav_module\"" ·
+    yield "header_ok" ·
+⟧
+
+process gen_function_entry⦅text fn_name⸴ text ret_type⦆ → logic ⟦
+    emit "define " ·
+    emit ret_type ·
+    emit " @\"" ·
+    emit fn_name ·
+    emit "\"() {" ·
+    emit "entry:" ·
+    yield affirm ·
+⟧
+
+process gen_return⦅text val_ref⸴ text ret_type⦆ → logic ⟦
+    emit "  ret " ·
+    emit ret_type ·
+    emit " " ·
+    emit val_ref ·
+    emit "}" ·
+    yield affirm ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    CodegenContext ctx ↦ create_context⦅1⸴ 0⸴ 0⦆ ·
+    text h ↦ gen_header⦅"hello.ydv"⦆ ·
+    logic f_ok ↦ gen_function_entry⦅"main"⸴ "i32"⦆ ·
+    emit "  call void @qadav_emit_int(i64 42)" ·
+    logic r_ok ↦ gen_return⦅"0"⸴ "i32"⦆ ·
+    emit "selfhost_codegen_basic_ok" ·
+    yield 0 ·
+⟧

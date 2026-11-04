@@ -38,12 +38,16 @@ func main() {
 		os.Exit(runEmitTokens(os.Args[2:]))
 	case "emit-ast":
 		os.Exit(runEmitAst(os.Args[2:]))
+	case "emit-llvm":
+		os.Exit(runEmitLLVM(os.Args[2:]))
 	case "selfhost-lexer":
 		os.Exit(runSelfhostLexer(os.Args[2:]))
 	case "selfhost-parser":
 		os.Exit(runSelfhostParser(os.Args[2:]))
 	case "selfhost-check":
 		os.Exit(runSelfhostCheck(os.Args[2:]))
+	case "selfhost-codegen":
+		os.Exit(runSelfhostCodegen(os.Args[2:]))
 	case "help", "--help", "-h":
 		showUsage()
 		os.Exit(0)
@@ -70,9 +74,11 @@ Commands:
   stdlib <list|build> Manage Qadav standard library modules
   emit-tokens <file>  Emit standardized lexical tokens
   emit-ast <file>     Emit canonical S-expression AST
+  emit-llvm <file>    Emit reference LLVM IR
   selfhost-lexer <file> Run self-hosted lexical tokenizer
   selfhost-parser <file> Run self-hosted parser AST generator
   selfhost-check <file>  Run self-hosted type checker
+  selfhost-codegen <file> Run self-hosted LLVM IR codegen
   doctor              Check environment health (LLVM, Go, etc.)
   version             Display version
   help                Show this message

@@ -57,3 +57,41 @@ process main⦅⦆ → int64 ⟦
 		t.Fatalf("unexpected error: %v", errs[0])
 	}
 }
+
+func TestChecker_CTSAErrors(t *testing.T) {
+	// 1. Missing ast, env, rules in ctsa_attest
+	c := New()
+	c.checkCTSAAttestStmt(nil)
+	c.checkCTSAVerifyStmt(nil)
+	c.checkCorruptCTSAStmt(nil)
+
+	// Undefined cert in ctsa_verify
+	inputVerify := `
+process main⦅⦆ → int64 ⟦
+    ctsa_verify unk_cert into v0 ·
+    yield 0 ·
+⟧`
+	l := lexer.New(inputVerify, "ctsa_unk_verify.ydv")
+	p := parser.New(l, "ctsa_unk_verify.ydv")
+	prog := p.Parse()
+	errs := c.Check(prog)
+	if len(errs) == 0 || !strings.Contains(errs[0].Error(), "undefined CTSA certificate") {
+		t.Fatalf("expected undefined CTSA certificate error, got: %v", errs)
+	}
+
+	// Undefined cert in corrupt_ctsa
+	inputCorrupt := `
+process main⦅⦆ → int64 ⟦
+    corrupt_ctsa unk_cert field ↦ 1 ·
+    yield 0 ·
+⟧`
+	l2 := lexer.New(inputCorrupt, "ctsa_unk_corrupt.ydv")
+	p2 := parser.New(l2, "ctsa_unk_corrupt.ydv")
+	prog2 := p2.Parse()
+	c2 := New()
+	c2.IsTest = true
+	errs2 := c2.Check(prog2)
+	if len(errs2) == 0 || !strings.Contains(errs2[0].Error(), "undefined CTSA certificate") {
+		t.Fatalf("expected undefined CTSA certificate error, got: %v", errs2)
+	}
+}

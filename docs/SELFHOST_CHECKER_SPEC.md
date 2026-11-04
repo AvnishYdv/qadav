@@ -16,3 +16,4 @@
 
 ## 3. Byte-Identical Output
 The command `qyn selfhost-check <file.ydv>` executes `selfhost/checker.ydv` (via the self-hosted driver) and produces byte-for-byte identical output to `qyn check <file.ydv>`.
+

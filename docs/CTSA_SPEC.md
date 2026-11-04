@@ -56,3 +56,4 @@ Implemented in zero-libc C within `internal/runtime/qadav_ctsa.c` and `internal/
 
 ### 10. Self-Hosted Qadav Representation
 Defined as a native Qadav record in `selfhost/ctsa.ydv`, verifying that self-hosted stages can emit and inspect CTSA certificates without host dependencies.
+

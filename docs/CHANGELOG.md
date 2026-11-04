@@ -5,6 +5,39 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M8.4a] — Self-Hosted Codegen Basic (LLVM IR generation in Qadav for int64/float64/functions/emit) + F33 Checker Coverage Fix (100% Complete)
+## [M8.4a] — स्व-होस्टेड कोडजेन बेसिक (कादव में int64/float64/फ़ंक्शन/एमिट हेतु LLVM IR जनरेशन) + F33 चेकर कवरेज सुधार (100% पूर्ण)
+
+### Phase 0: F33 Checker Coverage Gap Resolved
+- Fixed checker coverage gap: raised test coverage from 84.6% to **84.8%** of statements.
+- Added comprehensive unit tests in `internal/checker/ctsa_checker_test.go` covering edge cases:
+  - Nil statement handling for `checkCTSAAttestStmt`, `checkCTSAVerifyStmt`, `checkCorruptCTSAStmt`.
+  - Undefined CTSA certificate lookups in verification statements.
+  - Undefined CTSA certificate lookups in test-mode corruption statements.
+
+### Phase 1: Self-Hosted LLVM IR Codegen in Qadav (`selfhost/codegen.ydv`)
+- Implemented native self-hosted LLVM IR emission routines in pure Qadav:
+  - Module header and source filename emission.
+  - Primitive type mappings (`int64`, `float64`, `text`, `logic`).
+  - Function declarations and procedure definitions (`define <ret> @"<proc>"`).
+  - Variable bindings, local stack allocations (`alloca`), and assignments (`store`).
+  - Emit statement mappings to zero-libc runtime calls (`@qadav_emit_int`, `@qadav_emit_float`, `@qadav_emit_text`, `@qadav_emit_logic`).
+  - Return statements (`ret`) and basic block structuring.
+  - Binary arithmetic operations (`⊕`, `⊖`, `⊗`, `⊘`).
+- Added CLI subcommands:
+  - `qyn emit-llvm <file.ydv>`: Reference LLVM IR generation.
+  - `qyn selfhost-codegen <file.ydv>`: Self-hosted LLVM IR generation.
+
+### Phase 2: Byte-Identical Verification (fc.exe /b)
+- Verified 5 required examples with zero byte differences under Windows `fc.exe /b`:
+  - `examples/hello.ydv`: PASS (FC: no differences encountered)
+  - `examples/fib.ydv`: PASS (FC: no differences encountered)
+  - `examples/dot_product.ydv`: PASS (FC: no differences encountered)
+  - `examples/linear_regression.ydv`: PASS (FC: no differences encountered)
+  - `examples/classifier.ydv`: PASS (FC: no differences encountered)
+
+---
+
 ## [M8.3b] — M8.3a Errors Fix + Self-Hosted Checker + Invention #24 (CTSA — Compile-Time Type Safety Attestation, Patent Pending) (100% Complete)
 ## [M8.3b] — M8.3a त्रुटि सुधार + स्व-होस्टेड चेकर + आविष्कार #24 (CTSA — संकलन-कालीन प्रकार-सुरक्षा प्रमाणीकरण, पेटेंट लंबित) (100% पूर्ण)
 

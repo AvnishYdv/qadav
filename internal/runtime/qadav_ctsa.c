@@ -133,3 +133,4 @@ void qadav_ctsa_reset(void) {
     ctsa_memset(&g_ctsa_cert, 0, sizeof(g_ctsa_cert));
     g_ctsa_initialized = 0;
 }
+

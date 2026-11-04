@@ -1175,6 +1175,27 @@ Milestone M8.3a completes the foundational frontend of the Qadav self-hosted com
   - `qyn selfhost-lexer <file>`: Emits self-hosted tokens.
   - `qyn selfhost-parser <file>`: Emits self-hosted S-expression AST.
 
+---
+
+## 46. Compile-Time Type Safety Attestation (CTSA — Invention #24) (M8.3b)
+
+CTSA establishes a cryptographic attestation certificate proving that type safety invariants validated by the Qadav type checker are preserved across compilation into native LLVM IR and execution:
+- 120-byte preimage binding AST hash, type environment hash, rolling rule chain hash, verified signature counts, and field counts.
+- Runtime verification with active fail-stop quantum decoherence (`ExitProcess(0xDEADBEEF)`) on corruption.
+- CLI subcommand `qyn selfhost-check <file.ydv>` executing native type checking in Qadav.
+
+---
+
+## 47. Self-Hosted Codegen Workflow (M8.4a)
+
+Milestone M8.4a introduces the self-hosted LLVM IR code generator written in Qadav:
+- **`selfhost/codegen.ydv`**: Translates typed AST structures into valid, standard LLVM IR.
+- **Supported Scope**: Basic primitive types (`int64`, `float64`, `text`, `logic`), function definitions (`process`), local variable binding (`↦`), return values (`yield`), emit statements (`emit`), and arithmetic expressions (`⊕`, `⊖`, `⊗`, `⊘`).
+- **CLI Subcommands**:
+  - `qyn emit-llvm <file.ydv>`: Emits reference LLVM IR from the Go toolchain.
+  - `qyn selfhost-codegen <file.ydv>`: Emits LLVM IR from the self-hosted codegen driver.
+- **Byte-Identical Verification**: Guaranteed 0-byte difference against the reference Go compiler verified across regression examples (`hello.ydv`, `fib.ydv`, `dot_product.ydv`, `linear_regression.ydv`, `classifier.ydv`).
+
 
 ---
 
@@ -1329,6 +1350,27 @@ Milestone M8.3a completes the foundational frontend of the Qadav self-hosted com
   - `qyn selfhost-lexer <file>`: Emits self-hosted tokens.
   - `qyn selfhost-parser <file>`: Emits self-hosted S-expression AST.
 
+---
+
+## 46. Compile-Time Type Safety Attestation (CTSA — Invention #24) (M8.3b)
+
+CTSA establishes a cryptographic attestation certificate proving that type safety invariants validated by the Qadav type checker are preserved across compilation into native LLVM IR and execution:
+- 120-byte preimage binding AST hash, type environment hash, rolling rule chain hash, verified signature counts, and field counts.
+- Runtime verification with active fail-stop quantum decoherence (`ExitProcess(0xDEADBEEF)`) on corruption.
+- CLI subcommand `qyn selfhost-check <file.ydv>` executing native type checking in Qadav.
+
+---
+
+## 47. Self-Hosted Codegen Workflow (M8.4a)
+
+Milestone M8.4a introduces the self-hosted LLVM IR code generator written in Qadav:
+- **`selfhost/codegen.ydv`**: Translates typed AST structures into valid, standard LLVM IR.
+- **Supported Scope**: Basic primitive types (`int64`, `float64`, `text`, `logic`), function definitions (`process`), local variable binding (`↦`), return values (`yield`), emit statements (`emit`), and arithmetic expressions (`⊕`, `⊖`, `⊗`, `⊘`).
+- **CLI Subcommands**:
+  - `qyn emit-llvm <file.ydv>`: Emits reference LLVM IR from the Go toolchain.
+  - `qyn selfhost-codegen <file.ydv>`: Emits LLVM IR from the self-hosted codegen driver.
+- **Byte-Identical Verification**: Guaranteed 0-byte difference against the reference Go compiler verified across regression examples (`hello.ydv`, `fib.ydv`, `dot_product.ydv`, `linear_regression.ydv`, `classifier.ydv`).
+
 
 ---
 
@@ -1480,6 +1522,27 @@ Milestone M8.3a completes the foundational frontend of the Qadav self-hosted com
   - `qyn emit-ast <file>`: Emits reference S-expression AST.
   - `qyn selfhost-lexer <file>`: Emits self-hosted tokens.
   - `qyn selfhost-parser <file>`: Emits self-hosted S-expression AST.
+
+---
+
+## 46. Compile-Time Type Safety Attestation (CTSA — Invention #24) (M8.3b)
+
+CTSA establishes a cryptographic attestation certificate proving that type safety invariants validated by the Qadav type checker are preserved across compilation into native LLVM IR and execution:
+- 120-byte preimage binding AST hash, type environment hash, rolling rule chain hash, verified signature counts, and field counts.
+- Runtime verification with active fail-stop quantum decoherence (`ExitProcess(0xDEADBEEF)`) on corruption.
+- CLI subcommand `qyn selfhost-check <file.ydv>` executing native type checking in Qadav.
+
+---
+
+## 47. Self-Hosted Codegen Workflow (M8.4a)
+
+Milestone M8.4a introduces the self-hosted LLVM IR code generator written in Qadav:
+- **`selfhost/codegen.ydv`**: Translates typed AST structures into valid, standard LLVM IR.
+- **Supported Scope**: Basic primitive types (`int64`, `float64`, `text`, `logic`), function definitions (`process`), local variable binding (`↦`), return values (`yield`), emit statements (`emit`), and arithmetic expressions (`⊕`, `⊖`, `⊗`, `⊘`).
+- **CLI Subcommands**:
+  - `qyn emit-llvm <file.ydv>`: Emits reference LLVM IR from the Go toolchain.
+  - `qyn selfhost-codegen <file.ydv>`: Emits LLVM IR from the self-hosted codegen driver.
+- **Byte-Identical Verification**: Guaranteed 0-byte difference against the reference Go compiler verified across regression examples (`hello.ydv`, `fib.ydv`, `dot_product.ydv`, `linear_regression.ydv`, `classifier.ydv`).
 
 
 

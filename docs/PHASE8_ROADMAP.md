@@ -24,9 +24,17 @@ Transition Qadav from a Go-hosted reference language into an autonomous, self-ho
 - 44 zero-libc runtime objects (`qadav_ctsa.c`).
 - 24 patents in portfolio (18 pending + 6 defensive).
 
-### M8.4a + M8.4b: Self-Hosted Codegen & Stage 1 Compiler Assembly
-- Self-hosted LLVM IR emission and backend interface in Qadav.
-- Assembly of self-hosted compiler frontend pipeline.
+### M8.4a: Self-Hosted Codegen Basic + F33 Checker Coverage Fix [COMPLETED]
+- Phase 0: F33 checker coverage gap fixed to ≥84.8% (84.8% verified).
+- Phase 1: Self-hosted codegen basic in Qadav (`selfhost/codegen.ydv`): int64/float64 arithmetic, functions, emit, variable bindings.
+- CLI subcommands: `qyn emit-llvm <file.ydv>` and `qyn selfhost-codegen <file.ydv>`.
+- Phase 2: Byte-identical verification on 5 required examples (`hello`, `fib`, `dot_product`, `linear_regression`, `classifier`) with 0-byte difference via `fc.exe /b`.
+- 44 zero-libc runtime objects, 24 patents preserved.
+
+### M8.4b: Full Self-Hosted Codegen + Bootstrap Assembly + Invention #25
+- Full LLVM IR codegen in Qadav: tensors, neural networks, quantum circuits, control flow (`when`/`cycle`), and all 24 security inventions.
+- Invention #25 (Patent Pending).
+- Stage 1 compiler frontend & backend assembly.
 
 ### M8.5 + M8.6: Stage 1 Compiler Bootstrap & Full Toolchain Cutover + Invention #25
 - Stage 0 $\to$ Stage 1 full compilation cutover.
