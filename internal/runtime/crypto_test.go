@@ -2712,6 +2712,46 @@ int main(void) {
         qadav_write_raw("VARIANT_CREATE_AND_MATCH_OK\n", 28);
         return 0;
     }
+    if (qadav_streq(req, "variant_recursive_pointers")) {
+        qadav_variant* lit1 = qadav_variant_create_i64(0x1234ULL, 0, 10);
+        if (!lit1) return 1;
+        if (qadav_variant_get_field_i64(lit1, 0) != 10) return 2;
+
+        qadav_variant* wrapped = qadav_variant_create_ptr(0x1234ULL, 1, lit1);
+        if (!wrapped) return 3;
+        if (!qadav_variant_has_payload(wrapped)) return 4;
+        qadav_variant* inner = (qadav_variant*)qadav_variant_get_field_ptr(wrapped, 0);
+        if (inner != lit1) return 5;
+        if (qadav_variant_get_field_i64(inner, 0) != 10) return 6;
+
+        qadav_variant* lit2 = qadav_variant_create_i64(0x1234ULL, 0, 20);
+        if (!lit2) return 7;
+
+        qadav_variant* sum_tree = qadav_variant_create_2(0x1234ULL, 2, (unsigned long long)wrapped, (unsigned long long)lit2);
+        if (!sum_tree) return 8;
+        if (qadav_variant_get_tag(sum_tree) != 2) return 9;
+
+        qadav_variant* left_node = (qadav_variant*)qadav_variant_get_field_ptr(sum_tree, 0);
+        qadav_variant* right_node = (qadav_variant*)qadav_variant_get_field_ptr(sum_tree, 1);
+        if (left_node != wrapped) return 10;
+        if (right_node != lit2) return 11;
+
+        qadav_variant* deep_leaf = (qadav_variant*)qadav_variant_get_field_ptr(left_node, 0);
+        if (qadav_variant_get_field_i64(deep_leaf, 0) != 10) return 12;
+        if (qadav_variant_get_field_i64(right_node, 0) != 20) return 13;
+
+        int set_ok = qadav_variant_set_payload_ptr(lit1, lit2);
+        if (!set_ok) return 14;
+        if (qadav_variant_get_payload_ptr(lit1) != lit2) return 15;
+
+        qadav_variant_free(sum_tree);
+        qadav_variant_free(wrapped);
+        qadav_variant_free(lit1);
+        qadav_variant_free(lit2);
+
+        qadav_write_raw("VARIANT_RECURSIVE_POINTERS_OK\n", 30);
+        return 0;
+    }
     if (qadav_streq(req, "rsca_record_and_attest")) {
         qadav_rsca_reset();
         unsigned char s_hash[32] = {1, 2, 3};

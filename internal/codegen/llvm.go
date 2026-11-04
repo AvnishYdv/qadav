@@ -518,9 +518,17 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 
 	header.WriteString("declare i8* @qadav_variant_create(i64, i32, i32, i8*)\n")
 	header.WriteString("declare i8* @qadav_variant_create_i64(i64, i32, i64)\n")
+	header.WriteString("declare i8* @qadav_variant_create_ptr(i64, i32, i8*)\n")
+	header.WriteString("declare i8* @qadav_variant_create_2(i64, i32, i64, i64)\n")
+	header.WriteString("declare i32 @qadav_variant_set_payload_ptr(i8*, i8*)\n")
+	header.WriteString("declare i32 @qadav_variant_has_payload(i8*)\n")
 	header.WriteString("declare i32 @qadav_variant_get_tag(i8*)\n")
 	header.WriteString("declare i8* @qadav_variant_get_payload(i8*)\n")
+	header.WriteString("declare i8* @qadav_variant_get_payload_ptr(i8*)\n")
+	header.WriteString("declare i8* @qadav_variant_get_payload_offset(i8*, i32)\n")
 	header.WriteString("declare i64 @qadav_variant_get_payload_i64(i8*)\n")
+	header.WriteString("declare i64 @qadav_variant_get_field_i64(i8*, i32)\n")
+	header.WriteString("declare i8* @qadav_variant_get_field_ptr(i8*, i32)\n")
 	header.WriteString("declare i32 @qadav_variant_match(i8*, i32)\n")
 	header.WriteString("declare void @qadav_variant_free(i8*)\n")
 

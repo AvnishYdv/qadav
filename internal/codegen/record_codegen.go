@@ -113,11 +113,13 @@ func (g *Generator) genVariantInitExpr(e *ast.VariantInitExpr) Value {
 
 	typeHash := hashName64(e.VariantName)
 	tag := 0
-	if g.checker != nil {
+	var foundCase *ast.VariantCase
+	if g.checker != nil && g.checker.VariantDecls() != nil {
 		if vdecl, ok := g.checker.VariantDecls()[e.VariantName]; ok {
 			for i, cs := range vdecl.Cases {
 				if cs.Name == e.CaseName {
 					tag = i
+					foundCase = cs
 					break
 				}
 			}
@@ -126,27 +128,104 @@ func (g *Generator) genVariantInitExpr(e *ast.VariantInitExpr) Value {
 		tag = 1
 	}
 
-	valRef := "0"
-	valType := "i64"
-	if len(e.Values) > 0 {
-		v := g.genExpr(e.Values[0])
-		valRef = v.Ref
-		valType = v.Type
-	} else if e.Value != nil {
-		v := g.genExpr(e.Value)
-		valRef = v.Ref
-		valType = v.Type
+	args := e.Values
+	if len(args) == 0 && e.Value != nil {
+		args = []ast.Expr{e.Value}
 	}
 
-	if valType == "i8*" || valType == "ptr" {
-		convTemp := g.nextTemp()
-		fmt.Fprintf(&g.sb, "  %s = ptrtoint %s %s to i64\n", convTemp, valType, valRef)
-		valRef = convTemp
+	if len(args) == 0 {
+		varTemp := g.nextTemp()
+		fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_variant_create(i64 %d, i32 %d, i32 0, i8* null)\n", varTemp, typeHash, tag)
+		return Value{
+			Type:  "i8*",
+			Ref:   varTemp,
+			QType: &types.Type{Kind: types.KindVariant, Name: e.VariantName},
+		}
 	}
 
+	if len(args) == 1 {
+		v := g.genExpr(args[0])
+		isPtr := (v.Type == "i8*" || v.Type == "ptr")
+		if !isPtr && foundCase != nil && len(foundCase.Fields) > 0 {
+			fType := foundCase.Fields[0].Type
+			if fType != "int64" && fType != "logic" && fType != "float64" {
+				isPtr = true
+			}
+		}
+
+		varTemp := g.nextTemp()
+		if isPtr {
+			fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_variant_create_ptr(i64 %d, i32 %d, i8* %s)\n", varTemp, typeHash, tag, v.Ref)
+		} else {
+			valRef := v.Ref
+			if v.Type != "i64" {
+				extTemp := g.nextTemp()
+				fmt.Fprintf(&g.sb, "  %s = zext %s %s to i64\n", extTemp, v.Type, v.Ref)
+				valRef = extTemp
+			}
+			fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_variant_create_i64(i64 %d, i32 %d, i64 %s)\n", varTemp, typeHash, tag, valRef)
+		}
+		return Value{
+			Type:  "i8*",
+			Ref:   varTemp,
+			QType: &types.Type{Kind: types.KindVariant, Name: e.VariantName},
+		}
+	}
+
+	if len(args) == 2 {
+		v0 := g.genExpr(args[0])
+		v1 := g.genExpr(args[1])
+		v0Ref := v0.Ref
+		if v0.Type == "i8*" || v0.Type == "ptr" {
+			conv0 := g.nextTemp()
+			fmt.Fprintf(&g.sb, "  %s = ptrtoint %s %s to i64\n", conv0, v0.Type, v0.Ref)
+			v0Ref = conv0
+		} else if v0.Type != "i64" {
+			ext0 := g.nextTemp()
+			fmt.Fprintf(&g.sb, "  %s = zext %s %s to i64\n", ext0, v0.Type, v0.Ref)
+			v0Ref = ext0
+		}
+		v1Ref := v1.Ref
+		if v1.Type == "i8*" || v1.Type == "ptr" {
+			conv1 := g.nextTemp()
+			fmt.Fprintf(&g.sb, "  %s = ptrtoint %s %s to i64\n", conv1, v1.Type, v1.Ref)
+			v1Ref = conv1
+		} else if v1.Type != "i64" {
+			ext1 := g.nextTemp()
+			fmt.Fprintf(&g.sb, "  %s = zext %s %s to i64\n", ext1, v1.Type, v1.Ref)
+			v1Ref = ext1
+		}
+		varTemp := g.nextTemp()
+		fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_variant_create_2(i64 %d, i32 %d, i64 %s, i64 %s)\n", varTemp, typeHash, tag, v0Ref, v1Ref)
+		return Value{
+			Type:  "i8*",
+			Ref:   varTemp,
+			QType: &types.Type{Kind: types.KindVariant, Name: e.VariantName},
+		}
+	}
+
+	bufTemp := g.nextTemp()
+	fmt.Fprintf(&g.sb, "  %s = alloca [%d x i64]\n", bufTemp, len(args))
+	for i, arg := range args {
+		val := g.genExpr(arg)
+		vRef := val.Ref
+		if val.Type == "i8*" || val.Type == "ptr" {
+			conv := g.nextTemp()
+			fmt.Fprintf(&g.sb, "  %s = ptrtoint %s %s to i64\n", conv, val.Type, val.Ref)
+			vRef = conv
+		} else if val.Type != "i64" {
+			ext := g.nextTemp()
+			fmt.Fprintf(&g.sb, "  %s = zext %s %s to i64\n", ext, val.Type, val.Ref)
+			vRef = ext
+		}
+		gepTemp := g.nextTemp()
+		fmt.Fprintf(&g.sb, "  %s = getelementptr inbounds [%d x i64], [%d x i64]* %s, i64 0, i64 %d\n", gepTemp, len(args), len(args), bufTemp, i)
+		fmt.Fprintf(&g.sb, "  store i64 %s, i64* %s\n", vRef, gepTemp)
+	}
+	rawBuf := g.nextTemp()
+	fmt.Fprintf(&g.sb, "  %s = bitcast [%d x i64]* %s to i8*\n", rawBuf, len(args), bufTemp)
 	varTemp := g.nextTemp()
-	fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_variant_create_i64(i64 %d, i32 %d, i64 %s)\n", varTemp, typeHash, tag, valRef)
-
+	fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_variant_create(i64 %d, i32 %d, i32 %d, i8* %s)\n", varTemp, typeHash, tag, len(args)*8, rawBuf)
 	return Value{
 		Type:  "i8*",
 		Ref:   varTemp,
@@ -163,26 +242,94 @@ func (g *Generator) genMatchStmt(s *ast.MatchStmt) {
 	tagTemp := g.nextTemp()
 	fmt.Fprintf(&g.sb, "  %s = call i32 @qadav_variant_get_tag(i8* %s)\n", tagTemp, subjVal.Ref)
 
+	// Resolve variant declaration for type resolution of bindings
+	var vdecl *ast.VariantDeclStmt
+	var variantName string
+	if subjVal.QType != nil && subjVal.QType.Kind == types.KindVariant {
+		variantName = subjVal.QType.Name
+	} else if t, ok := g.exprTypes[s.Subject]; ok && t != nil && t.Kind == types.KindVariant {
+		variantName = t.Name
+	} else if ident, ok := s.Subject.(*ast.Ident); ok {
+		if slot, ok := g.vars[ident.Name]; ok && slot.qtype != nil && slot.qtype.Kind == types.KindVariant {
+			variantName = slot.qtype.Name
+		}
+	}
+	if variantName != "" && g.checker != nil && g.checker.VariantDecls() != nil {
+		vdecl = g.checker.VariantDecls()[variantName]
+	}
+	if vdecl == nil && g.checker != nil && g.checker.VariantDecls() != nil && len(s.Arms) > 0 {
+		for _, vd := range g.checker.VariantDecls() {
+			for _, cs := range vd.Cases {
+				if cs.Name == s.Arms[0].CaseName {
+					vdecl = vd
+					variantName = vd.Name
+					break
+				}
+			}
+			if vdecl != nil {
+				break
+			}
+		}
+	}
+
 	endLabel := g.nextLabel("match_end")
 
 	for idx, arm := range s.Arms {
 		armLabel := g.nextLabel("match_arm")
 		nextArmLabel := g.nextLabel("match_next")
 
+		caseTag := idx
+		var foundCase *ast.VariantCase
+		if vdecl != nil {
+			for cIdx, cs := range vdecl.Cases {
+				if cs.Name == arm.CaseName {
+					caseTag = cIdx
+					foundCase = cs
+					break
+				}
+			}
+		}
+
 		cmpTemp := g.nextTemp()
-		fmt.Fprintf(&g.sb, "  %s = icmp eq i32 %s, %d\n", cmpTemp, tagTemp, idx)
+		fmt.Fprintf(&g.sb, "  %s = icmp eq i32 %s, %d\n", cmpTemp, tagTemp, caseTag)
 		fmt.Fprintf(&g.sb, "  br i1 %s, label %%%s, label %%%s\n", cmpTemp, armLabel, nextArmLabel)
 
 		fmt.Fprintf(&g.sb, "%s:\n", armLabel)
-		if len(arm.Bindings) > 0 {
-			bValTemp := g.nextTemp()
-			fmt.Fprintf(&g.sb, "  %s = call i64 @qadav_variant_get_payload_i64(i8* %s)\n", bValTemp, subjVal.Ref)
-			for _, b := range arm.Bindings {
+		for bIdx, b := range arm.Bindings {
+			isPtr := false
+			var bQType *types.Type
+			if foundCase != nil && bIdx < len(foundCase.Fields) {
+				fType := foundCase.Fields[bIdx].Type
+				if fType != "int64" && fType != "logic" && fType != "float64" {
+					isPtr = true
+				}
+				if g.checker != nil {
+					bQType = g.resolveType(&ast.NamedType{Name: fType})
+				}
+			} else if arm.CaseName == "String" || arm.CaseName == "Identifier" {
+				isPtr = true
+			}
+
+			if isPtr {
+				bValTemp := g.nextTemp()
+				fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_variant_get_field_ptr(i8* %s, i32 %d)\n", bValTemp, subjVal.Ref, bIdx)
+				alloca := g.nextTemp()
+				fmt.Fprintf(&g.sb, "  %s = alloca i8*\n", alloca)
+				g.vars[b] = &varSlot{
+					ptr:      alloca,
+					llvmType: "i8*",
+					qtype:    bQType,
+				}
+				fmt.Fprintf(&g.sb, "  store i8* %s, i8** %s\n", bValTemp, alloca)
+			} else {
+				bValTemp := g.nextTemp()
+				fmt.Fprintf(&g.sb, "  %s = call i64 @qadav_variant_get_field_i64(i8* %s, i32 %d)\n", bValTemp, subjVal.Ref, bIdx)
 				alloca := g.nextTemp()
 				fmt.Fprintf(&g.sb, "  %s = alloca i64\n", alloca)
 				g.vars[b] = &varSlot{
 					ptr:      alloca,
 					llvmType: "i64",
+					qtype:    types.Int64,
 				}
 				fmt.Fprintf(&g.sb, "  store i64 %s, i64* %s\n", bValTemp, alloca)
 			}

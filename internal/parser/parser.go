@@ -1080,7 +1080,7 @@ func (p *Parser) parseExpression(precedence int) ast.Expr {
 func (p *Parser) parsePrefix() ast.Expr {
 	pos := p.curPos()
 	switch p.current.Type {
-	case token.IDENT, token.AFFIRM, token.DENY, token.TOP, token.BOTTOM, token.LOGIC, token.RESULT_T, token.ERROR_T:
+	case token.IDENT, token.AFFIRM, token.DENY, token.TOP, token.BOTTOM, token.LOGIC, token.RESULT_T, token.ERROR_T, token.INNER, token.OUTER:
 		lit := p.current.Literal
 		p.nextToken()
 		return &ast.Ident{Pos_: pos, Name: lit}
@@ -5007,7 +5007,7 @@ func (p *Parser) parseMatchStmt() *ast.MatchStmt {
 		if p.current.Type == token.GROUP_OPEN {
 			p.nextToken() // consume ( or ⦅
 			for p.current.Type != token.GROUP_CLOSE && p.current.Type != token.EOF {
-				if p.current.Type == token.IDENT {
+				if p.current.Type != token.SEP && p.current.Type != token.GROUP_CLOSE {
 					bindings = append(bindings, p.current.Literal)
 					p.nextToken()
 				}

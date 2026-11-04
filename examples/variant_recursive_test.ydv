@@ -1,0 +1,23 @@
+variant Expr ⟦
+    | IntLit(value ↦ int64) ·
+    | Wrapper(inner ↦ Expr) ·
+    | Add(left ↦ Expr ⸴ right ↦ Expr) ·
+⟧
+
+process sum_expr⦅Expr e⦆ → int64 ⟦
+    match e ⟦
+        | IntLit(v) ⟹ yield v ·
+        | Wrapper(inner) ⟹ yield sum_expr⦅inner⦆ ·
+        | Add(l ⸴ r) ⟹ yield sum_expr⦅l⦆ ⊕ sum_expr⦅r⦆ ·
+    ⟧
+⟧
+
+process main⦅⦆ → int64 ⟦
+    Expr lit1 ↦ variant_init Expr ⦅IntLit ↦ 10⦆ ·
+    Expr lit2 ↦ variant_init Expr ⦅IntLit ↦ 20⦆ ·
+    Expr wrapped ↦ variant_init Expr ⦅Wrapper ↦ lit1⦆ ·
+    Expr sum_tree ↦ variant_init Expr ⦅Add ↦ wrapped ⸴ lit2⦆ ·
+    int64 result ↦ sum_expr⦅sum_tree⦆ ·
+    emit result ·
+    yield 0 ·
+⟧
