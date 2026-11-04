@@ -214,6 +214,24 @@ record UnsealStmtNode ⟦ vault_name ↦ text · key_ref ↦ text · line ↦ in
 record WipeStmtNode ⟦ vault_name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
 
 // ----------------------------------------------------------------------------
+// Core AST Node Variant (M8.5a Core AST Representation)
+// ----------------------------------------------------------------------------
+variant CoreAst ⟦
+    | ProcessDecl(name ↦ text ⸴ params ↦ tensor ⸴ ret_type ↦ text ⸴ body ↦ CoreAst) ·
+    | BlockDecl(stmts ↦ tensor) ·
+    | BindDecl(name ↦ text ⸴ val_type ↦ text ⸴ value ↦ CoreAst) ·
+    | YieldDecl(value ↦ CoreAst) ·
+    | EmitDecl(value ↦ CoreAst) ·
+    | WhenDecl(cond ↦ CoreAst ⸴ then_block ↦ CoreAst ⸴ else_block ↦ CoreAst) ·
+    | CycleDecl(cond ↦ CoreAst ⸴ body ↦ CoreAst) ·
+    | BinaryOpDecl(op ↦ text ⸴ left ↦ CoreAst ⸴ right ↦ CoreAst) ·
+    | CallDecl(name ↦ text ⸴ args ↦ tensor) ·
+    | IdentDecl(name ↦ text) ·
+    | IntLitDecl(value ↦ int64) ·
+    | StrLitDecl(value ↦ text) ·
+⟧
+
+// ----------------------------------------------------------------------------
 // Comprehensive AST Node Variant
 // ----------------------------------------------------------------------------
 variant ASTNode ⟦

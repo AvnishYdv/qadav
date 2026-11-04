@@ -32,5 +32,13 @@ const char* qadav_format_icmp_slt(long long t_cur, long long t_prev, long long v
 const char* qadav_format_sub(long long t_cur, long long t_prev, long long val);
 const char* qadav_format_store_direct(long long val);
 
+long long   qadav_scan_emitted_strings(const char* path);
+long long   qadav_get_emitted_string_count(void);
+const char* qadav_format_emitted_str_def(long long idx);
+const char* qadav_format_emitted_str_gep(long long str_idx, long long temp_id);
+const char* qadav_format_emitted_str_call(long long temp_id);
+const char* qadav_format_trunc_line_id(long long temp_id, long long val);
+const char* qadav_format_ret_line_id(long long temp_id);
+
 #endif
 

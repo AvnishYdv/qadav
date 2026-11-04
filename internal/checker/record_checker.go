@@ -48,6 +48,8 @@ func (c *Checker) checkVariantDecl(s *ast.VariantDeclStmt) {
 		return
 	}
 
+	c.variantDecls[s.Name] = s
+
 	caseNames := make(map[string]bool)
 	for _, cs := range s.Cases {
 		if caseNames[cs.Name] {
@@ -61,7 +63,6 @@ func (c *Checker) checkVariantDecl(s *ast.VariantDeclStmt) {
 		}
 	}
 
-	c.variantDecls[s.Name] = s
 	c.curScope.Define(&Symbol{
 		Name: s.Name,
 		Type: &types.Type{

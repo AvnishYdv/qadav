@@ -262,6 +262,61 @@ func New() *Checker {
 			Results: []*types.Type{types.Text},
 		},
 	})
+	_ = global.Define(&Symbol{
+		Name: "scan_emitted_strings",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "get_emitted_string_count",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_emitted_str_def",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_emitted_str_gep",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_emitted_str_call",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_trunc_line_id",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_ret_line_id",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
 	return &Checker{
 		globalScope:       global,
 		curScope:          global,
@@ -423,6 +478,9 @@ func (c *Checker) resolveType(t ast.Type) *types.Type {
 		}
 		if sym, ok := c.globalScope.Lookup(node.Name); ok {
 			return sym.Type
+		}
+		if strings.HasPrefix(node.Name, "tensor⟨") || strings.HasPrefix(node.Name, "tensor<") {
+			return types.Tensor
 		}
 		if strings.HasPrefix(node.Name, "confident⟨") {
 			return types.ConfidentOf(types.Float64, 0.95)

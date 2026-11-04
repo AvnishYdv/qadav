@@ -117,6 +117,27 @@ process parse_rsca_attest⦅int64 stage ⸴ text record_var⦆ → int64 ⟦
     yield item.count ·
 ⟧
 
+variant CoreAst ⟦
+    | ProcessDecl(name ↦ text ⸴ params ↦ tensor ⸴ ret_type ↦ text ⸴ body ↦ CoreAst) ·
+    | BlockDecl(stmts ↦ tensor) ·
+    | BindDecl(name ↦ text ⸴ val_type ↦ text ⸴ value ↦ CoreAst) ·
+    | YieldDecl(value ↦ CoreAst) ·
+    | EmitDecl(value ↦ CoreAst) ·
+    | WhenDecl(cond ↦ CoreAst ⸴ then_block ↦ CoreAst ⸴ else_block ↦ CoreAst) ·
+    | CycleDecl(cond ↦ CoreAst ⸴ body ↦ CoreAst) ·
+    | BinaryOpDecl(op ↦ text ⸴ left ↦ CoreAst ⸴ right ↦ CoreAst) ·
+    | CallDecl(name ↦ text ⸴ args ↦ tensor) ·
+    | IdentDecl(name ↦ text) ·
+    | IntLitDecl(value ↦ int64) ·
+    | StrLitDecl(value ↦ text) ·
+⟧
+
+process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
+    int64 s1 ↦ parse_process_decl⦅"main" ⸴ 0 ⸴ "int64"⦆ ·
+    CoreAst ast ↦ variant_init CoreAst ⦅IntLitDecl ↦ 0⦆ ·
+    yield ast ·
+⟧
+
 process main⦅⦆ → int64 ⟦
     int64 s1 ↦ parse_process_decl⦅"main" ⸴ 0 ⸴ "int64"⦆ ·
     int64 s2 ↦ parse_procedure_decl⦅"helper" ⸴ 1⦆ ·

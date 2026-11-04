@@ -1,0 +1,7 @@
+process main⦅⦆ → int64 ⟦
+    emit "Line 1" ·
+    emit "Line 2" ·
+    emit "Line 3" ·
+    yield 0 ·
+⟧
+

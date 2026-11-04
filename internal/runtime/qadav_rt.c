@@ -72,6 +72,14 @@ long long   qadav_get_tensor_int_val(long long t_idx, long long e_idx);
 const char* qadav_format_shape_const(long long shape_idx, long long size);
 const char* qadav_format_tensor_set(long long t_temp, long long elem_idx, long long int_val);
 
+long long   qadav_scan_emitted_strings(const char* path);
+long long   qadav_get_emitted_string_count(void);
+const char* qadav_format_emitted_str_def(long long idx);
+const char* qadav_format_emitted_str_gep(long long str_idx, long long temp_id);
+const char* qadav_format_emitted_str_call(long long temp_id);
+const char* qadav_format_trunc_line_id(long long temp_id, long long val);
+const char* qadav_format_ret_line_id(long long temp_id);
+
 const char* get_input_path(void) {
     return qadav_get_input_path();
 }
@@ -178,6 +186,34 @@ const char* format_shape_const(long long shape_idx, long long size) {
 
 const char* format_tensor_set(long long t_temp, long long elem_idx, long long int_val) {
     return qadav_format_tensor_set(t_temp, elem_idx, int_val);
+}
+
+long long scan_emitted_strings(const char* path) {
+    return qadav_scan_emitted_strings(path);
+}
+
+long long get_emitted_string_count(void) {
+    return qadav_get_emitted_string_count();
+}
+
+const char* format_emitted_str_def(long long idx) {
+    return qadav_format_emitted_str_def(idx);
+}
+
+const char* format_emitted_str_gep(long long str_idx, long long temp_id) {
+    return qadav_format_emitted_str_gep(str_idx, temp_id);
+}
+
+const char* format_emitted_str_call(long long temp_id) {
+    return qadav_format_emitted_str_call(temp_id);
+}
+
+const char* format_trunc_line_id(long long temp_id, long long val) {
+    return qadav_format_trunc_line_id(temp_id, val);
+}
+
+const char* format_ret_line_id(long long temp_id) {
+    return qadav_format_ret_line_id(temp_id);
 }
 
 void* qadav_alloc(unsigned long long size) {

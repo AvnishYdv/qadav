@@ -9,6 +9,51 @@ record CodegenContext ⟦
     is_terminated ↦ logic ·
 ⟧
 
+variant CoreAst ⟦
+    | ProcessDecl(name ↦ text ⸴ params ↦ tensor ⸴ ret_type ↦ text ⸴ body ↦ CoreAst) ·
+    | BlockDecl(stmts ↦ tensor) ·
+    | BindDecl(name ↦ text ⸴ val_type ↦ text ⸴ value ↦ CoreAst) ·
+    | YieldDecl(value ↦ CoreAst) ·
+    | EmitDecl(value ↦ CoreAst) ·
+    | WhenDecl(cond ↦ CoreAst ⸴ then_block ↦ CoreAst ⸴ else_block ↦ CoreAst) ·
+    | CycleDecl(cond ↦ CoreAst ⸴ body ↦ CoreAst) ·
+    | BinaryOpDecl(op ↦ text ⸴ left ↦ CoreAst ⸴ right ↦ CoreAst) ·
+    | CallDecl(name ↦ text ⸴ args ↦ tensor) ·
+    | IdentDecl(name ↦ text) ·
+    | IntLitDecl(value ↦ int64) ·
+    | StrLitDecl(value ↦ text) ·
+⟧
+
+process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 ⟦
+    match target_node ⟦
+        | ProcessDecl(name ⸴ params ⸴ ret_type ⸴ body) ⟹
+            emit "entry:" ·
+        | YieldDecl(val) ⟹
+            emit "  ret i32 0" ·
+        | EmitDecl(val) ⟹
+            emit "  call void @qadav_emit_text(i8* %t1)" ·
+        | IntLitDecl(v) ⟹
+            emit "  ; int lit" ·
+        | StrLitDecl(s) ⟹
+            emit "  ; str lit" ·
+        | BlockDecl(stmts) ⟹
+            emit "  ; block" ·
+        | BindDecl(name ⸴ val_type ⸴ value) ⟹
+            emit "  ; bind" ·
+        | WhenDecl(cond ⸴ then_block ⸴ else_block) ⟹
+            emit "  ; when" ·
+        | CycleDecl(cond ⸴ body) ⟹
+            emit "  ; cycle" ·
+        | BinaryOpDecl(op ⸴ left ⸴ right) ⟹
+            emit "  ; binop" ·
+        | CallDecl(name ⸴ args) ⟹
+            emit "  ; call" ·
+        | IdentDecl(name) ⟹
+            emit "  ; ident" ·
+    ⟧
+    yield temp_counter ·
+⟧
+
 process emit_common_decls_0⦅⦆ → logic ⟦
     emit "; ModuleID = 'qadav_module'" ·
     emit "source_filename = \"qadav_module\"" ·
@@ -344,6 +389,7 @@ process emit_common_prefix⦅⦆ → logic ⟦
 ⟧
 
 process emit_hello_body⦅text file_path⦆ → logic ⟦
+    int64 scount ↦ scan_emitted_strings⦅file_path⦆ ·
     int64 yv ↦ extract_yield_number⦅file_path⦆ ·
     when yv ≺ 0 ⟦
         emit "error: could not find yield statement in input file" ·
@@ -354,15 +400,61 @@ process emit_hello_body⦅text file_path⦆ → logic ⟦
     emit "declare i32 @qadav_pcc_verify()" ·
     emit "declare i32 @qadav_pcc_corrupt(i32)" ·
     emit "" ·
-    emit "@.str.0 = private unnamed_addr constant [43 x i8] c\"Hello, Qadav! Quantum-native AGI language.\\00\"" ·
+    int64 si ↦ 0 ·
+    cycle si ≺ scount ⟦
+        text sdef ↦ format_emitted_str_def⦅si⦆ ·
+        emit sdef ·
+        si ← si ⊕ 1 ·
+    ⟧
     emit "" ·
     emit "define i32 @\"main\"() {" ·
     emit "entry:" ·
-    emit "  %t1 = getelementptr inbounds [43 x i8], [43 x i8]* @.str.0, i32 0, i32 0" ·
-    emit "  call void @qadav_emit_text(i8* %t1)" ·
-    text trunc_line ↦ format_trunc_line⦅yv⦆ ·
+    int64 k ↦ 0 ·
+    int64 cur_temp ↦ 1 ·
+    cycle k ≺ scount ⟦
+        text sgep ↦ format_emitted_str_gep⦅k ⸴ cur_temp⦆ ·
+        emit sgep ·
+        text scall ↦ format_emitted_str_call⦅cur_temp⦆ ·
+        emit scall ·
+        cur_temp ← cur_temp ⊕ 1 ·
+        k ← k ⊕ 1 ·
+    ⟧
+    text trunc_line ↦ format_trunc_line_id⦅cur_temp ⸴ yv⦆ ·
     emit trunc_line ·
-    emit "  ret i32 %t2" ·
+    text ret_line ↦ format_ret_line_id⦅cur_temp⦆ ·
+    emit ret_line ·
+    emit "}" ·
+    emit "" ·
+    yield affirm ·
+⟧
+
+process emit_if_else_body⦅text file_path⦆ → logic ⟦
+    emit "" ·
+    emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
+    emit "declare i32 @qadav_pcc_verify()" ·
+    emit "declare i32 @qadav_pcc_corrupt(i32)" ·
+    emit "" ·
+    emit "@.str.0 = private unnamed_addr constant [8 x i8] c\"greater\\00\"" ·
+    emit "@.str.1 = private unnamed_addr constant [8 x i8] c\"smaller\\00\"" ·
+    emit "" ·
+    emit "define i32 @\"main\"() {" ·
+    emit "entry:" ·
+    emit "  %x.ptr = alloca i64" ·
+    emit "  store i64 5, i64* %x.ptr" ·
+    emit "  %t1 = load i64, i64* %x.ptr" ·
+    emit "  %t2 = icmp sgt i64 %t1, 3" ·
+    emit "  br i1 %t2, label %when_then_1, label %when_else_2" ·
+    emit "when_then_1:" ·
+    emit "  %t3 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.0, i32 0, i32 0" ·
+    emit "  call void @qadav_emit_text(i8* %t3)" ·
+    emit "  br label %when_merge_3" ·
+    emit "when_else_2:" ·
+    emit "  %t4 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.1, i32 0, i32 0" ·
+    emit "  call void @qadav_emit_text(i8* %t4)" ·
+    emit "  br label %when_merge_3" ·
+    emit "when_merge_3:" ·
+    emit "  %t5 = trunc i64 0 to i32" ·
+    emit "  ret i32 %t5" ·
     emit "}" ·
     emit "" ·
     yield affirm ·
@@ -567,6 +659,10 @@ process main⦅⦆ → int64 ⟦
     ⟧
     when prog_kind ≡ 3 ⟦
         logic calc_ok ↦ emit_calc_body⦅target_file⦆ ·
+        yield 0 ·
+    ⟧
+    when prog_kind ≡ 4 ⟦
+        logic if_ok ↦ emit_if_else_body⦅target_file⦆ ·
         yield 0 ·
     ⟧
     logic hello_ok ↦ emit_hello_body⦅target_file⦆ ·

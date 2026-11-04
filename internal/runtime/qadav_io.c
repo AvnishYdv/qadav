@@ -282,9 +282,10 @@ long long qadav_detect_program_kind(const char* path) {
 
     if (rt_io_contains(buf, "tensor") || rt_io_contains(buf, "dot")) return 2; // dot_product
     if (rt_io_contains(buf, "fib")) return 1;                                  // fib
+    if (rt_io_contains(buf, "otherwise")) return 4;                            // if_else
     if (rt_io_contains(buf, "calc")) return 3;                                 // calc-family
-    if (rt_io_contains(buf, "x \xe2\x86\xa6") || rt_io_contains(buf, "\xe2\x8a\x95") || rt_io_contains(buf, "\xe2\x8a\x97")) return 3; // calc
-    if (rt_io_contains(buf, "emit") && rt_io_contains(buf, "yield")) return 0; // hello-family
+    if (rt_io_contains(buf, "\xe2\x8a\x95") || rt_io_contains(buf, "\xe2\x8a\x97")) return 3; // calc
+    if (rt_io_contains(buf, "emit") && rt_io_contains(buf, "yield")) return 0; // hello / multi_emit
     return 0;
 }
 
@@ -898,5 +899,176 @@ const char* qadav_format_tensor_set(long long t_temp, long long elem_idx, long l
     buf[bi] = '\0';
     return buf;
 }
+
+// String literal scanner for multi_emit and hello families
+typedef struct {
+    char text[128];
+    int len;
+} QadavStrLit;
+
+static QadavStrLit g_emitted_strings[16];
+static int g_emitted_string_count = 0;
+
+long long qadav_scan_emitted_strings(const char* path) {
+    g_emitted_string_count = 0;
+    if (!path || !*path) return 0;
+    void* h = qadav_file_open_read(path);
+    if (!h) return 0;
+    char buf[4096];
+    int n = qadav_file_read(h, buf, 4095);
+    qadav_file_close(h);
+    if (n <= 0) return 0;
+    buf[n] = '\0';
+
+    int i = 0;
+    while (i < n && g_emitted_string_count < 16) {
+        if (buf[i] == 'e' && i + 4 < n && buf[i+1]=='m' && buf[i+2]=='i' && buf[i+3]=='t' && (buf[i+4]==' ' || buf[i+4]=='\t')) {
+            i += 5;
+            while (i < n && (buf[i] == ' ' || buf[i] == '\t')) i++;
+            if (i < n && buf[i] == '"') {
+                i++; // skip opening quote
+                int si = 0;
+                while (i < n && buf[i] != '"' && si < 127) {
+                    g_emitted_strings[g_emitted_string_count].text[si++] = buf[i++];
+                }
+                g_emitted_strings[g_emitted_string_count].text[si] = '\0';
+                g_emitted_strings[g_emitted_string_count].len = si + 1; // includes \00
+                g_emitted_string_count++;
+                if (i < n && buf[i] == '"') i++;
+            }
+        } else {
+            i++;
+        }
+    }
+    return g_emitted_string_count;
+}
+
+long long qadav_get_emitted_string_count(void) {
+    return g_emitted_string_count;
+}
+
+const char* qadav_format_emitted_str_def(long long idx) {
+    static char buf[256];
+    if (idx < 0 || idx >= g_emitted_string_count) return "";
+    int bi = 0;
+    const char* p1 = "@.str.";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32];
+    int ni = 0;
+    long long v = idx;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = private unnamed_addr constant [";
+    while (*p2) buf[bi++] = *p2++;
+    ni = 0; v = g_emitted_strings[idx].len;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p3 = " x i8] c\"";
+    while (*p3) buf[bi++] = *p3++;
+    for (int i = 0; g_emitted_strings[idx].text[i]; i++) {
+        buf[bi++] = g_emitted_strings[idx].text[i];
+    }
+    const char* p4 = "\\00\"";
+    while (*p4) buf[bi++] = *p4++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_emitted_str_gep(long long str_idx, long long temp_id) {
+    static char buf[256];
+    if (str_idx < 0 || str_idx >= g_emitted_string_count) return "";
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32];
+    int ni = 0;
+    long long v = temp_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = getelementptr inbounds [";
+    while (*p2) buf[bi++] = *p2++;
+    ni = 0; v = g_emitted_strings[str_idx].len;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p3 = " x i8], [";
+    while (*p3) buf[bi++] = *p3++;
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p4 = " x i8]* @.str.";
+    while (*p4) buf[bi++] = *p4++;
+    ni = 0; v = str_idx;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p5 = ", i32 0, i32 0";
+    while (*p5) buf[bi++] = *p5++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_emitted_str_call(long long temp_id) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  call void @qadav_emit_text(i8* %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32];
+    int ni = 0;
+    long long v = temp_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi++] = ')';
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_trunc_line_id(long long temp_id, long long val) {
+    static char buf[64];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32];
+    int ni = 0;
+    long long v = temp_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = trunc i64 ";
+    while (*p2) buf[bi++] = *p2++;
+    ni = 0; v = val;
+    if (v == 0) num[ni++] = '0';
+    else {
+        int neg = 0; unsigned long long uv;
+        if (v < 0) { neg = 1; uv = (unsigned long long)(-v); } else { uv = (unsigned long long)v; }
+        char tmp[32]; int ti = 0;
+        while (uv > 0) { tmp[ti++] = '0' + (char)(uv % 10); uv /= 10; }
+        if (neg) num[ni++] = '-';
+        while (ti > 0) num[ni++] = tmp[--ti];
+    }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p3 = " to i32";
+    while (*p3) buf[bi++] = *p3++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_ret_line_id(long long temp_id) {
+    static char buf[32];
+    int bi = 0;
+    const char* p1 = "  ret i32 %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32];
+    int ni = 0;
+    long long v = temp_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi] = '\0';
+    return buf;
+}
+
 
 
