@@ -48,6 +48,8 @@ func main() {
 		os.Exit(runSelfhostCheck(os.Args[2:]))
 	case "selfhost-codegen":
 		os.Exit(runSelfhostCodegen(os.Args[2:]))
+	case "selfhost-codegen-legacy":
+		os.Exit(runSelfhostCodegenLegacy(os.Args[2:]))
 	case "help", "--help", "-h":
 		showUsage()
 		os.Exit(0)
@@ -78,7 +80,8 @@ Commands:
   selfhost-lexer <file> Run self-hosted lexical tokenizer
   selfhost-parser <file> Run self-hosted parser AST generator
   selfhost-check <file>  Run self-hosted type checker
-  selfhost-codegen <file> Run self-hosted LLVM IR codegen
+  selfhost-codegen <file>        Run native self-hosted LLVM IR codegen (selfhost/codegen.exe)
+  selfhost-codegen-legacy <file> Run Go reference bridge LLVM IR codegen
   doctor              Check environment health (LLVM, Go, etc.)
   version             Display version
   help                Show this message

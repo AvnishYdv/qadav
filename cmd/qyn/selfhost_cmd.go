@@ -88,7 +88,29 @@ func runSelfhostCodegen(args []string) int {
 		return 1
 	}
 
-	ir, code := selfhost.CodegenSource(string(srcBytes), filename)
+	ir, code := selfhost.CodegenSourceNative(string(srcBytes), filename)
+	if code != 0 {
+		fmt.Fprint(os.Stderr, ir)
+		return code
+	}
+	fmt.Print(ir)
+	return 0
+}
+
+func runSelfhostCodegenLegacy(args []string) int {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Usage: qyn selfhost-codegen-legacy <file.ydv>")
+		return 1
+	}
+
+	filename := args[0]
+	srcBytes, err := os.ReadFile(filename)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "qyn selfhost-codegen-legacy: error reading %s: %v\n", filename, err)
+		return 1
+	}
+
+	ir, code := selfhost.CodegenSourceLegacy(string(srcBytes), filename)
 	if code != 0 {
 		fmt.Fprint(os.Stderr, ir)
 		return code

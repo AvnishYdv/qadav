@@ -98,6 +98,36 @@ func (g *Generator) addStringConstant(raw string) (string, int) {
 	length := 0
 	for i := 0; i < len(raw); i++ {
 		b := raw[i]
+		if b == '\\' && i+1 < len(raw) {
+			next := raw[i+1]
+			switch next {
+			case '"':
+				escaped.WriteString(`\22`)
+				length++
+				i++
+				continue
+			case '\\':
+				escaped.WriteString(`\5C`)
+				length++
+				i++
+				continue
+			case 'n':
+				escaped.WriteString(`\0A`)
+				length++
+				i++
+				continue
+			case 't':
+				escaped.WriteString(`\09`)
+				length++
+				i++
+				continue
+			case 'r':
+				escaped.WriteString(`\0D`)
+				length++
+				i++
+				continue
+			}
+		}
 		switch b {
 		case '\n':
 			escaped.WriteString(`\0A`)

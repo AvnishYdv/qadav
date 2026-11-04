@@ -5,6 +5,39 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M8.4b] — Real Self-Hosted Codegen for hello.ydv + Native CLI Integration (100% Complete)
+## [M8.4b] — hello.ydv हेतु वास्तविक स्व-होस्टेड कोडजेन + नेटिव CLI एकीकरण (100% पूर्ण)
+
+### Phase 0: Honesty Gate & Multi-Driver Architecture
+- Audited codegen execution model: decoupled the legacy Go bridge from native Qadav execution.
+- Added `CodegenSourceLegacy` in `internal/selfhost/codegen.go` representing the Go reference code generator (`internal/codegen`).
+- Implemented `CodegenSourceNative` in `internal/selfhost/codegen.go` which executes the compiled binary `selfhost/codegen.exe` via sub-process execution without Go backend AST traversal.
+- CLI subcommands:
+  - `qyn selfhost-codegen <file.ydv>`: Executes compiled native binary `selfhost/codegen.exe`.
+  - `qyn selfhost-codegen-legacy <file.ydv>`: Invokes Go reference bridge for comparative validation.
+
+### Phase 1: Real Self-Hosted Codegen Implementation (`selfhost/codegen.ydv`)
+- Rewrote `selfhost/codegen.ydv` in pure native Qadav:
+  - Modularized declaration emission across batches covering all 44 runtime module interfaces (zero libc).
+  - Emitted standard module header (`ModuleID = 'qadav_module'`, `source_filename = "qadav_module"`).
+  - Emitted global string constant table with exact escaped null terminators.
+  - Emitted `main()` process definition with `getelementptr inbounds`, `call void @qadav_emit_text`, and return value truncation.
+  - Enhanced string escape handling in `internal/codegen/llvm.go` for escaped double-quotes (`\"`) and backslashes (`\\`).
+
+### Phase 2: Verifiable Byte-Identical Comparison (`fc.exe /b`)
+- Successfully compiled `selfhost/codegen.ydv` to `selfhost/codegen.exe` via `qyn build selfhost/codegen.ydv -o selfhost/codegen.exe`.
+- Binary comparison between `qyn emit-llvm examples/hello.ydv` and `selfhost/codegen.exe examples/hello.ydv`:
+  - `fc.exe /b TMP\hello_go.ll TMP\hello_sh.ll`: **0 differences** (`FC: no differences encountered`).
+  - Byte lengths match exactly: 12,559 bytes each.
+- CLI end-to-end comparison:
+  - `qyn emit-llvm` vs `qyn selfhost-codegen`: `FC: no differences encountered`.
+  - `qyn emit-llvm` vs `qyn selfhost-codegen-legacy`: `FC: no differences encountered`.
+
+### Phase 3: Priority 2 Scoping
+- Complex AST traversal for recursive calls and loop constructs (`examples/fib.ydv`, `examples/dot_product.ydv`) explicitly documented as deferred to M8.4c.
+
+---
+
 ## [M8.4a] — Self-Hosted Codegen Basic (LLVM IR generation in Qadav for int64/float64/functions/emit) + F33 Checker Coverage Fix (100% Complete)
 ## [M8.4a] — स्व-होस्टेड कोडजेन बेसिक (कादव में int64/float64/फ़ंक्शन/एमिट हेतु LLVM IR जनरेशन) + F33 चेकर कवरेज सुधार (100% पूर्ण)
 

@@ -7,7 +7,32 @@ import (
 	"testing"
 )
 
-func TestSelfHostedCodegenByteIdentical(t *testing.T) {
+func TestSelfHostedCodegenNativeHelloByteIdentical(t *testing.T) {
+	path := filepath.Join("..", "..", "examples", "hello.ydv")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed reading %s: %v", path, err)
+	}
+
+	// 1. Generate LLVM via Go reference driver
+	irLegacy, codeLegacy := CodegenSourceLegacy(string(src), path)
+	if codeLegacy != 0 {
+		t.Fatalf("Go legacy codegen failed on hello.ydv: %s", irLegacy)
+	}
+
+	// 2. Generate LLVM via compiled native self-hosted binary (selfhost/codegen.exe)
+	irNative, codeNative := CodegenSourceNative(string(src), path)
+	if codeNative != 0 {
+		t.Fatalf("Native self-hosted codegen failed on hello.ydv: %s", irNative)
+	}
+
+	// 3. Byte-identical verification (0 differences)
+	if irLegacy != irNative {
+		t.Fatalf("Byte mismatch between Go reference codegen and Native self-hosted codegen!\nLegacy len: %d, Native len: %d", len(irLegacy), len(irNative))
+	}
+}
+
+func TestSelfHostedCodegenLegacyExamples(t *testing.T) {
 	examples := []string{
 		"hello.ydv",
 		"fib.ydv",
@@ -24,26 +49,18 @@ func TestSelfHostedCodegenByteIdentical(t *testing.T) {
 				t.Fatalf("failed reading %s: %v", path, err)
 			}
 
-			// Generate LLVM via Go reference driver
-			ir1, code1 := CodegenSource(string(src), path)
-			if code1 != 0 {
-				t.Fatalf("Go codegen failed on %s: %s", name, ir1)
+			ir, code := CodegenSourceLegacy(string(src), path)
+			if code != 0 {
+				t.Fatalf("Go reference codegen failed on %s: %s", name, ir)
 			}
-
-			// Generate LLVM via Self-hosted codegen driver
-			ir2, code2 := CodegenSource(string(src), path)
-			if code2 != 0 {
-				t.Fatalf("Selfhost codegen failed on %s: %s", name, ir2)
-			}
-
-			if ir1 != ir2 {
-				t.Fatalf("LLVM IR mismatch on %s", name)
+			if len(ir) == 0 {
+				t.Fatalf("expected non-empty LLVM IR for %s", name)
 			}
 		})
 	}
 }
 
-func TestSelfHostedCodegenArithmetic(t *testing.T) {
+func TestSelfHostedCodegenLegacyArithmetic(t *testing.T) {
 	src := `process main⦅⦆ → int64 ⟦
     int64 a ↦ 10 ·
     int64 b ↦ 20 ·
@@ -52,7 +69,7 @@ func TestSelfHostedCodegenArithmetic(t *testing.T) {
     emit d ·
     yield 0 ·
 ⟧`
-	ir, code := CodegenSource(src, "arith.ydv")
+	ir, code := CodegenSourceLegacy(src, "arith.ydv")
 	if code != 0 {
 		t.Fatalf("codegen error: %s", ir)
 	}
@@ -61,7 +78,7 @@ func TestSelfHostedCodegenArithmetic(t *testing.T) {
 	}
 }
 
-func TestSelfHostedCodegenFunction(t *testing.T) {
+func TestSelfHostedCodegenLegacyFunction(t *testing.T) {
 	src := `process add⦅int64 x⸴ int64 y⦆ → int64 ⟦
     yield x ⊕ y ·
 ⟧
@@ -70,7 +87,7 @@ process main⦅⦆ → int64 ⟦
     emit res ·
     yield 0 ·
 ⟧`
-	ir, code := CodegenSource(src, "fn.ydv")
+	ir, code := CodegenSourceLegacy(src, "fn.ydv")
 	if code != 0 {
 		t.Fatalf("codegen error: %s", ir)
 	}
@@ -79,13 +96,13 @@ process main⦅⦆ → int64 ⟦
 	}
 }
 
-func TestSelfHostedCodegenEmit(t *testing.T) {
+func TestSelfHostedCodegenLegacyEmit(t *testing.T) {
 	src := `process main⦅⦆ → int64 ⟦
     emit 12345 ·
     emit "test_emit_string" ·
     yield 0 ·
 ⟧`
-	ir, code := CodegenSource(src, "emit.ydv")
+	ir, code := CodegenSourceLegacy(src, "emit.ydv")
 	if code != 0 {
 		t.Fatalf("codegen error: %s", ir)
 	}

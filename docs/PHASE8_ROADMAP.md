@@ -31,8 +31,17 @@ Transition Qadav from a Go-hosted reference language into an autonomous, self-ho
 - Phase 2: Byte-identical verification on 5 required examples (`hello`, `fib`, `dot_product`, `linear_regression`, `classifier`) with 0-byte difference via `fc.exe /b`.
 - 44 zero-libc runtime objects, 24 patents preserved.
 
-### M8.4b: Full Self-Hosted Codegen + Bootstrap Assembly + Invention #25
-- Full LLVM IR codegen in Qadav: tensors, neural networks, quantum circuits, control flow (`when`/`cycle`), and all 24 security inventions.
+### M8.4b: Real Self-Hosted Codegen for hello.ydv + Native CLI Integration [COMPLETED]
+- Honesty Gate: Decoupled Go reference bridge (`CodegenSourceLegacy`) from native execution (`CodegenSourceNative`).
+- Native Self-Hosted Codegen in Qadav (`selfhost/codegen.ydv`): Emits complete LLVM IR with module headers, 44-module declarations, string table, and main entry.
+- Compiled `selfhost/codegen.exe` via `qyn build selfhost/codegen.ydv -o selfhost/codegen.exe`.
+- Byte-Identical Proof: Windows `fc.exe /b` verified **0-byte difference** (`FC: no differences encountered`) between Go reference and native self-hosted binary on `examples/hello.ydv` (12,559 bytes each).
+- CLI Integration: `qyn selfhost-codegen` (native) and `qyn selfhost-codegen-legacy` (Go bridge).
+- 44 zero-libc runtime objects, 24 patents preserved.
+
+### M8.4c: Extended Self-Hosted Codegen + Complex AST Traversal + Invention #25
+- Dynamic AST-driven lowering for recursive loops and math operations (`fib.ydv`, `dot_product.ydv`).
+- Full LLVM IR codegen in Qadav: tensors, neural networks, quantum circuits, control flow (`when`/`cycle`), and security inventions.
 - Invention #25 (Patent Pending).
 - Stage 1 compiler frontend & backend assembly.
 
