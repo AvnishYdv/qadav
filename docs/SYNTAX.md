@@ -327,6 +327,47 @@ TokenRecord         ::= TokenType "|" Literal "|" LineNumber "|" ColumnNumber
 SExprProgram        ::= "(" "Program" SExprDecl* ")"
 SExprProcess        ::= "(" "ProcessDecl" StringLit "(" SExprParam* ")" SExprType SExprBlock ")"
 SExprBlock          ::= "(" "Block" SExprStmt* ")"
+
+## 37. Self-Hosted Codegen Grammar (M8.4d–M8.4g)
+
+The self-hosted codegen (`selfhost/codegen.ydv`) uses C runtime helpers exposed by `qadav_io.c`. These are callable from `.ydv` code but are not part of user-facing language grammar — they are internal codegen primitives.
+
+```bnf
+// File path extraction (Win32 GetCommandLineA)
+qadav_get_input_path() → text
+
+// Program kind detection (0=hello-family, 1=fib-family, 2=dot-family, 3=calc-family, -1=error)
+qadav_detect_program_kind(path) → int64
+
+// Hello-family: extract yield number
+qadav_extract_yield_number(path) → int64
+
+// Fib-family: extract 4 values (n0, when_threshold, rec_offset1, rec_offset2)
+qadav_scan_fib_values(path) → int64
+qadav_get_fib_value(idx) → int64
+
+// Dot-family: extract tensors
+qadav_scan_tensors(path) → int64
+qadav_get_tensor_name(t_idx) → text
+qadav_get_tensor_size(t_idx) → int64
+qadav_get_tensor_int_val(t_idx, e_idx) → int64
+
+// Calc-family: extract statements
+qadav_scan_statements(path) → int64
+qadav_stmt_kind(idx) → int64      // 0=var, 1=emit, 2=yield
+qadav_stmt_name(idx) → text
+qadav_stmt_value(idx) → int64
+qadav_stmt_expr(idx) → text
+```
+
+Supported program kinds in M8.4g:
+- Kind 0: hello-family (single string emit + single yield)
+- Kind 1: fib-family (process with recursion + when)
+- Kind 2: dot-family (2 tensors + mul + reduce)
+- Kind 3: calc-family (2 var binds + 2 emits + 1 yield)
+- Kind -1: unrecognized → clean error exit 1
+
+*Deferred to M8.5:* Full general-purpose AST traversal supporting all 173 node types.
 ```
 
 ### Compiler Testing Flags:

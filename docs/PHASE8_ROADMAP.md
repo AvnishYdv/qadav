@@ -46,11 +46,38 @@ Transition Qadav from a Go-hosted reference language into an autonomous, self-ho
 - Invention #25: Proof-Carrying Codegen (PCC, Patent Pending): 104-byte cryptographic certificate preimage binding AST, codegen path, and IR with fail-stop quantum decoherence (`0xDEADBEEF`).
 - 45 zero-libc runtime objects (`qadav_pcc.c`), 25 patents in portfolio.
 
-### M8.4d: Extended Self-Hosted Codegen + Full Security Inventions + Stage 1 Bootstrap
-- Full self-hosted AST traversal for all 25 security inventions.
-- Stage 1 compiler frontend & backend assembly.
+### M8.4d: Real Dynamic Codegen for hello.ydv [COMPLETED]
+- **Goal:** Prove codegen actually reads input file (not hardcoded)
+- **Killer Test:** hello_v2.ydv (yield 42) → byte-identical to Go reference
+- **C Helpers:** `qadav_get_input_path`, `qadav_extract_yield_number`, `qadav_format_trunc_line`
+- **Runtime objects:** 45 (unchanged)
+- **Proof:** Both hello.ydv (yield 0) and hello_v2.ydv (yield 42) fc/b pass
 
-### M8.5 + M8.6: Stage 1 Compiler Bootstrap & Full Toolchain Cutover + Invention #25
+### M8.4e: Multi-Statement Dynamic Codegen [COMPLETED]
+- **Goal:** Variables + arithmetic + multi-emit + clean error codes
+- **Killer Test:** calc_v2.ydv (modified values) → byte-identical
+- **C Helpers:** statement scanner + formatters (13 helpers)
+- **Fix:** fib/dot deferral exit codes 0→1 (was silent failure, now detectable)
+- **Proof:** calc.ydv + calc_v2.ydv fc/b pass, runtime 8/15 vs 150/5000
+
+### M8.4f: fib.ydv REAL Dynamic [COMPLETED]
+- **Goal:** Recursion + when + parameters handled dynamically
+- **Killer Test:** fib_v2.ydv (n↦20) → byte-identical
+- **C Helpers:** scan_fib_values + 3 formatters
+- **Proof:** fib(10)=55, fib(20)=6765 both work
+
+### M8.4g: dot_product.ydv REAL Dynamic [COMPLETED]
+- **Goal:** Tensors + mul + reduce handled dynamically
+- **Killer Test:** dot_v2.ydv (1.0→10.0) → byte-identical
+- **C Helpers:** scan_tensors + 6 formatters
+- **Proof:** baseline=32.0, modified=68.0 (runtime values differ correctly)
+- **Note:** First true FC/b proof of tensor-level dynamic reading
+
+### M8.4z: Documentation Sync [COMPLETED]
+- Synced all .md files to actual M8.4g state
+- No code changes — only docs
+
+### M8.5 + M8.6: Stage 1 Compiler Bootstrap & Full Toolchain Cutover
 - Stage 0 $\to$ Stage 1 full compilation cutover.
 - Production of standalone self-hosted `qyn` binary with zero Go dependency.
 - Fixed-point byte-for-byte RSCA verification across Stage 1 and Stage 2.

@@ -1186,15 +1186,39 @@ CTSA establishes a cryptographic attestation certificate proving that type safet
 
 ---
 
-## 47. Self-Hosted Codegen Workflow (M8.4a)
+## 47. Self-Hosted Codegen Workflow (M8.4a → M8.4g)
 
-Milestone M8.4a introduces the self-hosted LLVM IR code generator written in Qadav:
-- **`selfhost/codegen.ydv`**: Translates typed AST structures into valid, standard LLVM IR.
-- **Supported Scope**: Basic primitive types (`int64`, `float64`, `text`, `logic`), function definitions (`process`), local variable binding (`↦`), return values (`yield`), emit statements (`emit`), and arithmetic expressions (`⊕`, `⊖`, `⊗`, `⊘`).
-- **CLI Subcommands**:
-  - `qyn emit-llvm <file.ydv>`: Emits reference LLVM IR from the Go toolchain.
-  - `qyn selfhost-codegen <file.ydv>`: Emits LLVM IR from the self-hosted codegen driver.
-- **Byte-Identical Verification**: Guaranteed 0-byte difference against the reference Go compiler verified across regression examples (`hello.ydv`, `fib.ydv`, `dot_product.ydv`, `linear_regression.ydv`, `classifier.ydv`).
+Milestone M8.4 series progressively built real dynamic codegen in Qadav:
+
+| Milestone | Scope | Killer Test |
+|-----------|-------|-------------|
+| M8.4a | Static seed (41 lines) | None — proved hardcoded limitation |
+| M8.4b | hello.ydv (hardcoded output) | Native driver decoupled |
+| M8.4c | 3 hardcoded outputs + PCC #25 | Claim false, honestly corrected |
+| M8.4d | **hello.ydv REAL** | hello_v2.ydv (yield 42) — fc/b pass |
+| M8.4e | **calc.ydv REAL** + error exit codes | calc_v2.ydv — fc/b pass |
+| M8.4f | **fib.ydv REAL** | fib_v2.ydv (n↦20) — fc/b pass |
+| M8.4g | **dot_product.ydv REAL** | dot_v2.ydv (1.0→10.0) — fc/b pass |
+
+**What's actually dynamic:**
+- Values (yield numbers, variable initial values, tensor elements, when-thresholds) — dynamically extracted from actual file
+- Structure (number of statements, emit count) — hardcoded per program kind (M8.5 will fix this)
+
+**CLI commands:**
+- `qyn selfhost-codegen <file.ydv>` — Qadav native codegen (M8.4d+)
+- `qyn selfhost-codegen-legacy <file.ydv>` — Go reference for comparison
+- `qyn emit-llvm <file.ydv>` — Go reference (same output)
+
+**Supported in M8.4g:**
+- hello-family (yield N dynamic)
+- calc-family (2 vars + arithmetic + multi-emit dynamic)
+- fib-family (recursion + when + params dynamic)
+- dot-family (tensors + mul + reduce dynamic)
+
+**Deferred to M8.5:**
+- Full AST traversal for arbitrary programs
+- All 173 node types
+- Network, learn, quantum, security inventions
 
 
 ---
@@ -1361,15 +1385,39 @@ CTSA establishes a cryptographic attestation certificate proving that type safet
 
 ---
 
-## 47. Self-Hosted Codegen Workflow (M8.4a)
+## 47. Self-Hosted Codegen Workflow (M8.4a → M8.4g)
 
-Milestone M8.4a introduces the self-hosted LLVM IR code generator written in Qadav:
-- **`selfhost/codegen.ydv`**: Translates typed AST structures into valid, standard LLVM IR.
-- **Supported Scope**: Basic primitive types (`int64`, `float64`, `text`, `logic`), function definitions (`process`), local variable binding (`↦`), return values (`yield`), emit statements (`emit`), and arithmetic expressions (`⊕`, `⊖`, `⊗`, `⊘`).
-- **CLI Subcommands**:
-  - `qyn emit-llvm <file.ydv>`: Emits reference LLVM IR from the Go toolchain.
-  - `qyn selfhost-codegen <file.ydv>`: Emits LLVM IR from the self-hosted codegen driver.
-- **Byte-Identical Verification**: Guaranteed 0-byte difference against the reference Go compiler verified across regression examples (`hello.ydv`, `fib.ydv`, `dot_product.ydv`, `linear_regression.ydv`, `classifier.ydv`).
+Milestone M8.4 series progressively built real dynamic codegen in Qadav:
+
+| Milestone | Scope | Killer Test |
+|-----------|-------|-------------|
+| M8.4a | Static seed (41 lines) | None — proved hardcoded limitation |
+| M8.4b | hello.ydv (hardcoded output) | Native driver decoupled |
+| M8.4c | 3 hardcoded outputs + PCC #25 | Claim false, honestly corrected |
+| M8.4d | **hello.ydv REAL** | hello_v2.ydv (yield 42) — fc/b pass |
+| M8.4e | **calc.ydv REAL** + error exit codes | calc_v2.ydv — fc/b pass |
+| M8.4f | **fib.ydv REAL** | fib_v2.ydv (n↦20) — fc/b pass |
+| M8.4g | **dot_product.ydv REAL** | dot_v2.ydv (1.0→10.0) — fc/b pass |
+
+**What's actually dynamic:**
+- Values (yield numbers, variable initial values, tensor elements, when-thresholds) — dynamically extracted from actual file
+- Structure (number of statements, emit count) — hardcoded per program kind (M8.5 will fix this)
+
+**CLI commands:**
+- `qyn selfhost-codegen <file.ydv>` — Qadav native codegen (M8.4d+)
+- `qyn selfhost-codegen-legacy <file.ydv>` — Go reference for comparison
+- `qyn emit-llvm <file.ydv>` — Go reference (same output)
+
+**Supported in M8.4g:**
+- hello-family (yield N dynamic)
+- calc-family (2 vars + arithmetic + multi-emit dynamic)
+- fib-family (recursion + when + params dynamic)
+- dot-family (tensors + mul + reduce dynamic)
+
+**Deferred to M8.5:**
+- Full AST traversal for arbitrary programs
+- All 173 node types
+- Network, learn, quantum, security inventions
 
 
 ---
@@ -1534,15 +1582,39 @@ CTSA establishes a cryptographic attestation certificate proving that type safet
 
 ---
 
-## 47. Self-Hosted Codegen Workflow (M8.4a)
+## 47. Self-Hosted Codegen Workflow (M8.4a → M8.4g)
 
-Milestone M8.4a introduces the self-hosted LLVM IR code generator written in Qadav:
-- **`selfhost/codegen.ydv`**: Translates typed AST structures into valid, standard LLVM IR.
-- **Supported Scope**: Basic primitive types (`int64`, `float64`, `text`, `logic`), function definitions (`process`), local variable binding (`↦`), return values (`yield`), emit statements (`emit`), and arithmetic expressions (`⊕`, `⊖`, `⊗`, `⊘`).
-- **CLI Subcommands**:
-  - `qyn emit-llvm <file.ydv>`: Emits reference LLVM IR from the Go toolchain.
-  - `qyn selfhost-codegen <file.ydv>`: Emits LLVM IR from the self-hosted codegen driver.
-- **Byte-Identical Verification**: Guaranteed 0-byte difference against the reference Go compiler verified across regression examples (`hello.ydv`, `fib.ydv`, `dot_product.ydv`, `linear_regression.ydv`, `classifier.ydv`).
+Milestone M8.4 series progressively built real dynamic codegen in Qadav:
+
+| Milestone | Scope | Killer Test |
+|-----------|-------|-------------|
+| M8.4a | Static seed (41 lines) | None — proved hardcoded limitation |
+| M8.4b | hello.ydv (hardcoded output) | Native driver decoupled |
+| M8.4c | 3 hardcoded outputs + PCC #25 | Claim false, honestly corrected |
+| M8.4d | **hello.ydv REAL** | hello_v2.ydv (yield 42) — fc/b pass |
+| M8.4e | **calc.ydv REAL** + error exit codes | calc_v2.ydv — fc/b pass |
+| M8.4f | **fib.ydv REAL** | fib_v2.ydv (n↦20) — fc/b pass |
+| M8.4g | **dot_product.ydv REAL** | dot_v2.ydv (1.0→10.0) — fc/b pass |
+
+**What's actually dynamic:**
+- Values (yield numbers, variable initial values, tensor elements, when-thresholds) — dynamically extracted from actual file
+- Structure (number of statements, emit count) — hardcoded per program kind (M8.5 will fix this)
+
+**CLI commands:**
+- `qyn selfhost-codegen <file.ydv>` — Qadav native codegen (M8.4d+)
+- `qyn selfhost-codegen-legacy <file.ydv>` — Go reference for comparison
+- `qyn emit-llvm <file.ydv>` — Go reference (same output)
+
+**Supported in M8.4g:**
+- hello-family (yield N dynamic)
+- calc-family (2 vars + arithmetic + multi-emit dynamic)
+- fib-family (recursion + when + params dynamic)
+- dot-family (tensors + mul + reduce dynamic)
+
+**Deferred to M8.5:**
+- Full AST traversal for arbitrary programs
+- All 173 node types
+- Network, learn, quantum, security inventions
 
 
 

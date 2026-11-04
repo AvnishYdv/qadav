@@ -1,0 +1,8 @@
+process main⦅⦆ → int64 ⟦
+    int64 x ↦ 100 ·
+    int64 y ↦ 50 ·
+    emit x ⊕ y ·
+    emit x ⊗ y ·
+    yield 0 ·
+⟧
+

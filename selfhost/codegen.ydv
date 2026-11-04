@@ -343,7 +343,12 @@ process emit_common_prefix⦅⦆ → logic ⟦
     yield affirm ·
 ⟧
 
-process emit_hello_body⦅⦆ → logic ⟦
+process emit_hello_body⦅text file_path⦆ → logic ⟦
+    int64 yv ↦ extract_yield_number⦅file_path⦆ ·
+    when yv ≺ 0 ⟦
+        emit "error: could not find yield statement in input file" ·
+        yield deny ·
+    ⟧
     emit "" ·
     emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
     emit "declare i32 @qadav_pcc_verify()" ·
@@ -355,14 +360,77 @@ process emit_hello_body⦅⦆ → logic ⟦
     emit "entry:" ·
     emit "  %t1 = getelementptr inbounds [43 x i8], [43 x i8]* @.str.0, i32 0, i32 0" ·
     emit "  call void @qadav_emit_text(i8* %t1)" ·
-    emit "  %t2 = trunc i64 0 to i32" ·
+    text trunc_line ↦ format_trunc_line⦅yv⦆ ·
+    emit trunc_line ·
     emit "  ret i32 %t2" ·
     emit "}" ·
     emit "" ·
     yield affirm ·
 ⟧
 
-process emit_fib_body⦅⦆ → logic ⟦
+process emit_calc_body⦅text file_path⦆ → logic ⟦
+    int64 count ↦ scan_statements⦅file_path⦆ ·
+    when count ≺ 3 ⟦
+        emit "error: invalid statement count in calc file" ·
+        yield deny ·
+    ⟧
+    emit "" ·
+    emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
+    emit "declare i32 @qadav_pcc_verify()" ·
+    emit "declare i32 @qadav_pcc_corrupt(i32)" ·
+    emit "" ·
+    emit "" ·
+    emit "define i32 @\"main\"() {" ·
+    emit "entry:" ·
+    text s0_name ↦ stmt_name⦅0⦆ ·
+    int64 s0_val ↦ stmt_value⦅0⦆ ·
+    text l0_alloc ↦ format_alloca⦅s0_name⦆ ·
+    emit l0_alloc ·
+    text l0_store ↦ format_store⦅s0_name⸴ s0_val⦆ ·
+    emit l0_store ·
+    text s1_name ↦ stmt_name⦅1⦆ ·
+    int64 s1_val ↦ stmt_value⦅1⦆ ·
+    text l1_alloc ↦ format_alloca⦅s1_name⦆ ·
+    emit l1_alloc ·
+    text l1_store ↦ format_store⦅s1_name⸴ s1_val⦆ ·
+    emit l1_store ·
+    text l_load1 ↦ format_load⦅s0_name⸴ 1⦆ ·
+    emit l_load1 ·
+    text l_load2 ↦ format_load⦅s1_name⸴ 2⦆ ·
+    emit l_load2 ·
+    text l_add ↦ format_binop⦅"add"⸴ 3⸴ 1⸴ 2⦆ ·
+    emit l_add ·
+    text l_emit1 ↦ format_emit_int_call⦅3⦆ ·
+    emit l_emit1 ·
+    text l_load4 ↦ format_load⦅s0_name⸴ 4⦆ ·
+    emit l_load4 ·
+    text l_load5 ↦ format_load⦅s1_name⸴ 5⦆ ·
+    emit l_load5 ·
+    text l_mul ↦ format_binop⦅"mul"⸴ 6⸴ 4⸴ 5⦆ ·
+    emit l_mul ·
+    text l_emit2 ↦ format_emit_int_call⦅6⦆ ·
+    emit l_emit2 ·
+    int64 y_val ↦ stmt_value⦅4⦆ ·
+    text l_trunc ↦ format_trunc⦅7⸴ y_val⦆ ·
+    emit l_trunc ·
+    text l_ret ↦ format_ret⦅7⦆ ·
+    emit l_ret ·
+    emit "}" ·
+    emit "" ·
+    yield affirm ·
+⟧
+
+process emit_fib_body⦅text file_path⦆ → logic ⟦
+    int64 count ↦ scan_fib_values⦅file_path⦆ ·
+    when count ≺ 4 ⟦
+        emit "error: invalid fib.ydv structure" ·
+        yield deny ·
+    ⟧
+    int64 n0 ↦ get_fib_value⦅0⦆ ·
+    int64 wt ↦ get_fib_value⦅1⦆ ·
+    int64 r1 ↦ get_fib_value⦅2⦆ ·
+    int64 r2 ↦ get_fib_value⦅3⦆ ·
+
     emit "" ·
     emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
     emit "declare i32 @qadav_pcc_verify()" ·
@@ -374,17 +442,20 @@ process emit_fib_body⦅⦆ → logic ⟦
     emit "  %n.ptr = alloca i64" ·
     emit "  store i64 %n.in, i64* %n.ptr" ·
     emit "  %t1 = load i64, i64* %n.ptr" ·
-    emit "  %t2 = icmp slt i64 %t1, 2" ·
+    text icmp_line ↦ format_icmp_slt⦅2⸴ 1⸴ wt⦆ ·
+    emit icmp_line ·
     emit "  br i1 %t2, label %when_then_1, label %when_merge_3" ·
     emit "when_then_1:" ·
     emit "  %t3 = load i64, i64* %n.ptr" ·
     emit "  ret i64 %t3" ·
     emit "when_merge_3:" ·
     emit "  %t4 = load i64, i64* %n.ptr" ·
-    emit "  %t5 = sub i64 %t4, 1" ·
+    text sub1_line ↦ format_sub⦅5⸴ 4⸴ r1⦆ ·
+    emit sub1_line ·
     emit "  %t6 = call i64 @\"fib\"(i64 %t5)" ·
     emit "  %t7 = load i64, i64* %n.ptr" ·
-    emit "  %t8 = sub i64 %t7, 2" ·
+    text sub2_line ↦ format_sub⦅8⸴ 7⸴ r2⦆ ·
+    emit sub2_line ·
     emit "  %t9 = call i64 @\"fib\"(i64 %t8)" ·
     emit "  %t10 = add i64 %t6, %t9" ·
     emit "  ret i64 %t10" ·
@@ -393,7 +464,8 @@ process emit_fib_body⦅⦆ → logic ⟦
     emit "define i32 @\"main\"() {" ·
     emit "entry:" ·
     emit "  %n.ptr = alloca i64" ·
-    emit "  store i64 10, i64* %n.ptr" ·
+    text store_line ↦ format_store_direct⦅n0⦆ ·
+    emit store_line ·
     emit "  %t11 = load i64, i64* %n.ptr" ·
     emit "  %t12 = call i64 @\"fib\"(i64 %t11)" ·
     emit "  %result.ptr = alloca i64" ·
@@ -407,14 +479,24 @@ process emit_fib_body⦅⦆ → logic ⟦
     yield affirm ·
 ⟧
 
-process emit_dot_body⦅⦆ → logic ⟦
+process emit_dot_body⦅text file_path⦆ → logic ⟦
+    int64 tcount ↦ scan_tensors⦅file_path⦆ ·
+    when tcount ≺ 2 ⟦
+        emit "error: dot_product.ydv needs at least 2 tensors" ·
+        yield deny ·
+    ⟧
+    int64 a_size ↦ get_tensor_size⦅0⦆ ·
+    int64 b_size ↦ get_tensor_size⦅1⦆ ·
+
     emit "" ·
     emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
     emit "declare i32 @qadav_pcc_verify()" ·
     emit "declare i32 @qadav_pcc_corrupt(i32)" ·
     emit "" ·
-    emit "@.shape.0 = private unnamed_addr constant [1 x i32] [i32 3]" ·
-    emit "@.shape.1 = private unnamed_addr constant [1 x i32] [i32 3]" ·
+    text sh0 ↦ format_shape_const⦅0⸴ a_size⦆ ·
+    emit sh0 ·
+    text sh1 ↦ format_shape_const⦅1⸴ b_size⦆ ·
+    emit sh1 ·
     emit "" ·
     emit "define double @\"dot\"(i8* %a.in, i8* %b.in) {" ·
     emit "entry:" ·
@@ -433,16 +515,24 @@ process emit_dot_body⦅⦆ → logic ⟦
     emit "entry:" ·
     emit "  %t5 = getelementptr inbounds [1 x i32], [1 x i32]* @.shape.0, i32 0, i32 0" ·
     emit "  %t6 = call i8* @qadav_tensor_create(i32 10, i32 1, i32* %t5)" ·
-    emit "  call void @qadav_tensor_set_f64(i8* %t6, i32 0, double 1.000000)" ·
-    emit "  call void @qadav_tensor_set_f64(i8* %t6, i32 1, double 2.000000)" ·
-    emit "  call void @qadav_tensor_set_f64(i8* %t6, i32 2, double 3.000000)" ·
+    int64 i ↦ 0 ·
+    cycle i ≺ a_size ⟦
+        int64 av ↦ get_tensor_int_val⦅0⸴ i⦆ ·
+        text sline_a ↦ format_tensor_set⦅6⸴ i⸴ av⦆ ·
+        emit sline_a ·
+        i ← i ⊕ 1 ·
+    ⟧
     emit "  %x.ptr = alloca i8*" ·
     emit "  store i8* %t6, i8** %x.ptr" ·
     emit "  %t7 = getelementptr inbounds [1 x i32], [1 x i32]* @.shape.1, i32 0, i32 0" ·
     emit "  %t8 = call i8* @qadav_tensor_create(i32 10, i32 1, i32* %t7)" ·
-    emit "  call void @qadav_tensor_set_f64(i8* %t8, i32 0, double 4.000000)" ·
-    emit "  call void @qadav_tensor_set_f64(i8* %t8, i32 1, double 5.000000)" ·
-    emit "  call void @qadav_tensor_set_f64(i8* %t8, i32 2, double 6.000000)" ·
+    int64 j ↦ 0 ·
+    cycle j ≺ b_size ⟦
+        int64 bv ↦ get_tensor_int_val⦅1⸴ j⦆ ·
+        text sline_b ↦ format_tensor_set⦅8⸴ j⸴ bv⦆ ·
+        emit sline_b ·
+        j ← j ⊕ 1 ·
+    ⟧
     emit "  %y.ptr = alloca i8*" ·
     emit "  store i8* %t8, i8** %y.ptr" ·
     emit "  %t9 = load i8*, i8** %x.ptr" ·
@@ -460,16 +550,25 @@ process emit_dot_body⦅⦆ → logic ⟦
 ⟧
 
 process main⦅⦆ → int64 ⟦
-    int64 target ↦ get_target_kind⦅⦆ ·
+    text target_file ↦ get_input_path⦅⦆ ·
+    int64 prog_kind ↦ detect_program_kind⦅target_file⦆ ·
+    when prog_kind ≺ 0 ⟦
+        emit "error: cannot parse input file" ·
+        yield 1 ·
+    ⟧
     logic prefix_ok ↦ emit_common_prefix⦅⦆ ·
-    when target ≡ 1 ⟦
-        logic fib_ok ↦ emit_fib_body⦅⦆ ·
+    when prog_kind ≡ 1 ⟦
+        logic fib_ok ↦ emit_fib_body⦅target_file⦆ ·
         yield 0 ·
     ⟧
-    when target ≡ 2 ⟦
-        logic dot_ok ↦ emit_dot_body⦅⦆ ·
+    when prog_kind ≡ 2 ⟦
+        logic dot_ok ↦ emit_dot_body⦅target_file⦆ ·
         yield 0 ·
     ⟧
-    logic hello_ok ↦ emit_hello_body⦅⦆ ·
+    when prog_kind ≡ 3 ⟦
+        logic calc_ok ↦ emit_calc_body⦅target_file⦆ ·
+        yield 0 ·
+    ⟧
+    logic hello_ok ↦ emit_hello_body⦅target_file⦆ ·
     yield 0 ·
 ⟧

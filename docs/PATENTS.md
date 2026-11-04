@@ -1,4 +1,5 @@
 # Defensive Patent-Free Inventions Publication
+# (25 Total Innovations — 6 Defensive + 19 Patent-Pending)
 # पेटेंट-मुक्त रक्षात्मक नवाचार प्रकाशन
 
 This document serves as an open, irrevocable, prior-art defensive publication to ensure that the core techniques developed in Qadav cannot be patented by any commercial entity or closed ecosystem.
@@ -452,6 +453,24 @@ Conventional frameworks (PyTorch, TensorFlow, ONNX Runtime) depend on multi-giga
 3. Pre-execution runtime verification: validating certificate integrity before procedure entry point dispatch.
 4. Active quantum fail-stop tamper containment: triggering `ExitProcess(0xDEADBEEF)` immediately upon detecting any bit discrepancy in type certificates.
 5. Zero-libc C runtime module #44 integration: standalone implementation in `qadav_ctsa.c` / `qadav_ctsa.h` operating without libc or MSVCRT dependencies.
+
+---
+
+## 25. Invention #25: Proof-Carrying Codegen (PCC)
+## आविष्कार #25: प्रमाण-वाहक कोडजेन (PCC)
+
+- **Status / स्थिति:** PROPRIETARY (Patent Pending / पेटेंट लंबित)
+- **First disclosed / प्रथम प्रकटीकरण:** 2026-11-04
+- **Mechanism / कार्यप्रणाली:** A cryptographic certificate architecture binding LLVM IR emission to its source AST and codegen function execution path. Each codegen invocation produces a 104-byte certificate: `ast_hash[32] || codegen_path_hash[32] || ir_hash[32] || timestamp[8]`. Any tampering with AST, execution path, or IR triggers immediate active quantum decoherence (`ExitProcess(0xDEADBEEF)`).
+- **Novelty / नवीनता:** First compilation-proof system combining AST-to-IR cryptographic binding with active quantum fail-stop. Existing Proof-Carrying Code (Necula 1996) verifies binary safety properties, not compilation provenance.
+- **NOT open source / बंद स्रोत:** Proprietary Qadav feature.
+
+### Technical Claims / तकनीकी बिंदु:
+1. 104-byte cryptographic certificate preimage: `ast_hash[32] || codegen_path_hash[32] || ir_hash[32] || timestamp[8]` producing SHA3-256 certificate commitment.
+2. Hash chain binding AST structural hash to codegen function execution path hash to emitted IR hash.
+3. Pre-execution verification of complete codegen trace: replay codegen path → recompute hashes → constant-time compare.
+4. Active quantum fail-stop tamper containment: mismatch triggers `qadav_qeeh_trigger_decoherence(0)` + `ExitProcess(0xDEADBEEF)`.
+5. Pre-execution runtime verification integrated with `qyn build --verify-codegen` CLI flag.
 
 
 

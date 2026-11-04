@@ -1,0 +1,14 @@
+process fib⦅int64 n⦆ → int64 ⟦
+	when n ≺ 2 ⟦
+		yield n ·
+	⟧
+	yield fib⦅n ⊖ 1⦆ ⊕ fib⦅n ⊖ 2⦆ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+	int64 n ↦ 20 ·
+	int64 result ↦ fib⦅n⦆ ·
+	emit result ·
+	yield 0 ·
+⟧
+

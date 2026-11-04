@@ -47,6 +47,7 @@ type Generator struct {
 	modalities           map[string]modalityInfo
 	abstainPolicies      map[string]string
 	usesGetTargetKind    bool
+	usesDynamicIO        bool
 	sb                   strings.Builder
 }
 
@@ -542,6 +543,35 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 
 	if g.usesGetTargetKind {
 		header.WriteString("declare i64 @get_target_kind()\n\n")
+	}
+	if g.usesDynamicIO {
+		header.WriteString("declare i8* @get_input_path()\n")
+		header.WriteString("declare i64 @extract_yield_number(i8*)\n")
+		header.WriteString("declare i8* @format_trunc_line(i64)\n")
+		header.WriteString("declare i64 @detect_program_kind(i8*)\n")
+		header.WriteString("declare i64 @scan_statements(i8*)\n")
+		header.WriteString("declare i64 @stmt_kind(i64)\n")
+		header.WriteString("declare i8* @stmt_name(i64)\n")
+		header.WriteString("declare i64 @stmt_value(i64)\n")
+		header.WriteString("declare i8* @stmt_expr(i64)\n")
+		header.WriteString("declare i8* @format_alloca(i8*)\n")
+		header.WriteString("declare i8* @format_store(i8*, i64)\n")
+		header.WriteString("declare i8* @format_load(i8*, i64)\n")
+		header.WriteString("declare i8* @format_binop(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_emit_int_call(i64)\n")
+		header.WriteString("declare i8* @format_trunc(i64, i64)\n")
+		header.WriteString("declare i8* @format_ret(i64)\n")
+		header.WriteString("declare i64 @scan_fib_values(i8*)\n")
+		header.WriteString("declare i64 @get_fib_value(i64)\n")
+		header.WriteString("declare i8* @format_icmp_slt(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_sub(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_store_direct(i64)\n")
+		header.WriteString("declare i64 @scan_tensors(i8*)\n")
+		header.WriteString("declare i8* @get_tensor_name(i64)\n")
+		header.WriteString("declare i64 @get_tensor_size(i64)\n")
+		header.WriteString("declare i64 @get_tensor_int_val(i64, i64)\n")
+		header.WriteString("declare i8* @format_shape_const(i64, i64)\n")
+		header.WriteString("declare i8* @format_tensor_set(i64, i64, i64)\n\n")
 	}
 
 	// Quantum global state
@@ -1693,6 +1723,17 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 		if ident, ok := e.Func.(*ast.Ident); ok {
 			if ident.Name == "get_target_kind" {
 				g.usesGetTargetKind = true
+			}
+			if ident.Name == "get_input_path" || ident.Name == "extract_yield_number" || ident.Name == "format_trunc_line" ||
+				ident.Name == "detect_program_kind" || ident.Name == "scan_statements" ||
+				ident.Name == "stmt_kind" || ident.Name == "stmt_name" || ident.Name == "stmt_value" || ident.Name == "stmt_expr" ||
+				ident.Name == "format_alloca" || ident.Name == "format_store" || ident.Name == "format_load" ||
+				ident.Name == "format_binop" || ident.Name == "format_emit_int_call" || ident.Name == "format_trunc" || ident.Name == "format_ret" ||
+				ident.Name == "scan_fib_values" || ident.Name == "get_fib_value" || ident.Name == "format_icmp_slt" ||
+				ident.Name == "format_sub" || ident.Name == "format_store_direct" ||
+				ident.Name == "scan_tensors" || ident.Name == "get_tensor_name" || ident.Name == "get_tensor_size" ||
+				ident.Name == "get_tensor_int_val" || ident.Name == "format_shape_const" || ident.Name == "format_tensor_set" {
+				g.usesDynamicIO = true
 			}
 			if g.checker != nil && g.checker.Networks() != nil {
 				if netInfo, ok := g.checker.Networks()[ident.Name]; ok && len(e.Args) == 1 {

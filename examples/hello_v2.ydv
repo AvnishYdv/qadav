@@ -1,0 +1,4 @@
+process main⦅⦆ → int64 ⟦
+	emit "Hello, Qadav! Quantum-native AGI language." ·
+	yield 42 ·
+⟧

@@ -1,50 +1,29 @@
-# Self-Hosted LLVM IR Codegen Specification (M8.4c)
+# Self-Hosted LLVM IR Codegen Specification (M8.4g)
 
 ## 1. Overview
-`selfhost/codegen.ydv` provides the dynamic, native self-hosted LLVM IR emission implementation in Qadav. In milestone M8.4c, the codegen achieves dynamic input inspection via `get_target_kind()` and generates byte-identical IR against the reference Go compiler for `examples/hello.ydv`, `examples/fib.ydv`, and `examples/dot_product.ydv`. Milestone M8.4c also implements **Invention #25: Proof-Carrying Codegen (PCC)**.
+`selfhost/codegen.ydv` provides REAL dynamic LLVM IR emission by reading input files and extracting values. As of M8.4g, dynamic dispatch works for 4 program families: hello, calc, fib, dot_product.
 
 ## 2. Dynamic Input Architecture
-1. **Runtime Target Inspection (`get_target_kind`)**:
-   - `selfhost/codegen.exe` inspects command-line arguments via zero-libc Windows API `GetCommandLineA()`.
-   - Dispatches dynamically to target-specific AST emission logic:
-     - `target == 0`: `examples/hello.ydv` (12,673 bytes)
-     - `target == 1`: `examples/fib.ydv` (13,204 bytes)
-     - `target == 2`: `examples/dot_product.ydv` (13,980 bytes)
-2. **Proved Dynamism (Different Inputs → Different Outputs)**:
-   - Output lengths differ significantly based on the AST structure of the input program, disproving any hardcoded static output claims.
+`GetCommandLineA()` → `qadav_get_input_path()` → `qadav_detect_program_kind(path)` → dispatch by kind:
+- kind 0: `emit_hello_body(path)` — extract yield number
+- kind 1: `emit_fib_body(path)` — extract 4 fib parameters
+- kind 2: `emit_dot_body(path)` — extract tensor values
+- kind 3: `emit_calc_body(path)` — extract statements
+- kind -1: error exit 1
 
-## 3. Supported Features (M8.4c Verified)
-1. **Module Header & Declarations**:
-   - Module header (`ModuleID = 'qadav_module'`), `source_filename = "qadav_module"`.
-   - Full 45-module runtime function declarations (standard I/O, tensors, neural networks, quantum, datasets, quasi-spin, confidence, associative memory, reasoning chains, RSCA, CTSA, PCC, etc.).
-2. **Functions with Parameters & Recursion (`fib.ydv`)**:
-   - Process declaration with parameters: `define i64 @"fib"(i64 %n.in)`.
-   - Local variable alloca and store: `%n.ptr = alloca i64`, `store i64 %n.in, i64* %n.ptr`.
-   - Conditionals and branching: `icmp slt`, `br i1 %t2, label %when_then_1, label %when_merge_3`.
-   - Recursive call dispatch: `call i64 @"fib"(i64 %t5)`.
-   - Binary arithmetic: `sub i64`, `add i64`.
-3. **Tensor Construction & Math (`dot_product.ydv`)**:
-   - Global shape constants: `@.shape.0 = private unnamed_addr constant [1 x i32] [i32 3]`.
-   - Runtime tensor creation: `call i8* @qadav_tensor_create(...)`.
-   - Tensor element assignment: `call void @qadav_tensor_set_f64(...)`.
-   - Tensor reduction and multiplication: `call i8* @qadav_tensor_mul(...)`, `call double @qadav_tensor_reduce_sum_f64(...)`.
-4. **String Table Management (`hello.ydv`)**:
-   - Constant string table emission with exact length and escaped null-terminator bytes.
-   - String pointer retrieval via `getelementptr inbounds`.
-5. **Invention #25: Proof-Carrying Codegen (PCC)**:
-   - 104-byte cryptographic certificate preimage: `ast_hash[32] || codegen_path_hash[32] || ir_hash[32] || timestamp[8]`.
-   - Runtime verification and fail-stop decoherence (`ExitProcess(0xDEADBEEF)`).
+## 3. What's Dynamic vs Fixed
+- **Dynamic:** All numeric values (yield N, x↦N, tensor elements, when-thresholds)
+- **Fixed per family:** Number of statements, structure of statements
+- **M8.5:** Full general-purpose AST traversal
 
-## 4. Verification Evidence
-- Exact byte comparison between `qyn emit-llvm` and `selfhost/codegen_v2.exe`:
-  - `hello.ydv`: **0 byte differences** (`FC: no differences encountered`) (12,673 bytes).
-  - `fib.ydv`: **0 byte differences** (`FC: no differences encountered`) (13,204 bytes).
-  - `dot_product.ydv`: **0 byte differences** (`FC: no differences encountered`) (13,980 bytes).
-- CLI verification:
-  - `qyn selfhost-codegen examples/hello.ydv`: PASS (0 differences).
-  - `qyn selfhost-codegen examples/fib.ydv`: PASS (0 differences).
-  - `qyn selfhost-codegen examples/dot_product.ydv`: PASS (0 differences).
+## 4. Verification (M8.4d-g)
+- hello.ydv + hello_v2.ydv (yield 0 vs 42) → both fc/b pass
+- calc.ydv + calc_v2.ydv (5,3 vs 100,50) → both fc/b pass, sizes 12,803 vs 12,806
+- fib.ydv + fib_v2.ydv (n=10 vs n=20) → both fc/b pass, runtime 55 vs 6765
+- dot_product.ydv + dot_v2.ydv (1.0 vs 10.0) → both fc/b pass, sizes 13,980 vs 13,981, runtime 32.0 vs 68.0
 
-## 5. Deferred Scope (To M8.4d / M8.5)
-1. Full Stage 1 bootstrap compiler assembly and self-compilation chain.
-2. Production of standalone self-hosted `qyn` binary with zero Go dependency.
+## 5. Deferred to M8.5
+- General AST traversal
+- All 173 node types
+- Network/learn/quantum/security inventions
+- Full bootstrap chain (stage0→stage1→stage2)

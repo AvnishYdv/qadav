@@ -22,5 +22,15 @@ int   qadav_file_read(void* handle, void* buf, unsigned long long len);
 int   qadav_file_write(void* handle, const void* buf, unsigned long long len);
 void  qadav_file_close(void* handle);
 
+const char* qadav_get_input_path(void);
+long long   qadav_extract_yield_number(const char* path);
+const char* qadav_format_trunc_line(long long val);
+
+int         qadav_scan_fib_values(const char* path);
+long long   qadav_get_fib_value(long long idx);
+const char* qadav_format_icmp_slt(long long t_cur, long long t_prev, long long val);
+const char* qadav_format_sub(long long t_cur, long long t_prev, long long val);
+const char* qadav_format_store_direct(long long val);
+
 #endif
 

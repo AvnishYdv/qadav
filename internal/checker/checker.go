@@ -47,6 +47,221 @@ func New() *Checker {
 			Results: []*types.Type{types.Int64},
 		},
 	})
+	_ = global.Define(&Symbol{
+		Name: "get_input_path",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "extract_yield_number",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_trunc_line",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "detect_program_kind",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "scan_statements",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "stmt_kind",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "stmt_name",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "stmt_value",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "stmt_expr",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_alloca",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_store",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_load",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_binop",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text, types.Int64, types.Int64, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_emit_int_call",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_trunc",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_ret",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "scan_fib_values",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "get_fib_value",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_icmp_slt",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_sub",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_store_direct",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "scan_tensors",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "get_tensor_name",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "get_tensor_size",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "get_tensor_int_val",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64, types.Int64},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_shape_const",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_tensor_set",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
 	return &Checker{
 		globalScope:       global,
 		curScope:          global,

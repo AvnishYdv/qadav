@@ -55,6 +55,20 @@ long long get_target_kind(void) {
     return 0;
 }
 
+const char* get_input_path(void) {
+    return "";
+}
+
+long long extract_yield_number(const char* path) {
+    (void)path;
+    return -1;
+}
+
+const char* format_trunc_line(long long val) {
+    (void)val;
+    return "";
+}
+
 static int int_to_str(long long v, char* buf) {
     int i = 0;
     if (v == 0) {

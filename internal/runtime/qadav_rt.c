@@ -41,6 +41,145 @@ long long get_target_kind(void) {
     return 0;
 }
 
+const char* qadav_get_input_path(void);
+long long   qadav_extract_yield_number(const char* path);
+const char* qadav_format_trunc_line(long long val);
+
+long long   qadav_detect_program_kind(const char* path);
+long long   qadav_scan_statements(const char* path);
+long long   qadav_stmt_kind(long long idx);
+const char* qadav_stmt_name(long long idx);
+long long   qadav_stmt_value(long long idx);
+const char* qadav_stmt_expr(long long idx);
+const char* qadav_format_alloca(const char* name);
+const char* qadav_format_store(const char* name, long long val);
+const char* qadav_format_load(const char* name, long long temp_id);
+const char* qadav_format_binop(const char* op, long long res_temp, long long t1, long long t2);
+const char* qadav_format_emit_int_call(long long temp_id);
+const char* qadav_format_trunc(long long temp_id, long long val);
+const char* qadav_format_ret(long long temp_id);
+
+int         qadav_scan_fib_values(const char* path);
+long long   qadav_get_fib_value(long long idx);
+const char* qadav_format_icmp_slt(long long t_cur, long long t_prev, long long val);
+const char* qadav_format_sub(long long t_cur, long long t_prev, long long val);
+const char* qadav_format_store_direct(long long val);
+
+int         qadav_scan_tensors(const char* path);
+const char* qadav_get_tensor_name(long long idx);
+long long   qadav_get_tensor_size(long long idx);
+long long   qadav_get_tensor_int_val(long long t_idx, long long e_idx);
+const char* qadav_format_shape_const(long long shape_idx, long long size);
+const char* qadav_format_tensor_set(long long t_temp, long long elem_idx, long long int_val);
+
+const char* get_input_path(void) {
+    return qadav_get_input_path();
+}
+
+long long extract_yield_number(const char* path) {
+    return qadav_extract_yield_number(path);
+}
+
+const char* format_trunc_line(long long val) {
+    return qadav_format_trunc_line(val);
+}
+
+long long detect_program_kind(const char* path) {
+    return qadav_detect_program_kind(path);
+}
+
+long long scan_statements(const char* path) {
+    return qadav_scan_statements(path);
+}
+
+long long stmt_kind(long long idx) {
+    return qadav_stmt_kind(idx);
+}
+
+const char* stmt_name(long long idx) {
+    return qadav_stmt_name(idx);
+}
+
+long long stmt_value(long long idx) {
+    return qadav_stmt_value(idx);
+}
+
+const char* stmt_expr(long long idx) {
+    return qadav_stmt_expr(idx);
+}
+
+const char* format_alloca(const char* name) {
+    return qadav_format_alloca(name);
+}
+
+const char* format_store(const char* name, long long val) {
+    return qadav_format_store(name, val);
+}
+
+const char* format_load(const char* name, long long temp_id) {
+    return qadav_format_load(name, temp_id);
+}
+
+const char* format_binop(const char* op, long long res_temp, long long t1, long long t2) {
+    return qadav_format_binop(op, res_temp, t1, t2);
+}
+
+const char* format_emit_int_call(long long temp_id) {
+    return qadav_format_emit_int_call(temp_id);
+}
+
+const char* format_trunc(long long temp_id, long long val) {
+    return qadav_format_trunc(temp_id, val);
+}
+
+const char* format_ret(long long temp_id) {
+    return qadav_format_ret(temp_id);
+}
+
+long long scan_fib_values(const char* path) {
+    return qadav_scan_fib_values(path);
+}
+
+long long get_fib_value(long long idx) {
+    return qadav_get_fib_value(idx);
+}
+
+const char* format_icmp_slt(long long t_cur, long long t_prev, long long val) {
+    return qadav_format_icmp_slt(t_cur, t_prev, val);
+}
+
+const char* format_sub(long long t_cur, long long t_prev, long long val) {
+    return qadav_format_sub(t_cur, t_prev, val);
+}
+
+const char* format_store_direct(long long val) {
+    return qadav_format_store_direct(val);
+}
+
+long long scan_tensors(const char* path) {
+    return qadav_scan_tensors(path);
+}
+
+const char* get_tensor_name(long long idx) {
+    return qadav_get_tensor_name(idx);
+}
+
+long long get_tensor_size(long long idx) {
+    return qadav_get_tensor_size(idx);
+}
+
+long long get_tensor_int_val(long long t_idx, long long e_idx) {
+    return qadav_get_tensor_int_val(t_idx, e_idx);
+}
+
+const char* format_shape_const(long long shape_idx, long long size) {
+    return qadav_format_shape_const(shape_idx, size);
+}
+
+const char* format_tensor_set(long long t_temp, long long elem_idx, long long int_val) {
+    return qadav_format_tensor_set(t_temp, elem_idx, int_val);
+}
+
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);
 }

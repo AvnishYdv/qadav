@@ -2472,6 +2472,56 @@ qyn run --test examples\rsca_tamper.ydv
 Output: Active quantum decoherence nullifies register and terminates process immediately (`0xDEADBEEF`).  
 Exit code: `0xdeadbeef` (`-559038737`)
 
+---
+
+## 62. Dynamic Codegen Calc Demo (M8.4e) / डायनामिक कोडजेन गणना डेमो
+
+File: `examples/calc.ydv`
+
+```qadav
+process main⦅⦆ → int64 ⟦
+    int64 x ↦ 5 ·
+    int64 y ↦ 3 ·
+    emit x ⊕ y ·
+    emit x ⊗ y ·
+    yield 0 ·
+⟧
+```
+
+Execution: outputs `8` and `15`, exit code 0. Used for M8.4e dynamic codegen verification.
+
+**Killer variant:** `examples/calc_v2.ydv` with `x ↦ 100, y ↦ 50` outputs `150` and `5000`. Byte-identical fc/b to Go reference.
+
+---
+
+## 63. Dynamic Codegen Hello Variant (M8.4d) / डायनामिक कोडजेन हेलो वेरिएंट
+
+File: `examples/hello_v2.ydv`
+
+Same as hello.ydv but with `yield 42` instead of `yield 0`. Used to prove M8.4d codegen actually reads the input file (not hardcoded lookup).
+
+Byte-identical to Go reference (12,674 bytes).
+
+---
+
+## 64. Dynamic Codegen Fib Variant (M8.4f) / डायनामिक कोडजेन फिब वेरिएंट
+
+File: `examples/fib_v2.ydv`
+
+Same as fib.ydv but with `int64 n ↦ 20` instead of `int64 n ↦ 10`. Used to prove M8.4f dynamic fib codegen.
+
+Runtime output: fib(20) = 6765 (vs fib(10) = 55 in original).
+
+---
+
+## 65. Dynamic Codegen Dot Product Variant (M8.4g) / डायनामिक कोडजेन डॉट प्रोडक्ट वेरिएंट
+
+File: `examples/dot_v2.ydv`
+
+Same as dot_product.ydv but with first element of `x` changed from `1.0` to `10.0`. Used to prove M8.4g dynamic tensor codegen.
+
+Runtime output: 68.000000 (vs 32.000000 in original) — `10×4 + 2×5 + 3×6 = 68`.
+
 
 
 
