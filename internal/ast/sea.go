@@ -44,4 +44,3 @@ type CorruptEvolveStmt struct {
 
 func (s *CorruptEvolveStmt) Pos() Position { return s.Pos_ }
 func (s *CorruptEvolveStmt) stmtNode()     {}
-

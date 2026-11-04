@@ -31,4 +31,3 @@ func (g *Generator) genConsolidateStmt(s *ast.ConsolidateStmt) {
 	resTemp := g.nextTemp()
 	fmt.Fprintf(&g.sb, "  %s = call i32 @qadav_consolidate_memory(i8* %s, i8* %s, double %f, i8* %s)\n", resTemp, mpVal.Ref, graphVal.Ref, threshold, bRef)
 }
-

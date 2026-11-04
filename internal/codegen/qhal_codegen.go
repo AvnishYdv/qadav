@@ -47,4 +47,3 @@ func (g *Generator) genQASMExportStmt(s *ast.QASMExportStmt) {
 		fmt.Fprintf(&g.sb, "  store i8* %s, i8** %s\n", bufTemp, slot.ptr)
 	}
 }
-

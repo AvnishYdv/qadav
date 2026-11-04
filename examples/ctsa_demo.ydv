@@ -1,0 +1,7 @@
+process main⦅⦆ → int64 ⟦
+    ctsa_attest ast ↦ "ast_tree" env ↦ "type_env" rules ↦ "type_rules" into cert0 ·
+    ctsa_verify cert0 into v0 ·
+    emit "CTSA certificate verified" ·
+    emit v0 ·
+    yield 0 ·
+⟧

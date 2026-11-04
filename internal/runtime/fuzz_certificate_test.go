@@ -63,4 +63,3 @@ func FuzzAbstainThreshold(f *testing.F) {
 		_ = valid
 	})
 }
-

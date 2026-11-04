@@ -114,4 +114,3 @@ func (g *Generator) genToolCallExpr(e *ast.ToolCallExpr) Value {
 	fmt.Fprintf(&g.sb, "  %s = sext i32 %s to i64\n", convTemp, resTemp)
 	return Value{Type: "i64", Ref: convTemp, QType: types.Int64}
 }
-

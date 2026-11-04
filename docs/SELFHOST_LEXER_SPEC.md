@@ -75,3 +75,4 @@ The lexer is automatically verified via:
    - Asserts exact byte-for-byte identity (`diff` length and content).
 2. Go Test Suite:
    - `internal/lexer/selfhost_test.go`: `TestSelfHostedLexerByteIdentical`, `TestLexerUnicodeRoundtrip`, `TestLexerErrorRecovery`.
+

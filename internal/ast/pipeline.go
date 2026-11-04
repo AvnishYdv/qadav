@@ -24,4 +24,3 @@ type PipelineRunStmt struct {
 
 func (s *PipelineRunStmt) Pos() Position { return s.Pos_ }
 func (s *PipelineRunStmt) stmtNode()     {}
-

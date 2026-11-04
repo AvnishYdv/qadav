@@ -11,4 +11,3 @@ type ConsolidateStmt struct {
 
 func (s *ConsolidateStmt) Pos() Position { return s.Pos_ }
 func (s *ConsolidateStmt) stmtNode()     {}
-

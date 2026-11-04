@@ -31,4 +31,3 @@ func (c *Checker) checkConsolidateStmt(s *ast.ConsolidateStmt) {
 		}
 	}
 }
-

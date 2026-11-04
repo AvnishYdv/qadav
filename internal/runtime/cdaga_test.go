@@ -47,4 +47,3 @@ func TestCDAGAASLRDeterminism(t *testing.T) {
 	}
 	t.Logf("CDAGA ASLR determinism verified: %s", out)
 }
-

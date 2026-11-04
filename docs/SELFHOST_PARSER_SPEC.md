@@ -61,3 +61,4 @@ AST equivalence is verified automatically via:
    - Asserts 0 byte differences between the two canonical S-expressions.
 2. Go Test Suite:
    - `internal/parser/selfhost_test.go`: `TestSelfHostedParserByteIdentical`, `TestParserErrorRecovery`.
+

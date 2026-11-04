@@ -68,4 +68,3 @@ func TestScopedBoundaryNotDisclosed(t *testing.T) {
 	}
 	t.Logf("Scoped boundary not disclosed verified: %s", out)
 }
-

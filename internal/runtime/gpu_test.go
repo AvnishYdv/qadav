@@ -56,4 +56,3 @@ func TestAGKETamperDetection(t *testing.T) {
 	}
 	t.Logf("AGKE tamper detected and decoherence triggered correctly: %v", err)
 }
-

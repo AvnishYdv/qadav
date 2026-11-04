@@ -120,4 +120,3 @@ func (c *Checker) checkCorruptSyndromeStmt(s *ast.CorruptSyndromeStmt) {
 		}
 	}
 }
-

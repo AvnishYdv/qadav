@@ -20,4 +20,3 @@ type QHALBackendAnnotation struct {
 
 func (s *QHALBackendAnnotation) Pos() Position { return s.Pos_ }
 func (s *QHALBackendAnnotation) stmtNode()     {}
-

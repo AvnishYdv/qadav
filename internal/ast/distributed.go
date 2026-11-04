@@ -33,4 +33,3 @@ type PserverAggregateStmt struct {
 
 func (s *PserverAggregateStmt) Pos() Position { return s.Pos_ }
 func (s *PserverAggregateStmt) stmtNode()     {}
-

@@ -44,4 +44,3 @@ func TestIntegration_FullPipeline(t *testing.T) {
 	}
 	t.Logf("Integration Full Pipeline verified: %s", out)
 }
-

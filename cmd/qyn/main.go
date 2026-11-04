@@ -42,6 +42,8 @@ func main() {
 		os.Exit(runSelfhostLexer(os.Args[2:]))
 	case "selfhost-parser":
 		os.Exit(runSelfhostParser(os.Args[2:]))
+	case "selfhost-check":
+		os.Exit(runSelfhostCheck(os.Args[2:]))
 	case "help", "--help", "-h":
 		showUsage()
 		os.Exit(0)
@@ -70,6 +72,7 @@ Commands:
   emit-ast <file>     Emit canonical S-expression AST
   selfhost-lexer <file> Run self-hosted lexical tokenizer
   selfhost-parser <file> Run self-hosted parser AST generator
+  selfhost-check <file>  Run self-hosted type checker
   doctor              Check environment health (LLVM, Go, etc.)
   version             Display version
   help                Show this message

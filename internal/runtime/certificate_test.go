@@ -36,4 +36,3 @@ func TestAbstainLifecycle(t *testing.T) {
 	}
 	t.Logf("Abstain lifecycle verified: %s", out)
 }
-

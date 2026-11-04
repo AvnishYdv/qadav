@@ -99,4 +99,3 @@ func TestCheckerSEAUndefinedSymbols(t *testing.T) {
 		t.Fatalf("expected 3 undefined symbol errors, got %d: %v", len(errs), errs)
 	}
 }
-

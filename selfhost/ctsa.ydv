@@ -1,0 +1,14 @@
+record CTSACertificate ⟦ ast_hash ↦ text · type_env_hash ↦ text · rule_chain_hash ↦ text · num_signatures ↦ int64 · num_fields ↦ int64 · cert_hash ↦ text · is_verified ↦ logic · ⟧
+
+process create_cert⦅text a⸴ text te⸴ text rc⸴ int64 ns⸴ int64 nf⦆ → CTSACertificate ⟦
+    CTSACertificate c ↦ record_init CTSACertificate ⟦ ast_hash ↦ a ⸴ type_env_hash ↦ te ⸴ rule_chain_hash ↦ rc ⸴ num_signatures ↦ ns ⸴ num_fields ↦ nf ⸴ cert_hash ↦ a ⸴ is_verified ↦ affirm · ⟧ ·
+    yield c ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    CTSACertificate cert ↦ create_cert⦅"ast_sha3_hash"⸴ "env_sha3_hash"⸴ "rule_rolling_hash"⸴ 14⸴ 28⦆ ·
+    emit cert.num_signatures ·
+    emit cert.num_fields ·
+    emit cert.is_verified ·
+    yield 0 ·
+⟧

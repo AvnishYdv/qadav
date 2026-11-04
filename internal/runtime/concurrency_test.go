@@ -28,4 +28,3 @@ func TestConcurrency_ThreadSafety(t *testing.T) {
 
 	wg.Wait()
 }
-

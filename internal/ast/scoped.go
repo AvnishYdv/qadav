@@ -47,4 +47,3 @@ type ScopedRecallExpr struct {
 
 func (s *ScopedRecallExpr) Pos() Position { return s.Pos_ }
 func (s *ScopedRecallExpr) exprNode()     {}
-

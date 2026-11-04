@@ -30,4 +30,3 @@ type CrossModalReasonStmt struct {
 
 func (s *CrossModalReasonStmt) Pos() Position { return s.Pos_ }
 func (s *CrossModalReasonStmt) stmtNode()     {}
-

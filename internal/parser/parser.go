@@ -657,6 +657,12 @@ func (p *Parser) parseStatement() ast.Stmt {
 		return p.parseRSCAVerifyStmt()
 	case p.current.Type == token.CORRUPT_RSCA:
 		return p.parseCorruptRSCAStmt()
+	case p.current.Type == token.CTSA_ATTEST:
+		return p.parseCTSAAttestStmt()
+	case p.current.Type == token.CTSA_VERIFY:
+		return p.parseCTSAVerifyStmt()
+	case p.current.Type == token.CORRUPT_CTSA:
+		return p.parseCorruptCTSAStmt()
 	case isTypeToken(p.current.Type) || (p.current.Type == token.IDENT && p.peeked.Type == token.IDENT):
 		return p.parseBindStmt()
 	case p.current.Type == token.EMIT:
@@ -5254,5 +5260,126 @@ func (p *Parser) parseCorruptRSCAStmt() *ast.CorruptRSCAStmt {
 		Pos_:   pos,
 		Record: rec,
 		Offset: offset,
+	}
+}
+
+func (p *Parser) parseCTSAAttestStmt() *ast.CTSAAttestStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'ctsa_attest'
+
+	astName := ""
+	envName := ""
+	rulesName := ""
+	intoName := ""
+
+	for p.current.Type != token.STMT_END && p.current.Type != token.EOF {
+		lit := p.current.Literal
+		if lit == "ast" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT || p.current.Type == token.STRING {
+				astName = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "env" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT || p.current.Type == token.STRING {
+				envName = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "rules" {
+			p.nextToken()
+			if p.current.Type == token.BIND {
+				p.nextToken()
+			}
+			if p.current.Type == token.IDENT || p.current.Type == token.STRING {
+				rulesName = p.current.Literal
+				p.nextToken()
+			}
+		} else if lit == "into" {
+			p.nextToken()
+			if p.current.Type == token.IDENT {
+				intoName = p.current.Literal
+				p.nextToken()
+			}
+		} else {
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.CTSAAttestStmt{
+		Pos_:  pos,
+		Ast:   astName,
+		Env:   envName,
+		Rules: rulesName,
+		Into:  intoName,
+	}
+}
+
+func (p *Parser) parseCTSAVerifyStmt() *ast.CTSAVerifyStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'ctsa_verify'
+
+	certName := ""
+	if p.current.Type == token.IDENT {
+		certName = p.current.Literal
+		p.nextToken()
+	}
+
+	intoName := ""
+	if p.current.Literal == "into" {
+		p.nextToken()
+		if p.current.Type == token.IDENT {
+			intoName = p.current.Literal
+			p.nextToken()
+		}
+	}
+
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.CTSAVerifyStmt{
+		Pos_: pos,
+		Cert: certName,
+		Into: intoName,
+	}
+}
+
+func (p *Parser) parseCorruptCTSAStmt() *ast.CorruptCTSAStmt {
+	pos := p.curPos()
+	p.nextToken() // consume 'corrupt_ctsa'
+
+	certName := ""
+	if p.current.Type == token.IDENT {
+		certName = p.current.Literal
+		p.nextToken()
+	}
+
+	if p.current.Literal == "field" {
+		p.nextToken()
+	}
+	if p.current.Type == token.BIND {
+		p.nextToken()
+	}
+
+	fieldExpr := p.parseExpression(LOWEST)
+	if p.current.Type == token.STMT_END {
+		p.nextToken()
+	}
+
+	return &ast.CorruptCTSAStmt{
+		Pos_:  pos,
+		Cert:  certName,
+		Field: fieldExpr,
 	}
 }

@@ -116,4 +116,3 @@ type CorruptGPUDigestStmt struct {
 
 func (s *CorruptGPUDigestStmt) Pos() Position { return s.Pos_ }
 func (s *CorruptGPUDigestStmt) stmtNode()     {}
-

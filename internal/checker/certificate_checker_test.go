@@ -281,10 +281,10 @@ func TestCertificateChecker_InvalidCases(t *testing.T) {
 	// Invalid threshold (< 0.0)
 	c.errors = nil
 	dThresh := &ast.AbstainThresholdDecl{
-		Pos_:       pos,
-		Chain:      &ast.Ident{Pos_: pos, Name: "logic_chain"},
-		Threshold:  &ast.FloatLit{Pos_: pos, Value: -0.1},
-		Mode:       token.REFUSE,
+		Pos_:      pos,
+		Chain:     &ast.Ident{Pos_: pos, Name: "logic_chain"},
+		Threshold: &ast.FloatLit{Pos_: pos, Value: -0.1},
+		Mode:      token.REFUSE,
 	}
 	c.checkAbstainThresholdDecl(dThresh)
 	if len(c.errors) == 0 {
@@ -294,10 +294,10 @@ func TestCertificateChecker_InvalidCases(t *testing.T) {
 	// Invalid threshold (> 1.0)
 	c.errors = nil
 	dThreshHigh := &ast.AbstainThresholdDecl{
-		Pos_:       pos,
-		Chain:      &ast.Ident{Pos_: pos, Name: "logic_chain"},
-		Threshold:  &ast.FloatLit{Pos_: pos, Value: 1.1},
-		Mode:       token.REFUSE,
+		Pos_:      pos,
+		Chain:     &ast.Ident{Pos_: pos, Name: "logic_chain"},
+		Threshold: &ast.FloatLit{Pos_: pos, Value: 1.1},
+		Mode:      token.REFUSE,
 	}
 	c.checkAbstainThresholdDecl(dThreshHigh)
 	if len(c.errors) == 0 {
@@ -307,10 +307,10 @@ func TestCertificateChecker_InvalidCases(t *testing.T) {
 	// Invalid threshold type
 	c.errors = nil
 	dThreshType := &ast.AbstainThresholdDecl{
-		Pos_:       pos,
-		Chain:      &ast.Ident{Pos_: pos, Name: "logic_chain"},
-		Threshold:  &ast.StringLit{Pos_: pos, Value: "strict"},
-		Mode:       token.REFUSE,
+		Pos_:      pos,
+		Chain:     &ast.Ident{Pos_: pos, Name: "logic_chain"},
+		Threshold: &ast.StringLit{Pos_: pos, Value: "strict"},
+		Mode:      token.REFUSE,
 	}
 	c.checkAbstainThresholdDecl(dThreshType)
 	if len(c.errors) == 0 {
@@ -320,10 +320,10 @@ func TestCertificateChecker_InvalidCases(t *testing.T) {
 	// Invalid mode
 	c.errors = nil
 	dMode := &ast.AbstainThresholdDecl{
-		Pos_:       pos,
-		Chain:      &ast.Ident{Pos_: pos, Name: "logic_chain"},
-		Threshold:  &ast.FloatLit{Pos_: pos, Value: 0.5},
-		Mode:       token.Type("INVALID"),
+		Pos_:      pos,
+		Chain:     &ast.Ident{Pos_: pos, Name: "logic_chain"},
+		Threshold: &ast.FloatLit{Pos_: pos, Value: 0.5},
+		Mode:      token.Type("INVALID"),
 	}
 	c.checkAbstainThresholdDecl(dMode)
 	if len(c.errors) == 0 {

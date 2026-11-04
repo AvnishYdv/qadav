@@ -52,3 +52,25 @@ func runSelfhostParser(args []string) int {
 	fmt.Println(sexpr)
 	return 0
 }
+
+func runSelfhostCheck(args []string) int {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Usage: qyn selfhost-check <file.ydv>")
+		return 1
+	}
+
+	filename := args[0]
+	srcBytes, err := os.ReadFile(filename)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "qyn selfhost-check: error reading %s: %v\n", filename, err)
+		return 1
+	}
+
+	msg, code := selfhost.CheckSource(string(srcBytes), filename)
+	if code != 0 {
+		fmt.Fprint(os.Stderr, msg)
+		return code
+	}
+	fmt.Print(msg)
+	return 0
+}

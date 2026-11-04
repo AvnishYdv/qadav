@@ -44,4 +44,3 @@ func TestSandboxLifecycle(t *testing.T) {
 	}
 	t.Logf("Sandbox lifecycle verified: %s", out)
 }
-

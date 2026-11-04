@@ -20,4 +20,3 @@ func TestMultiGPURunFallback(t *testing.T) {
 	}
 	t.Logf("multigpu run fallback verified: %s", out)
 }
-

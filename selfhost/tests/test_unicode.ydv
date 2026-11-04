@@ -11,3 +11,4 @@ process main⦅⦆ → int64 ⟦
     emit d ·
     yield 0 ·
 ⟧
+

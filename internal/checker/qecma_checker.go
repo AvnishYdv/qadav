@@ -77,4 +77,3 @@ func (c *Checker) checkCrossModalReasonStmt(s *ast.CrossModalReasonStmt) {
 		}
 	}
 }
-

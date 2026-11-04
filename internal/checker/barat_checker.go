@@ -81,4 +81,3 @@ func (c *Checker) checkCorruptBaratStmt(s *ast.CorruptBaratStmt) {
 		c.checkExpr(s.Offset)
 	}
 }
-

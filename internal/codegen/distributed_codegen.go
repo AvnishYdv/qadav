@@ -68,4 +68,3 @@ func (g *Generator) genPserverAggregateStmt(s *ast.PserverAggregateStmt) {
 	resTemp := g.nextTemp()
 	fmt.Fprintf(&g.sb, "  %s = call i32 @qadav_dist_pserver_aggregate(i8* %s)\n", resTemp, psRef)
 }
-

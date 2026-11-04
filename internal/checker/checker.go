@@ -763,6 +763,15 @@ func (c *Checker) checkStmt(stmt ast.Stmt) {
 	case *ast.CorruptRSCAStmt:
 		c.checkCorruptRSCAStmt(s)
 
+	case *ast.CTSAAttestStmt:
+		c.checkCTSAAttestStmt(s)
+
+	case *ast.CTSAVerifyStmt:
+		c.checkCTSAVerifyStmt(s)
+
+	case *ast.CorruptCTSAStmt:
+		c.checkCorruptCTSAStmt(s)
+
 	case *ast.ExprStmt:
 		c.checkExpr(s.Expr)
 

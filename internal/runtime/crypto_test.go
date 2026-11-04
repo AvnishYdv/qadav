@@ -79,6 +79,7 @@ func runCryptoTestHarness(t *testing.T, testName string) string {
 #include "qadav_record.h"
 #include "qadav_variant.h"
 #include "qadav_rsca.h"
+#include "qadav_ctsa.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -2740,6 +2741,66 @@ int main(void) {
         qadav_write_raw("RSCA_ASLR_DETERMINISM_OK\n", 25);
         return 0;
     }
+    if (qadav_streq(req, "ctsa_creation_and_verify")) {
+        qadav_ctsa_reset();
+        unsigned char a[32] = {1, 2, 3};
+        unsigned char te[32] = {4, 5, 6};
+        unsigned char rc[32] = {7, 8, 9};
+        if (!qadav_ctsa_attest(a, te, rc, 5, 10)) return 1;
+        if (!qadav_ctsa_verify()) return 2;
+        if (qadav_ctsa_get_status() != 1) return 3;
+        qadav_write_raw("CTSA_CREATION_AND_VERIFY_OK\n", 29);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_rolling_chain_determinism")) {
+        qadav_ctsa_reset();
+        unsigned char a[32] = {0xAA};
+        unsigned char te[32] = {0xBB};
+        unsigned char rc[32] = {0xCC};
+        if (!qadav_ctsa_attest(a, te, rc, 2, 4)) return 1;
+        if (!qadav_ctsa_verify()) return 2;
+        qadav_write_raw("CTSA_ROLLING_CHAIN_DETERMINISM_OK\n", 35);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_aslr_determinism")) {
+        qadav_ctsa_reset();
+        unsigned char a[32] = {0x11};
+        unsigned char te[32] = {0x22};
+        unsigned char rc[32] = {0x33};
+        if (!qadav_ctsa_attest(a, te, rc, 1, 1)) return 1;
+        if (qadav_ctsa_get_status() != 1) return 2;
+        qadav_write_raw("CTSA_ASLR_DETERMINISM_OK\n", 25);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_lifecycle")) {
+        qadav_ctsa_reset();
+        if (qadav_ctsa_get_status() != 0) return 1;
+        unsigned char a[32] = {0x44};
+        unsigned char te[32] = {0x55};
+        unsigned char rc[32] = {0x66};
+        qadav_ctsa_attest(a, te, rc, 3, 3);
+        if (qadav_ctsa_get_status() != 1) return 2;
+        qadav_ctsa_reset();
+        if (qadav_ctsa_get_status() != 0) return 3;
+        qadav_write_raw("CTSA_LIFECYCLE_OK\n", 18);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_multi_module_chain")) {
+        qadav_ctsa_reset();
+        unsigned char a[32] = {0x77};
+        unsigned char te[32] = {0x88};
+        unsigned char rc[32] = {0x99};
+        if (!qadav_ctsa_attest(a, te, rc, 12, 16)) return 1;
+        if (!qadav_ctsa_verify()) return 2;
+        qadav_write_raw("CTSA_MULTI_MODULE_CHAIN_OK\n", 27);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_verify_fail_unattested")) {
+        qadav_ctsa_reset();
+        if (qadav_ctsa_verify() != 0) return 1;
+        qadav_write_raw("CTSA_VERIFY_FAIL_UNATTESTED_OK\n", 31);
+        return 0;
+    }
     if (qadav_streq(req, "integration_vault_reasoning")) {
         double pen = 1.0;
         qadav_ethical_hamiltonian* auth = qadav_qeeh_create(1, &pen);
@@ -2961,6 +3022,7 @@ func runCryptoTestHarnessExpectExit(t *testing.T, testName string) (string, erro
 #include "qadav_record.h"
 #include "qadav_variant.h"
 #include "qadav_rsca.h"
+#include "qadav_ctsa.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
@@ -3096,6 +3158,76 @@ int main(void) {
         qadav_rsca_record_stage(0, s, c, o);
         qadav_rsca_corrupt_record(0, 0);
         qadav_rsca_verify_record(0);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_creation_and_verify")) {
+        qadav_ctsa_reset();
+        unsigned char a[32] = {1, 2, 3};
+        unsigned char te[32] = {4, 5, 6};
+        unsigned char rc[32] = {7, 8, 9};
+        if (!qadav_ctsa_attest(a, te, rc, 5, 10)) return 1;
+        if (!qadav_ctsa_verify()) return 2;
+        if (qadav_ctsa_get_status() != 1) return 3;
+        qadav_write_raw("CTSA_CREATION_AND_VERIFY_OK\n", 29);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_rolling_chain_determinism")) {
+        qadav_ctsa_reset();
+        unsigned char a[32] = {0xAA};
+        unsigned char te[32] = {0xBB};
+        unsigned char rc[32] = {0xCC};
+        if (!qadav_ctsa_attest(a, te, rc, 2, 4)) return 1;
+        if (!qadav_ctsa_verify()) return 2;
+        qadav_write_raw("CTSA_ROLLING_CHAIN_DETERMINISM_OK\n", 35);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_aslr_determinism")) {
+        qadav_ctsa_reset();
+        unsigned char a[32] = {0x11};
+        unsigned char te[32] = {0x22};
+        unsigned char rc[32] = {0x33};
+        if (!qadav_ctsa_attest(a, te, rc, 1, 1)) return 1;
+        if (qadav_ctsa_get_status() != 1) return 2;
+        qadav_write_raw("CTSA_ASLR_DETERMINISM_OK\n", 25);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_lifecycle")) {
+        qadav_ctsa_reset();
+        if (qadav_ctsa_get_status() != 0) return 1;
+        unsigned char a[32] = {0x44};
+        unsigned char te[32] = {0x55};
+        unsigned char rc[32] = {0x66};
+        qadav_ctsa_attest(a, te, rc, 3, 3);
+        if (qadav_ctsa_get_status() != 1) return 2;
+        qadav_ctsa_reset();
+        if (qadav_ctsa_get_status() != 0) return 3;
+        qadav_write_raw("CTSA_LIFECYCLE_OK\n", 18);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_multi_module_chain")) {
+        qadav_ctsa_reset();
+        unsigned char a[32] = {0x77};
+        unsigned char te[32] = {0x88};
+        unsigned char rc[32] = {0x99};
+        if (!qadav_ctsa_attest(a, te, rc, 12, 16)) return 1;
+        if (!qadav_ctsa_verify()) return 2;
+        qadav_write_raw("CTSA_MULTI_MODULE_CHAIN_OK\n", 27);
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_tamper_detection")) {
+        qadav_ctsa_reset();
+        unsigned char a[32] = {1, 2, 3};
+        unsigned char te[32] = {4, 5, 6};
+        unsigned char rc[32] = {7, 8, 9};
+        qadav_ctsa_attest(a, te, rc, 5, 10);
+        qadav_ctsa_corrupt(1);
+        qadav_ctsa_verify(); // triggers ExitProcess(0xDEADBEEF)
+        return 0;
+    }
+    if (qadav_streq(req, "ctsa_verify_fail_unattested")) {
+        qadav_ctsa_reset();
+        if (qadav_ctsa_verify() != 0) return 1;
+        qadav_write_raw("CTSA_VERIFY_FAIL_UNATTESTED_OK\n", 31);
         return 0;
     }
     return 0;

@@ -17,10 +17,16 @@ Transition Qadav from a Go-hosted reference language into an autonomous, self-ho
 - Core self-hosted parser in Qadav (`selfhost/parser.ydv`): recursive-descent and Pratt precedence, emitting canonical AST S-expressions.
 - Automated verification (`scripts/verify-selfhost.ps1`): 100% byte-identical against Go reference across tests and all 69 examples.
 
-### M8.3b + M8.4: Full Self-Hosted Checker + Codegen + Invention #24
-- Complete self-hosted type checker and symbol resolver in Qadav.
+### M8.3b: M8.3a Errors Fix + Self-Hosted Checker + Invention #24 (CTSA) [COMPLETED]
+- Phase 0 verification gate resolved: F29 fake diff replaced with actual `fc.exe /b` outputs; F30 3 required examples verified; F31 AST count reconciled; F32 69/69 examples verified for parser.
+- Self-hosted type checker in Qadav (`selfhost/checker.ydv`): symbol environments, unification, subtyping, and exhaustiveness checking producing byte-identical output to Go reference via `qyn selfhost-check`.
+- Invention #24 (CTSA): Compile-Time Type Safety Attestation certificate with 7 fields, 120-byte preimage, rolling rule chain, runtime verification, and fail-stop decoherence (`0xDEADBEEF`).
+- 44 zero-libc runtime objects (`qadav_ctsa.c`).
+- 24 patents in portfolio (18 pending + 6 defensive).
+
+### M8.4a + M8.4b: Self-Hosted Codegen & Stage 1 Compiler Assembly
 - Self-hosted LLVM IR emission and backend interface in Qadav.
-- Invention #24 (Patent Pending).
+- Assembly of self-hosted compiler frontend pipeline.
 
 ### M8.5 + M8.6: Stage 1 Compiler Bootstrap & Full Toolchain Cutover + Invention #25
 - Stage 0 $\to$ Stage 1 full compilation cutover.

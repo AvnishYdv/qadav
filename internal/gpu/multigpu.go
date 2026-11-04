@@ -147,4 +147,3 @@ func Enumerate() (*Topology, error) {
 
 	return top, nil
 }
-

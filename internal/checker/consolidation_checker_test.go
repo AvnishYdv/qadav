@@ -123,4 +123,3 @@ func TestConsolidationChecker_ThresholdRange(t *testing.T) {
 		t.Errorf("expected error for non-float threshold identifier")
 	}
 }
-

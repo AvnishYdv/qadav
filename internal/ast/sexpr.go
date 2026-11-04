@@ -238,6 +238,15 @@ func ToSExpr(node Node) string {
 	case *CorruptRSCAStmt:
 		return fmt.Sprintf("(CorruptRSCA %q %s)", n.Record, ToSExpr(n.Offset))
 
+	case *CTSAAttestStmt:
+		return fmt.Sprintf("(CTSAAttest %q %q %q %q)", n.Ast, n.Env, n.Rules, n.Into)
+
+	case *CTSAVerifyStmt:
+		return fmt.Sprintf("(CTSAVerify %q %q)", n.Cert, n.Into)
+
+	case *CorruptCTSAStmt:
+		return fmt.Sprintf("(CorruptCTSA %q %s)", n.Cert, ToSExpr(n.Field))
+
 	case *QubitDecl:
 		var sb strings.Builder
 		sb.WriteString("(QubitDecl (")

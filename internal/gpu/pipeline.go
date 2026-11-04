@@ -66,4 +66,3 @@ func BuildPipeline(top *Topology, totalLayers, nStages, microBatch int) (*Pipeli
 		TotalLayers: totalLayers,
 	}, nil
 }
-

@@ -28,4 +28,3 @@ func TestQECFreeOnCorrectFailure(t *testing.T) {
 	}
 	t.Logf("QEC free on correct failure verified: %s", out)
 }
-

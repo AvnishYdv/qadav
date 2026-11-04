@@ -146,4 +146,3 @@ func (g *Generator) genDistillStmt(s *ast.DistillStmt) {
 	fmt.Fprintf(&g.sb, "  %s = call i32 @qadav_qecmt_distill(i8* null, i32 %s, i8* %s, i8* %s, i8* %s, double %s, i32 %s)\n",
 		resTemp, licVal.Ref, sRef, xRef, yRef, rateVal, epochsVal)
 }
-

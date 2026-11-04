@@ -106,4 +106,3 @@ func TestGPUChecker_NilBranchesCoverage(t *testing.T) {
 	c.checkGPULayernormExpr(nil)
 	c.checkAGKEVerifyExpr(nil)
 }
-

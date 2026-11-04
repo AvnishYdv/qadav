@@ -499,6 +499,11 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 	header.WriteString("declare i32 @qadav_rsca_attest_chain()\n")
 	header.WriteString("declare i32 @qadav_rsca_corrupt_record(i32, i32)\n\n")
 
+	// CTSA (M8.3b - Invention #24)
+	header.WriteString("declare i32 @qadav_ctsa_attest(i8*, i8*, i8*, i64, i64)\n")
+	header.WriteString("declare i32 @qadav_ctsa_verify()\n")
+	header.WriteString("declare i32 @qadav_ctsa_corrupt(i32)\n\n")
+
 	// Quantum global state
 	header.WriteString(g.generateQuantumGlobal())
 
@@ -1021,6 +1026,12 @@ func (g *Generator) genStmt(stmt ast.Stmt) {
 		g.genRSCAVerifyStmt(s)
 	case *ast.CorruptRSCAStmt:
 		g.genCorruptRSCAStmt(s)
+	case *ast.CTSAAttestStmt:
+		g.genCTSAAttestStmt(s)
+	case *ast.CTSAVerifyStmt:
+		g.genCTSAVerifyStmt(s)
+	case *ast.CorruptCTSAStmt:
+		g.genCorruptCTSAStmt(s)
 	case *ast.QHALBackendAnnotation:
 		// No-op
 	case *ast.TileStmt, *ast.EnergyDecl:

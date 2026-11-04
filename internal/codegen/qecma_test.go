@@ -96,4 +96,3 @@ func TestQECMABundleFreedOnError(t *testing.T) {
 		t.Fatalf("expected 2 create and 2 free calls, got %d creates and %d frees", createCalls, freeCalls)
 	}
 }
-

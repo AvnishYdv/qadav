@@ -110,4 +110,3 @@ func (c *Checker) checkCorruptReasoningStepStmt(s *ast.CorruptReasoningStepStmt)
 		_ = c.checkExpr(s.AtVal)
 	}
 }
-

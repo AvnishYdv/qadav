@@ -57,4 +57,3 @@ type CorruptReasoningStepStmt struct {
 
 func (s *CorruptReasoningStepStmt) Pos() Position { return s.Pos_ }
 func (s *CorruptReasoningStepStmt) stmtNode()     {}
-

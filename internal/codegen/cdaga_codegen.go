@@ -90,4 +90,3 @@ func (g *Generator) genCorruptCDAGAStmt(s *ast.CorruptCDAGAStmt) {
 	resTemp := g.nextTemp()
 	fmt.Fprintf(&g.sb, "  %s = call i32 @qadav_cdaga_corrupt(i8* %s, i32 %d)\n", resTemp, recRef, offset)
 }
-

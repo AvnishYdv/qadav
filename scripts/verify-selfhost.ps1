@@ -133,3 +133,4 @@ Write-Host "[+] Parser: $parserPassCount / $parserPassCount test files BYTE-IDEN
 Write-Host "`n==========================================================" -ForegroundColor Cyan
 Write-Host "M8.3a SELF-HOST VERIFICATION: ALL 100% BYTE-IDENTICAL" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Cyan
+

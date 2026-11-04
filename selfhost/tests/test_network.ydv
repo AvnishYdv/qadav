@@ -12,3 +12,4 @@ process main⦅⦆ → int64 ⟦
     emit "network declaration verified" ·
     yield 0 ·
 ⟧
+

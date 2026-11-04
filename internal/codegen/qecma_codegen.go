@@ -155,4 +155,3 @@ func (g *Generator) genCrossModalReasonStmt(s *ast.CrossModalReasonStmt) {
 	// 8. Cleanup bundle
 	fmt.Fprintf(&g.sb, "  call void @qadav_qecma_free(i8* %s)\n", bundleTemp)
 }
-

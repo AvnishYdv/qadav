@@ -43,4 +43,3 @@ type CorruptCDAGAStmt struct {
 
 func (s *CorruptCDAGAStmt) Pos() Position { return s.Pos_ }
 func (s *CorruptCDAGAStmt) stmtNode()     {}
-

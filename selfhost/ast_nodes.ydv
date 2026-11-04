@@ -157,6 +157,63 @@ record EthicalBoundaryDeclNode ⟦ name ↦ text · line ↦ int64 · col ↦ in
 record ProvenanceDeclNode ⟦ name ↦ text · author ↦ text · line ↦ int64 · col ↦ int64 · ⟧
 
 // ----------------------------------------------------------------------------
+// Additional AST Node Representations (171 Total Unique Go AST Structs)
+// ----------------------------------------------------------------------------
+record RememberStmtNode ⟦ key ↦ text · value ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record NodeStmtNode ⟦ name ↦ text · kind ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record LinkStmtNode ⟦ from_node ↦ text · to_node ↦ text · relation ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ExecuteStmtNode ⟦ proc_name ↦ text · arg ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ProgramNode ⟦ decl_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record TensorLitNode ⟦ rank ↦ int64 · elem_type ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CertifiedReasonStmtNode ⟦ step ↦ text · confidence ↦ float64 · line ↦ int64 · col ↦ int64 · ⟧
+record AbstainThresholdDeclNode ⟦ threshold ↦ float64 · line ↦ int64 · col ↦ int64 · ⟧
+record AbstainCheckStmtNode ⟦ expr_ref ↦ text · threshold ↦ float64 · line ↦ int64 · col ↦ int64 · ⟧
+record InferStmtNode ⟦ hypothesis ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record AssertStmtNode ⟦ condition ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record PropagateStmtNode ⟦ target ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ConsolidateStmtNode ⟦ source ↦ text · target ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record NormalizeStmtNode ⟦ dataset_name ↦ text · method ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record BatchStmtNode ⟦ dataset_name ↦ text · batch_size ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record ShuffleStmtNode ⟦ dataset_name ↦ text · seed ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record AllReduceStmtNode ⟦ tensor_ref ↦ text · op ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record PserverInitStmtNode ⟦ pserver_name ↦ text · workers ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record PserverAggregateStmtNode ⟦ pserver_name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record EthicalRuleNode ⟦ name ↦ text · weight ↦ float64 · line ↦ int64 · col ↦ int64 · ⟧
+record EnforceStmtNode ⟦ rule_name ↦ text · action ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record DecoherenceStmtNode ⟦ reason ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record PipelineClaimStmtNode ⟦ stage ↦ int64 · device ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record PipelineRunStmtNode ⟦ pipeline_name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record PositionNode ⟦ line ↦ int64 · col ↦ int64 · file ↦ text · ⟧
+record CertifyStmtNode ⟦ model ↦ text · digest ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CrossModalReasonStmtNode ⟦ source_m ↦ text · target_m ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record TransferStmtNode ⟦ license_name ↦ text · to_party ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record DistillStmtNode ⟦ teacher ↦ text · student ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record MemoryProvenanceDeclNode ⟦ name ↦ text · owner ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record VerifyMemoryStmtNode ⟦ memory_name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record AuditMemoryStmtNode ⟦ memory_name ↦ text · auditor ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorruptShareStmtNode ⟦ share_name ↦ text · byte_pos ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record ReasonStepStmtNode ⟦ step_name ↦ text · claim ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record VerifyChainStmtNode ⟦ chain_name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record AuditReasoningStmtNode ⟦ chain_name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record CorruptReasoningStepStmtNode ⟦ chain_name ↦ text · step_idx ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record QHALBackendAnnotationNode ⟦ backend ↦ text · device ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record MinimizeStmtNode ⟦ energy_name ↦ text · algorithm ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record TileStmtNode ⟦ tensor_name ↦ text · tile_size ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record RecordDeclStmtNode ⟦ name ↦ text · field_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record VariantDeclStmtNode ⟦ name ↦ text · case_count ↦ int64 · line ↦ int64 · col ↦ int64 · ⟧
+record RecordFieldInitNode ⟦ field_name ↦ text · val_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record SandboxCreateStmtNode ⟦ name ↦ text · boundary ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record SandboxRunStmtNode ⟦ sandbox_name ↦ text · action ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record SandboxVerifyStmtNode ⟦ sandbox_name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record GrantStmtNode ⟦ token_name ↦ text · to_party ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record RevokeStmtNode ⟦ token_name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record ToolCallStmtNode ⟦ tool_name ↦ text · arg ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record TranspileOptsNode ⟦ opt_level ↦ int64 · target ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record SealStmtNode ⟦ vault_name ↦ text · key_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record UnsealStmtNode ⟦ vault_name ↦ text · key_ref ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+record WipeStmtNode ⟦ vault_name ↦ text · line ↦ int64 · col ↦ int64 · ⟧
+
+// ----------------------------------------------------------------------------
 // Comprehensive AST Node Variant
 // ----------------------------------------------------------------------------
 variant ASTNode ⟦

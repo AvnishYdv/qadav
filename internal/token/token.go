@@ -476,6 +476,11 @@ const (
 	RSCA_ATTEST  Type = "RSCA_ATTEST"
 	RSCA_VERIFY  Type = "RSCA_VERIFY"
 	CORRUPT_RSCA Type = "CORRUPT_RSCA"
+
+	// M8.3b: CTSA (Invention #24)
+	CTSA_ATTEST  Type = "CTSA_ATTEST"
+	CTSA_VERIFY  Type = "CTSA_VERIFY"
+	CORRUPT_CTSA Type = "CORRUPT_CTSA"
 )
 
 // Quasinary Keywords & Literals
@@ -945,6 +950,11 @@ var keywords = map[string]Type{
 	"rsca_verify":  RSCA_VERIFY,
 	"corrupt_rsca": CORRUPT_RSCA,
 
+	// M8.3b: CTSA (Invention #24)
+	"ctsa_attest":  CTSA_ATTEST,
+	"ctsa_verify":  CTSA_VERIFY,
+	"corrupt_ctsa": CORRUPT_CTSA,
+
 	// Cryptography
 	"sign":    SIGN,
 	"verify":  VERIFY,
@@ -1124,6 +1134,9 @@ var fallbacks = func() map[string]Type {
 		`\rsca_attest`:            RSCA_ATTEST,
 		`\rsca_verify`:            RSCA_VERIFY,
 		`\corrupt_rsca`:           CORRUPT_RSCA,
+		`\ctsa_attest`:            CTSA_ATTEST,
+		`\ctsa_verify`:            CTSA_VERIFY,
+		`\corrupt_ctsa`:           CORRUPT_CTSA,
 	}
 	for k, v := range kwFallbacks {
 		m[k] = v

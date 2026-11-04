@@ -120,4 +120,3 @@ func (c *Checker) checkDistillStmt(s *ast.DistillStmt) {
 		}
 	}
 }
-

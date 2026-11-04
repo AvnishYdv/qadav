@@ -50,4 +50,3 @@ func (c *Checker) checkPserverAggregateStmt(s *ast.PserverAggregateStmt) {
 		}
 	}
 }
-

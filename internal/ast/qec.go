@@ -62,4 +62,3 @@ type CorruptSyndromeStmt struct {
 
 func (s *CorruptSyndromeStmt) Pos() Position { return s.Pos_ }
 func (s *CorruptSyndromeStmt) stmtNode()     {}
-

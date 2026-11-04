@@ -43,4 +43,3 @@ type DistillStmt struct {
 
 func (s *DistillStmt) Pos() Position { return s.Pos_ }
 func (s *DistillStmt) stmtNode()     {}
-
