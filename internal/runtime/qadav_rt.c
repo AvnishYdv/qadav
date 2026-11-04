@@ -74,6 +74,8 @@ const char* qadav_format_tensor_set(long long t_temp, long long elem_idx, long l
 
 long long   qadav_scan_emitted_strings(const char* path);
 long long   qadav_get_emitted_string_count(void);
+const char* qadav_get_emitted_string_text(long long idx);
+long long   qadav_get_emitted_string_len(long long idx);
 const char* qadav_format_emitted_str_def(long long idx);
 const char* qadav_format_emitted_str_gep(long long str_idx, long long temp_id);
 const char* qadav_format_emitted_str_call(long long temp_id);
@@ -194,6 +196,14 @@ long long scan_emitted_strings(const char* path) {
 
 long long get_emitted_string_count(void) {
     return qadav_get_emitted_string_count();
+}
+
+const char* get_emitted_string_text(long long idx) {
+    return qadav_get_emitted_string_text(idx);
+}
+
+long long get_emitted_string_len(long long idx) {
+    return qadav_get_emitted_string_len(idx);
 }
 
 const char* format_emitted_str_def(long long idx) {

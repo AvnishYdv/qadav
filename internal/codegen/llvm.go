@@ -574,6 +574,8 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i8* @format_tensor_set(i64, i64, i64)\n")
 		header.WriteString("declare i64 @scan_emitted_strings(i8*)\n")
 		header.WriteString("declare i64 @get_emitted_string_count()\n")
+		header.WriteString("declare i8* @get_emitted_string_text(i64)\n")
+		header.WriteString("declare i64 @get_emitted_string_len(i64)\n")
 		header.WriteString("declare i8* @format_emitted_str_def(i64)\n")
 		header.WriteString("declare i8* @format_emitted_str_gep(i64, i64)\n")
 		header.WriteString("declare i8* @format_emitted_str_call(i64)\n")
@@ -1741,6 +1743,7 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "scan_tensors" || ident.Name == "get_tensor_name" || ident.Name == "get_tensor_size" ||
 				ident.Name == "get_tensor_int_val" || ident.Name == "format_shape_const" || ident.Name == "format_tensor_set" ||
 				ident.Name == "scan_emitted_strings" || ident.Name == "get_emitted_string_count" ||
+				ident.Name == "get_emitted_string_text" || ident.Name == "get_emitted_string_len" ||
 				ident.Name == "format_emitted_str_def" || ident.Name == "format_emitted_str_gep" ||
 				ident.Name == "format_emitted_str_call" || ident.Name == "format_trunc_line_id" ||
 				ident.Name == "format_ret_line_id" {

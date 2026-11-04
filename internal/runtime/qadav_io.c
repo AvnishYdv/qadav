@@ -947,6 +947,16 @@ long long qadav_get_emitted_string_count(void) {
     return g_emitted_string_count;
 }
 
+const char* qadav_get_emitted_string_text(long long idx) {
+    if (idx < 0 || idx >= g_emitted_string_count) return "";
+    return g_emitted_strings[idx].text;
+}
+
+long long qadav_get_emitted_string_len(long long idx) {
+    if (idx < 0 || idx >= g_emitted_string_count) return 0;
+    return g_emitted_strings[idx].len;
+}
+
 const char* qadav_format_emitted_str_def(long long idx) {
     static char buf[256];
     if (idx < 0 || idx >= g_emitted_string_count) return "";

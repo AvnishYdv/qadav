@@ -88,10 +88,10 @@ func (c *Checker) checkMatchStmt(s *ast.MatchStmt) {
 	hasOtherwise := (s.Otherwise != nil)
 
 	for _, arm := range s.Arms {
+		var foundCase *ast.VariantCase
 		if arm.CaseName == "otherwise" || arm.CaseName == "_" {
 			hasOtherwise = true
 		} else if vdecl != nil {
-			var foundCase *ast.VariantCase
 			for _, cs := range vdecl.Cases {
 				if cs.Name == arm.CaseName {
 					foundCase = cs
@@ -112,10 +112,16 @@ func (c *Checker) checkMatchStmt(s *ast.MatchStmt) {
 		}
 
 		c.enterScope()
-		for _, b := range arm.Bindings {
+		for i, b := range arm.Bindings {
+			bType := types.Int64
+			if foundCase != nil && i < len(foundCase.Fields) {
+				if t := c.resolveType(&ast.NamedType{Name: foundCase.Fields[i].Type}); t != nil {
+					bType = t
+				}
+			}
 			c.curScope.Define(&Symbol{
 				Name: b,
-				Type: types.Int64,
+				Type: bType,
 			})
 		}
 		if arm.Body != nil {

@@ -278,6 +278,22 @@ func New() *Checker {
 		},
 	})
 	_ = global.Define(&Symbol{
+		Name: "get_emitted_string_text",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "get_emitted_string_len",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
 		Name: "format_emitted_str_def",
 		Type: &types.Type{
 			Kind:    types.KindProcess,
