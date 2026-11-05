@@ -614,7 +614,33 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i8* @stmt_binop_left(i64)\n")
 		header.WriteString("declare i8* @qadav_stmt_binop_left(i64)\n")
 		header.WriteString("declare i8* @stmt_binop_right(i64)\n")
-		header.WriteString("declare i8* @qadav_stmt_binop_right(i64)\n\n")
+		header.WriteString("declare i8* @qadav_stmt_binop_right(i64)\n")
+		header.WriteString("declare i64 @next_label_id()\n")
+		header.WriteString("declare i64 @qadav_next_label_id()\n")
+		header.WriteString("declare void @reset_label_counter()\n")
+		header.WriteString("declare void @qadav_reset_label_counter()\n")
+		header.WriteString("declare i8* @format_icmp_imm(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_icmp_imm(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_br_cond(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_br_cond(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_label(i8*, i64)\n")
+		header.WriteString("declare i8* @qadav_format_label(i8*, i64)\n")
+		header.WriteString("declare i8* @format_br_label(i8*, i64)\n")
+		header.WriteString("declare i8* @qadav_format_br_label(i8*, i64)\n")
+		header.WriteString("declare i64 @scan_if_else(i8*)\n")
+		header.WriteString("declare i64 @qadav_scan_if_else(i8*)\n")
+		header.WriteString("declare i8* @get_if_var_name()\n")
+		header.WriteString("declare i8* @qadav_get_if_var_name()\n")
+		header.WriteString("declare i64 @get_if_var_val()\n")
+		header.WriteString("declare i64 @qadav_get_if_var_val()\n")
+		header.WriteString("declare i8* @get_if_cond_var()\n")
+		header.WriteString("declare i8* @qadav_get_if_cond_var()\n")
+		header.WriteString("declare i8* @get_if_cond_op()\n")
+		header.WriteString("declare i8* @qadav_get_if_cond_op()\n")
+		header.WriteString("declare i64 @get_if_cond_val()\n")
+		header.WriteString("declare i64 @qadav_get_if_cond_val()\n")
+		header.WriteString("declare i64 @get_if_yield_val()\n")
+		header.WriteString("declare i64 @qadav_get_if_yield_val()\n\n")
 	}
 
 	// Quantum global state
@@ -1793,7 +1819,20 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "get_last_emit_kind" || ident.Name == "qadav_get_last_emit_kind" ||
 				ident.Name == "stmt_binop_op" || ident.Name == "qadav_stmt_binop_op" ||
 				ident.Name == "stmt_binop_left" || ident.Name == "qadav_stmt_binop_left" ||
-				ident.Name == "stmt_binop_right" || ident.Name == "qadav_stmt_binop_right" {
+				ident.Name == "stmt_binop_right" || ident.Name == "qadav_stmt_binop_right" ||
+				ident.Name == "next_label_id" || ident.Name == "qadav_next_label_id" ||
+				ident.Name == "reset_label_counter" || ident.Name == "qadav_reset_label_counter" ||
+				ident.Name == "format_icmp_imm" || ident.Name == "qadav_format_icmp_imm" ||
+				ident.Name == "format_br_cond" || ident.Name == "qadav_format_br_cond" ||
+				ident.Name == "format_label" || ident.Name == "qadav_format_label" ||
+				ident.Name == "format_br_label" || ident.Name == "qadav_format_br_label" ||
+				ident.Name == "scan_if_else" || ident.Name == "qadav_scan_if_else" ||
+				ident.Name == "get_if_var_name" || ident.Name == "qadav_get_if_var_name" ||
+				ident.Name == "get_if_var_val" || ident.Name == "qadav_get_if_var_val" ||
+				ident.Name == "get_if_cond_var" || ident.Name == "qadav_get_if_cond_var" ||
+				ident.Name == "get_if_cond_op" || ident.Name == "qadav_get_if_cond_op" ||
+				ident.Name == "get_if_cond_val" || ident.Name == "qadav_get_if_cond_val" ||
+				ident.Name == "get_if_yield_val" || ident.Name == "qadav_get_if_yield_val" {
 				g.usesDynamicIO = true
 			}
 			if g.checker != nil && g.checker.Networks() != nil {

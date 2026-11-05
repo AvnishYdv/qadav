@@ -1212,6 +1212,230 @@ const char* qadav_stmt_binop_right(long long idx) {
     return buf;
 }
 
+static long long g_label_counter = 0;
+
+long long qadav_next_label_id(void) {
+    g_label_counter++;
+    return g_label_counter;
+}
+
+void qadav_reset_label_counter(void) {
+    g_label_counter = 0;
+}
+
+const char* qadav_format_icmp_imm(const char* pred, long long res_temp, long long left_temp, long long imm_val) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32];
+    int ni = 0;
+    long long v = res_temp;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = icmp ";
+    while (*p2) buf[bi++] = *p2++;
+    while (*pred) buf[bi++] = *pred++;
+    const char* p3 = " i64 %t";
+    while (*p3) buf[bi++] = *p3++;
+    ni = 0; v = left_temp;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p4 = ", ";
+    while (*p4) buf[bi++] = *p4++;
+    ni = 0; v = imm_val;
+    if (v == 0) num[ni++] = '0';
+    else {
+        int neg = 0; unsigned long long uv;
+        if (v < 0) { neg = 1; uv = (unsigned long long)(-v); } else { uv = (unsigned long long)v; }
+        char tmp[32]; int ti = 0;
+        while (uv > 0) { tmp[ti++] = '0' + (char)(uv % 10); uv /= 10; }
+        if (neg) num[ni++] = '-';
+        while (ti > 0) num[ni++] = tmp[--ti];
+    }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_br_cond(long long cond_reg, long long then_id, long long else_id) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  br i1 %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32];
+    int ni = 0;
+    long long v = cond_reg;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = ", label %when_then_";
+    while (*p2) buf[bi++] = *p2++;
+    ni = 0; v = then_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p3 = ", label %when_else_";
+    while (*p3) buf[bi++] = *p3++;
+    ni = 0; v = else_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_label(const char* prefix, long long id) {
+    static char buf[64];
+    int bi = 0;
+    while (*prefix) buf[bi++] = *prefix++;
+    buf[bi++] = '_';
+    char num[32];
+    int ni = 0;
+    long long v = id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi++] = ':';
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_br_label(const char* prefix, long long id) {
+    static char buf[64];
+    int bi = 0;
+    const char* p1 = "  br label %";
+    while (*p1) buf[bi++] = *p1++;
+    while (*prefix) buf[bi++] = *prefix++;
+    buf[bi++] = '_';
+    char num[32];
+    int ni = 0;
+    long long v = id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi] = '\0';
+    return buf;
+}
+
+static struct {
+    char var_name[64];
+    long long var_val;
+    char cond_var[64];
+    char cond_op[16];
+    long long cond_val;
+    long long yield_val;
+} g_if_info;
+
+int qadav_scan_if_else(const char* path) {
+    if (!path || !*path) return -1;
+    void* h = qadav_file_open_read(path);
+    if (!h) return -1;
+    char buf[4096];
+    int n = qadav_file_read(h, buf, 4095);
+    qadav_file_close(h);
+    if (n <= 0) return -1;
+    buf[n] = '\0';
+
+    int body_start = 0;
+    for (int i = 0; i <= n - 3; i++) {
+        if ((unsigned char)buf[i] == 0xe2 && (unsigned char)buf[i+1] == 0x9f && (unsigned char)buf[i+2] == 0xa6) {
+            body_start = i + 3;
+            break;
+        }
+    }
+
+    // 1. Find `int64 <name> ↦ <val>`
+    g_if_info.var_name[0] = '\0';
+    g_if_info.var_val = 0;
+    for (int i = body_start; i <= n - 5; i++) {
+        if (buf[i] == 'i' && buf[i+1] == 'n' && buf[i+2] == 't' && buf[i+3] == '6' && buf[i+4] == '4') {
+            int j = i + 5;
+            while (j < n && (buf[j] == ' ' || buf[j] == '\t')) j++;
+            int vi = 0;
+            while (j < n && buf[j] != ' ' && buf[j] != '\t' && (unsigned char)buf[j] != 0xe2 && vi < 63) {
+                g_if_info.var_name[vi++] = buf[j++];
+            }
+            g_if_info.var_name[vi] = '\0';
+            while (j < n && !((buf[j] >= '0' && buf[j] <= '9') || buf[j] == '-')) j++;
+            int neg = 0;
+            if (j < n && buf[j] == '-') { neg = 1; j++; }
+            long long val = 0;
+            while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
+                val = val * 10 + (buf[j++] - '0');
+            }
+            g_if_info.var_val = neg ? -val : val;
+            break;
+        }
+    }
+
+    // 2. Find `when <name> <op> <val>`
+    for (int i = body_start; i <= n - 4; i++) {
+        if (buf[i] == 'w' && buf[i+1] == 'h' && buf[i+2] == 'e' && buf[i+3] == 'n') {
+            int j = i + 4;
+            while (j < n && (buf[j] == ' ' || buf[j] == '\t')) j++;
+            int vi = 0;
+            while (j < n && buf[j] != ' ' && buf[j] != '\t' && (unsigned char)buf[j] != 0xe2 && vi < 63) {
+                g_if_info.cond_var[vi++] = buf[j++];
+            }
+            g_if_info.cond_var[vi] = '\0';
+            while (j < n && (buf[j] == ' ' || buf[j] == '\t')) j++;
+            const char* op = "sgt";
+            if ((unsigned char)buf[j] == 0xe2 && (unsigned char)buf[j+1] == 0x89) {
+                unsigned char c = (unsigned char)buf[j+2];
+                if (c == 0xbb) op = "sgt";      // ≻
+                else if (c == 0xba) op = "slt"; // ≺
+                else if (c == 0xa1) op = "eq";  // ≡
+                else if (c == 0xa0) op = "ne";  // ≠
+                else if (c == 0xbc) op = "sle"; // ≼
+                else if (c == 0xbd) op = "sge"; // ≽
+                j += 3;
+            }
+            int oi = 0;
+            while (op[oi] && oi < 15) { g_if_info.cond_op[oi] = op[oi]; oi++; }
+            g_if_info.cond_op[oi] = '\0';
+            while (j < n && !((buf[j] >= '0' && buf[j] <= '9') || buf[j] == '-')) j++;
+            int neg = 0;
+            if (j < n && buf[j] == '-') { neg = 1; j++; }
+            long long val = 0;
+            while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
+                val = val * 10 + (buf[j++] - '0');
+            }
+            g_if_info.cond_val = neg ? -val : val;
+            break;
+        }
+    }
+
+    // 3. Find `yield <val>`
+    g_if_info.yield_val = 0;
+    for (int i = body_start; i <= n - 5; i++) {
+        if (buf[i] == 'y' && buf[i+1] == 'i' && buf[i+2] == 'e' && buf[i+3] == 'l' && buf[i+4] == 'd') {
+            int j = i + 5;
+            while (j < n && !((buf[j] >= '0' && buf[j] <= '9') || buf[j] == '-')) j++;
+            int neg = 0;
+            if (j < n && buf[j] == '-') { neg = 1; j++; }
+            long long val = 0;
+            while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
+                val = val * 10 + (buf[j++] - '0');
+            }
+            g_if_info.yield_val = neg ? -val : val;
+            break;
+        }
+    }
+
+    return 0;
+}
+
+const char* qadav_get_if_var_name(void) { return g_if_info.var_name; }
+long long   qadav_get_if_var_val(void) { return g_if_info.var_val; }
+const char* qadav_get_if_cond_var(void) { return g_if_info.cond_var; }
+const char* qadav_get_if_cond_op(void) { return g_if_info.cond_op; }
+long long   qadav_get_if_cond_val(void) { return g_if_info.cond_val; }
+long long   qadav_get_if_yield_val(void) { return g_if_info.yield_val; }
+
+
 
 
 

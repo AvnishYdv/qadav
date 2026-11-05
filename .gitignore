@@ -31,6 +31,7 @@ coverage
 *.out
 *.cov
 *.mctp
+TMP/
 
 # MCTP test artifacts (regenerated on each test run)
 internal/codegen/model.mctp

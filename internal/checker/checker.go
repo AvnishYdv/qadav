@@ -393,6 +393,76 @@ func New() *Checker {
 			},
 		})
 	}
+	for _, fnName := range []string{"next_label_id", "qadav_next_label_id", "get_if_var_val", "qadav_get_if_var_val", "get_if_cond_val", "qadav_get_if_cond_val", "get_if_yield_val", "qadav_get_if_yield_val"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"reset_label_counter", "qadav_reset_label_counter"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{},
+				Results: []*types.Type{},
+			},
+		})
+	}
+	for _, fnName := range []string{"get_if_var_name", "qadav_get_if_var_name", "get_if_cond_var", "qadav_get_if_cond_var", "get_if_cond_op", "qadav_get_if_cond_op"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"scan_if_else", "qadav_scan_if_else"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_icmp_imm", "qadav_format_icmp_imm"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_br_cond", "qadav_format_br_cond"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_label", "qadav_format_label", "format_br_label", "qadav_format_br_label"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
 	return &Checker{
 		globalScope:       global,
 		curScope:          global,

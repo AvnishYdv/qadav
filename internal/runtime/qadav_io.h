@@ -55,5 +55,20 @@ const char* qadav_stmt_binop_op(long long idx);
 const char* qadav_stmt_binop_left(long long idx);
 const char* qadav_stmt_binop_right(long long idx);
 
+long long   qadav_next_label_id(void);
+void        qadav_reset_label_counter(void);
+const char* qadav_format_icmp_imm(const char* pred, long long res_temp, long long left_temp, long long imm_val);
+const char* qadav_format_br_cond(long long cond_reg, long long then_id, long long else_id);
+const char* qadav_format_label(const char* prefix, long long id);
+const char* qadav_format_br_label(const char* prefix, long long id);
+
+int         qadav_scan_if_else(const char* path);
+const char* qadav_get_if_var_name(void);
+long long   qadav_get_if_var_val(void);
+const char* qadav_get_if_cond_var(void);
+const char* qadav_get_if_cond_op(void);
+long long   qadav_get_if_cond_val(void);
+long long   qadav_get_if_yield_val(void);
+
 #endif
 

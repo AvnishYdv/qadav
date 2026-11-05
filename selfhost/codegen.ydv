@@ -78,6 +78,37 @@ process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
         yield proc_calc ·
     ⟧
 
+    when prog_kind ≡ 4 ⟦
+        int64 ok_if ↦ scan_if_else⦅file_path⦆ ·
+        int64 n_str_if ↦ scan_emitted_strings⦅file_path⦆ ·
+        text var_name ↦ get_if_var_name⦅⦆ ·
+        int64 var_val ↦ get_if_var_val⦅⦆ ·
+        text cond_var ↦ get_if_cond_var⦅⦆ ·
+        text cond_op ↦ get_if_cond_op⦅⦆ ·
+        int64 cond_val ↦ get_if_cond_val⦅⦆ ·
+        int64 y_val ↦ get_if_yield_val⦅⦆ ·
+        text then_str ↦ get_emitted_string_text⦅0⦆ ·
+        text else_str ↦ get_emitted_string_text⦅1⦆ ·
+
+        CoreAst bind_ast ↦ variant_init CoreAst ⦅BindDecl ↦ var_name ⸴ "int64" ⸴ variant_init CoreAst ⦅IntLitDecl ↦ var_val⦆⦆ ·
+
+        CoreAst cond_left ↦ variant_init CoreAst ⦅IdentDecl ↦ cond_var⦆ ·
+        CoreAst cond_right ↦ variant_init CoreAst ⦅IntLitDecl ↦ cond_val⦆ ·
+        CoreAst cond_ast ↦ variant_init CoreAst ⦅BinaryOpDecl ↦ cond_op ⸴ cond_left ⸴ cond_right⦆ ·
+
+        CoreAst then_emit ↦ variant_init CoreAst ⦅EmitDecl ↦ variant_init CoreAst ⦅StrLitDecl ↦ then_str⦆⦆ ·
+        CoreAst else_emit ↦ variant_init CoreAst ⦅EmitDecl ↦ variant_init CoreAst ⦅StrLitDecl ↦ else_str⦆⦆ ·
+        CoreAst when_ast ↦ variant_init CoreAst ⦅WhenDecl ↦ cond_ast ⸴ then_emit ⸴ else_emit⦆ ·
+
+        CoreAst yield_ast ↦ variant_init CoreAst ⦅YieldDecl ↦ variant_init CoreAst ⦅IntLitDecl ↦ y_val⦆⦆ ·
+
+        CoreAst blk_when_yield ↦ variant_init CoreAst ⦅BlockDecl ↦ when_ast ⸴ yield_ast⦆ ·
+        CoreAst blk_all ↦ variant_init CoreAst ⦅BlockDecl ↦ bind_ast ⸴ blk_when_yield⦆ ·
+
+        CoreAst proc_if ↦ variant_init CoreAst ⦅ProcessDecl ↦ "main" ⸴ tensor⟬⟭ ⸴ "int64" ⸴ blk_all⦆ ·
+        yield proc_if ·
+    ⟧
+
     CoreAst dummy_yield ↦ variant_init CoreAst ⦅YieldDecl ↦ variant_init CoreAst ⦅IntLitDecl ↦ 0⦆⦆ ·
     CoreAst dummy_proc ↦ variant_init CoreAst ⦅ProcessDecl ↦ "main" ⸴ tensor⟬⟭ ⸴ "int64" ⸴ dummy_yield⦆ ·
     yield dummy_proc ·
@@ -91,6 +122,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             emit "declare i32 @qadav_pcc_verify()" ·
             emit "declare i32 @qadav_pcc_corrupt(i32)" ·
             emit "" ·
+            reset_label_counter⦅⦆ ·
             int64 scount ↦ get_emitted_string_count⦅⦆ ·
             int64 si ↦ 0 ·
             cycle si ≺ scount ⟦
@@ -141,6 +173,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             yield temp_counter ⊕ 1 ·
         | IntLitDecl(v) ⟹
             set_last_int_value⦅v⦆ ·
+            set_last_temp⦅0 ⊖ 1⦆ ·
             set_last_emit_kind⦅1⦆ ·
             yield temp_counter ·
         | IdentDecl(name) ⟹
@@ -155,8 +188,14 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             int64 t_r ↦ walk_core_ast⦅right ⸴ t_l⦆ ·
             int64 reg_r ↦ get_last_temp⦅⦆ ·
             int64 res_temp ↦ t_r ·
-            text binop_line ↦ format_binop⦅op ⸴ res_temp ⸴ reg_l ⸴ reg_r⦆ ·
-            emit binop_line ·
+            when reg_r ≺ 0 ⟦
+                int64 imm_val ↦ last_int_value⦅⦆ ·
+                text icmp_line ↦ format_icmp_imm⦅op ⸴ res_temp ⸴ reg_l ⸴ imm_val⦆ ·
+                emit icmp_line ·
+            ⟧ otherwise ⟦
+                text binop_line ↦ format_binop⦅op ⸴ res_temp ⸴ reg_l ⸴ reg_r⦆ ·
+                emit binop_line ·
+            ⟧
             set_last_temp⦅res_temp⦆ ·
             set_last_emit_kind⦅1⦆ ·
             yield res_temp ⊕ 1 ·
@@ -169,7 +208,26 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             emit sret ·
             yield temp_counter ⊕ 1 ·
         | WhenDecl(cond ⸴ then_block ⸴ else_block) ⟹
-            yield temp_counter ·
+            int64 t_cond ↦ walk_core_ast⦅cond ⸴ temp_counter⦆ ·
+            int64 cond_reg ↦ get_last_temp⦅⦆ ·
+            int64 then_id ↦ next_label_id⦅⦆ ·
+            int64 else_id ↦ next_label_id⦅⦆ ·
+            int64 merge_id ↦ next_label_id⦅⦆ ·
+            text br_cond ↦ format_br_cond⦅cond_reg ⸴ then_id ⸴ else_id⦆ ·
+            emit br_cond ·
+            text lbl_then ↦ format_label⦅"when_then" ⸴ then_id⦆ ·
+            emit lbl_then ·
+            int64 t_then ↦ walk_core_ast⦅then_block ⸴ t_cond⦆ ·
+            text br_m1 ↦ format_br_label⦅"when_merge" ⸴ merge_id⦆ ·
+            emit br_m1 ·
+            text lbl_else ↦ format_label⦅"when_else" ⸴ else_id⦆ ·
+            emit lbl_else ·
+            int64 t_else ↦ walk_core_ast⦅else_block ⸴ t_then⦆ ·
+            text br_m2 ↦ format_br_label⦅"when_merge" ⸴ merge_id⦆ ·
+            emit br_m2 ·
+            text lbl_merge ↦ format_label⦅"when_merge" ⸴ merge_id⦆ ·
+            emit lbl_merge ·
+            yield t_else ·
         | CycleDecl(cond ⸴ body) ⟹
             yield temp_counter ·
         | CallDecl(name ⸴ args) ⟹
@@ -520,38 +578,6 @@ process emit_common_prefix⦅⦆ → logic ⟦
     yield affirm ·
 ⟧
 
-process emit_if_else_body⦅text file_path⦆ → logic ⟦
-    emit "" ·
-    emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
-    emit "declare i32 @qadav_pcc_verify()" ·
-    emit "declare i32 @qadav_pcc_corrupt(i32)" ·
-    emit "" ·
-    emit "@.str.0 = private unnamed_addr constant [8 x i8] c\"greater\\00\"" ·
-    emit "@.str.1 = private unnamed_addr constant [8 x i8] c\"smaller\\00\"" ·
-    emit "" ·
-    emit "define i32 @\"main\"() {" ·
-    emit "entry:" ·
-    emit "  %x.ptr = alloca i64" ·
-    emit "  store i64 5, i64* %x.ptr" ·
-    emit "  %t1 = load i64, i64* %x.ptr" ·
-    emit "  %t2 = icmp sgt i64 %t1, 3" ·
-    emit "  br i1 %t2, label %when_then_1, label %when_else_2" ·
-    emit "when_then_1:" ·
-    emit "  %t3 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.0, i32 0, i32 0" ·
-    emit "  call void @qadav_emit_text(i8* %t3)" ·
-    emit "  br label %when_merge_3" ·
-    emit "when_else_2:" ·
-    emit "  %t4 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.1, i32 0, i32 0" ·
-    emit "  call void @qadav_emit_text(i8* %t4)" ·
-    emit "  br label %when_merge_3" ·
-    emit "when_merge_3:" ·
-    emit "  %t5 = trunc i64 0 to i32" ·
-    emit "  ret i32 %t5" ·
-    emit "}" ·
-    emit "" ·
-    yield affirm ·
-⟧
-
 process emit_fib_body⦅text file_path⦆ → logic ⟦
     int64 count ↦ scan_fib_values⦅file_path⦆ ·
     when count ≺ 4 ⟦
@@ -708,7 +734,8 @@ process main⦅⦆ → int64 ⟦
         yield 0 ·
     ⟧
     when prog_kind ≡ 4 ⟦
-        logic if_ok ↦ emit_if_else_body⦅target_file⦆ ·
+        CoreAst ast_if ↦ parse_to_core_ast⦅target_file⦆ ·
+        int64 res_if ↦ walk_core_ast⦅ast_if ⸴ 1⦆ ·
         yield 0 ·
     ⟧
     emit "error: unknown program kind" ·

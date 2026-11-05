@@ -1,0 +1,9 @@
+process main⦅⦆ → int64 ⟦
+    int64 x ↦ 5 ·
+    when x ≺ 3 ⟦
+        emit "greater" ·
+    ⟧ otherwise ⟦
+        emit "lesser" ·
+    ⟧
+    yield 0 ·
+⟧
