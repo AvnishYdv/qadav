@@ -11,7 +11,7 @@ record CodegenContext ⟦
 
 variant CoreAst ⟦
     | ProcessDecl(name ↦ text ⸴ params ↦ tensor ⸴ ret_type ↦ text ⸴ body ↦ CoreAst) ·
-    | BlockDecl(stmts ↦ tensor) ·
+    | BlockDecl(first ↦ CoreAst ⸴ second ↦ CoreAst) ·
     | BindDecl(name ↦ text ⸴ val_type ↦ text ⸴ value ↦ CoreAst) ·
     | YieldDecl(value ↦ CoreAst) ·
     | EmitDecl(value ↦ CoreAst) ·
@@ -24,32 +24,77 @@ variant CoreAst ⟦
     | StrLitDecl(value ↦ text) ·
 ⟧
 
+process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
+    int64 yield_val ↦ extract_yield_number⦅file_path⦆ ·
+    int64 n_str ↦ scan_emitted_strings⦅file_path⦆ ·
+    text hello_str ↦ "" ·
+    when n_str ≻ 0 ⟦
+        hello_str ↦ get_emitted_string_text⦅0⦆ ·
+    ⟧
+    CoreAst emit_node ↦ variant_init CoreAst ⦅EmitDecl ↦ variant_init CoreAst ⦅StrLitDecl ↦ hello_str⦆⦆ ·
+    CoreAst yield_node ↦ variant_init CoreAst ⦅YieldDecl ↦ variant_init CoreAst ⦅IntLitDecl ↦ yield_val⦆⦆ ·
+    CoreAst block ↦ variant_init CoreAst ⦅BlockDecl ↦ emit_node ⸴ yield_node⦆ ·
+    CoreAst proc ↦ variant_init CoreAst ⦅ProcessDecl ↦ "main" ⸴ tensor⟬⟭ ⸴ "int64" ⸴ block⦆ ·
+    yield proc ·
+⟧
+
 process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 ⟦
     match target_node ⟦
         | ProcessDecl(name ⸴ params ⸴ ret_type ⸴ body) ⟹
+            emit "" ·
+            emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
+            emit "declare i32 @qadav_pcc_verify()" ·
+            emit "declare i32 @qadav_pcc_corrupt(i32)" ·
+            emit "" ·
+            text sdef ↦ format_emitted_str_def⦅0⦆ ·
+            emit sdef ·
+            emit "" ·
+            emit "define i32 @\"main\"() {" ·
             emit "entry:" ·
-        | YieldDecl(val) ⟹
-            emit "  ret i32 0" ·
-        | EmitDecl(val) ⟹
-            emit "  call void @qadav_emit_text(i8* %t1)" ·
-        | IntLitDecl(v) ⟹
-            emit "  ; int lit" ·
+            int64 t_proc ↦ walk_core_ast⦅body ⸴ temp_counter⦆ ·
+            emit "}" ·
+            emit "" ·
+            yield t_proc ·
+        | BlockDecl(first ⸴ second) ⟹
+            int64 t1 ↦ walk_core_ast⦅first ⸴ temp_counter⦆ ·
+            int64 t2 ↦ walk_core_ast⦅second ⸴ t1⦆ ·
+            yield t2 ·
+        | EmitDecl(inner) ⟹
+            int64 t_emit ↦ walk_core_ast⦅inner ⸴ temp_counter⦆ ·
+            text scall ↦ format_emitted_str_call⦅t_emit⦆ ·
+            emit scall ·
+            yield t_emit ⊕ 1 ·
         | StrLitDecl(s) ⟹
-            emit "  ; str lit" ·
-        | BlockDecl(stmts) ⟹
-            emit "  ; block" ·
+            int64 str_idx ↦ qadav_get_string_index⦅s⦆ ·
+            when str_idx ≺ 0 ⟦
+                str_idx ↦ 0 ·
+            ⟧
+            text sgep ↦ format_emitted_str_gep⦅str_idx ⸴ temp_counter⦆ ·
+            emit sgep ·
+            yield temp_counter ·
+        | YieldDecl(inner) ⟹
+            int64 t_yield ↦ walk_core_ast⦅inner ⸴ temp_counter⦆ ·
+            int64 val ↦ qadav_last_int_value⦅⦆ ·
+            text strunc ↦ format_trunc_line_id⦅temp_counter ⸴ val⦆ ·
+            emit strunc ·
+            text sret ↦ format_ret_line_id⦅temp_counter⦆ ·
+            emit sret ·
+            yield temp_counter ⊕ 1 ·
+        | IntLitDecl(v) ⟹
+            qadav_set_last_int_value⦅v⦆ ·
+            yield temp_counter ·
         | BindDecl(name ⸴ val_type ⸴ value) ⟹
-            emit "  ; bind" ·
+            yield temp_counter ·
         | WhenDecl(cond ⸴ then_block ⸴ else_block) ⟹
-            emit "  ; when" ·
+            yield temp_counter ·
         | CycleDecl(cond ⸴ body) ⟹
-            emit "  ; cycle" ·
+            yield temp_counter ·
         | BinaryOpDecl(op ⸴ left ⸴ right) ⟹
-            emit "  ; binop" ·
+            yield temp_counter ·
         | CallDecl(name ⸴ args) ⟹
-            emit "  ; call" ·
+            yield temp_counter ·
         | IdentDecl(name) ⟹
-            emit "  ; ident" ·
+            yield temp_counter ·
     ⟧
     yield temp_counter ·
 ⟧
@@ -396,46 +441,6 @@ process emit_common_prefix⦅⦆ → logic ⟦
     yield affirm ·
 ⟧
 
-process emit_hello_body⦅text file_path⦆ → logic ⟦
-    int64 scount ↦ scan_emitted_strings⦅file_path⦆ ·
-    int64 yv ↦ extract_yield_number⦅file_path⦆ ·
-    when yv ≺ 0 ⟦
-        emit "error: could not find yield statement in input file" ·
-        yield deny ·
-    ⟧
-    emit "" ·
-    emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
-    emit "declare i32 @qadav_pcc_verify()" ·
-    emit "declare i32 @qadav_pcc_corrupt(i32)" ·
-    emit "" ·
-    int64 si ↦ 0 ·
-    cycle si ≺ scount ⟦
-        text sdef ↦ format_emitted_str_def⦅si⦆ ·
-        emit sdef ·
-        si ← si ⊕ 1 ·
-    ⟧
-    emit "" ·
-    emit "define i32 @\"main\"() {" ·
-    emit "entry:" ·
-    int64 k ↦ 0 ·
-    int64 cur_temp ↦ 1 ·
-    cycle k ≺ scount ⟦
-        text sgep ↦ format_emitted_str_gep⦅k ⸴ cur_temp⦆ ·
-        emit sgep ·
-        text scall ↦ format_emitted_str_call⦅cur_temp⦆ ·
-        emit scall ·
-        cur_temp ← cur_temp ⊕ 1 ·
-        k ← k ⊕ 1 ·
-    ⟧
-    text trunc_line ↦ format_trunc_line_id⦅cur_temp ⸴ yv⦆ ·
-    emit trunc_line ·
-    text ret_line ↦ format_ret_line_id⦅cur_temp⦆ ·
-    emit ret_line ·
-    emit "}" ·
-    emit "" ·
-    yield affirm ·
-⟧
-
 process emit_if_else_body⦅text file_path⦆ → logic ⟦
     emit "" ·
     emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
@@ -657,6 +662,11 @@ process main⦅⦆ → int64 ⟦
         yield 1 ·
     ⟧
     logic prefix_ok ↦ emit_common_prefix⦅⦆ ·
+    when prog_kind ≡ 0 ⟦
+        CoreAst ast ↦ parse_to_core_ast⦅target_file⦆ ·
+        int64 result ↦ walk_core_ast⦅ast ⸴ 1⦆ ·
+        yield 0 ·
+    ⟧
     when prog_kind ≡ 1 ⟦
         logic fib_ok ↦ emit_fib_body⦅target_file⦆ ·
         yield 0 ·
@@ -673,6 +683,6 @@ process main⦅⦆ → int64 ⟦
         logic if_ok ↦ emit_if_else_body⦅target_file⦆ ·
         yield 0 ·
     ⟧
-    logic hello_ok ↦ emit_hello_body⦅target_file⦆ ·
-    yield 0 ·
+    emit "error: unknown program kind" ·
+    yield 1 ·
 ⟧

@@ -40,5 +40,12 @@ const char* qadav_format_emitted_str_call(long long temp_id);
 const char* qadav_format_trunc_line_id(long long temp_id, long long val);
 const char* qadav_format_ret_line_id(long long temp_id);
 
+long long   qadav_register_string(const char* s);
+long long   qadav_get_string_index(const char* s);
+long long   qadav_get_string_byte_len(const char* s);
+const char* qadav_escape_string(const char* s);
+void        qadav_set_last_int_value(long long v);
+long long   qadav_last_int_value(void);
+
 #endif
 

@@ -333,6 +333,46 @@ func New() *Checker {
 			Results: []*types.Type{types.Text},
 		},
 	})
+	for _, fnName := range []string{"register_string", "qadav_register_string", "get_string_index", "qadav_get_string_index", "get_string_byte_len", "qadav_get_string_byte_len"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"escape_string", "qadav_escape_string"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"set_last_int_value", "qadav_set_last_int_value"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{},
+			},
+		})
+	}
+	for _, fnName := range []string{"last_int_value", "qadav_last_int_value"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
 	return &Checker{
 		globalScope:       global,
 		curScope:          global,

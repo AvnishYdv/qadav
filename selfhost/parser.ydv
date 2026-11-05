@@ -119,7 +119,7 @@ process parse_rsca_attest⦅int64 stage ⸴ text record_var⦆ → int64 ⟦
 
 variant CoreAst ⟦
     | ProcessDecl(name ↦ text ⸴ params ↦ tensor ⸴ ret_type ↦ text ⸴ body ↦ CoreAst) ·
-    | BlockDecl(stmts ↦ tensor) ·
+    | BlockDecl(first ↦ CoreAst ⸴ second ↦ CoreAst) ·
     | BindDecl(name ↦ text ⸴ val_type ↦ text ⸴ value ↦ CoreAst) ·
     | YieldDecl(value ↦ CoreAst) ·
     | EmitDecl(value ↦ CoreAst) ·

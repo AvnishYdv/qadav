@@ -81,6 +81,12 @@ const char* qadav_format_emitted_str_gep(long long str_idx, long long temp_id);
 const char* qadav_format_emitted_str_call(long long temp_id);
 const char* qadav_format_trunc_line_id(long long temp_id, long long val);
 const char* qadav_format_ret_line_id(long long temp_id);
+long long   qadav_register_string(const char* s);
+long long   qadav_get_string_index(const char* s);
+long long   qadav_get_string_byte_len(const char* s);
+const char* qadav_escape_string(const char* s);
+void        qadav_set_last_int_value(long long v);
+long long   qadav_last_int_value(void);
 
 const char* get_input_path(void) {
     return qadav_get_input_path();
@@ -225,6 +231,13 @@ const char* format_trunc_line_id(long long temp_id, long long val) {
 const char* format_ret_line_id(long long temp_id) {
     return qadav_format_ret_line_id(temp_id);
 }
+
+long long register_string(const char* s) { return qadav_register_string(s); }
+long long get_string_index(const char* s) { return qadav_get_string_index(s); }
+long long get_string_byte_len(const char* s) { return qadav_get_string_byte_len(s); }
+const char* escape_string(const char* s) { return qadav_escape_string(s); }
+void set_last_int_value(long long v) { qadav_set_last_int_value(v); }
+long long last_int_value(void) { return qadav_last_int_value(); }
 
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);

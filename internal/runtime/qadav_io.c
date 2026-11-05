@@ -1080,5 +1080,76 @@ const char* qadav_format_ret_line_id(long long temp_id) {
     return buf;
 }
 
+static int io_streq(const char* a, const char* b) {
+    if (!a || !b) return (a == b);
+    while (*a && *b) {
+        if (*a != *b) return 0;
+        a++; b++;
+    }
+    return (*a == *b);
+}
+
+long long qadav_register_string(const char* s) {
+    if (!s) return -1;
+    for (int i = 0; i < g_emitted_string_count; i++) {
+        if (io_streq(g_emitted_strings[i].text, s)) {
+            return (long long)i;
+        }
+    }
+    if (g_emitted_string_count >= 16) return -1;
+    int idx = g_emitted_string_count;
+    int si = 0;
+    while (s[si] && si < 127) {
+        g_emitted_strings[idx].text[si] = s[si];
+        si++;
+    }
+    g_emitted_strings[idx].text[si] = '\0';
+    g_emitted_strings[idx].len = si + 1;
+    g_emitted_string_count++;
+    return (long long)idx;
+}
+
+long long qadav_get_string_index(const char* s) {
+    if (!s) return -1;
+    for (int i = 0; i < g_emitted_string_count; i++) {
+        if (io_streq(g_emitted_strings[i].text, s)) {
+            return (long long)i;
+        }
+    }
+    return -1;
+}
+
+long long qadav_get_string_byte_len(const char* s) {
+    if (!s) return 0;
+    long long len = 0;
+    while (s[len]) len++;
+    return len;
+}
+
+const char* qadav_escape_string(const char* s) {
+    static char buf[256];
+    if (!s) return "";
+    int bi = 0;
+    for (int i = 0; s[i] && bi < 250; i++) {
+        if (s[i] == '"' || s[i] == '\\') {
+            buf[bi++] = '\\';
+        }
+        buf[bi++] = s[i];
+    }
+    buf[bi] = '\0';
+    return buf;
+}
+
+static long long g_last_int_val = 0;
+
+void qadav_set_last_int_value(long long v) {
+    g_last_int_val = v;
+}
+
+long long qadav_last_int_value(void) {
+    return g_last_int_val;
+}
+
+
 
 

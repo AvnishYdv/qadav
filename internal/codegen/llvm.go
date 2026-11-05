@@ -588,7 +588,19 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i8* @format_emitted_str_gep(i64, i64)\n")
 		header.WriteString("declare i8* @format_emitted_str_call(i64)\n")
 		header.WriteString("declare i8* @format_trunc_line_id(i64, i64)\n")
-		header.WriteString("declare i8* @format_ret_line_id(i64)\n\n")
+		header.WriteString("declare i8* @format_ret_line_id(i64)\n")
+		header.WriteString("declare i64 @register_string(i8*)\n")
+		header.WriteString("declare i64 @qadav_register_string(i8*)\n")
+		header.WriteString("declare i64 @get_string_index(i8*)\n")
+		header.WriteString("declare i64 @qadav_get_string_index(i8*)\n")
+		header.WriteString("declare i64 @get_string_byte_len(i8*)\n")
+		header.WriteString("declare i64 @qadav_get_string_byte_len(i8*)\n")
+		header.WriteString("declare i8* @escape_string(i8*)\n")
+		header.WriteString("declare i8* @qadav_escape_string(i8*)\n")
+		header.WriteString("declare void @set_last_int_value(i64)\n")
+		header.WriteString("declare void @qadav_set_last_int_value(i64)\n")
+		header.WriteString("declare i64 @last_int_value()\n")
+		header.WriteString("declare i64 @qadav_last_int_value()\n\n")
 	}
 
 	// Quantum global state
@@ -1754,7 +1766,13 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "get_emitted_string_text" || ident.Name == "get_emitted_string_len" ||
 				ident.Name == "format_emitted_str_def" || ident.Name == "format_emitted_str_gep" ||
 				ident.Name == "format_emitted_str_call" || ident.Name == "format_trunc_line_id" ||
-				ident.Name == "format_ret_line_id" {
+				ident.Name == "format_ret_line_id" ||
+				ident.Name == "register_string" || ident.Name == "qadav_register_string" ||
+				ident.Name == "get_string_index" || ident.Name == "qadav_get_string_index" ||
+				ident.Name == "get_string_byte_len" || ident.Name == "qadav_get_string_byte_len" ||
+				ident.Name == "escape_string" || ident.Name == "qadav_escape_string" ||
+				ident.Name == "set_last_int_value" || ident.Name == "qadav_set_last_int_value" ||
+				ident.Name == "last_int_value" || ident.Name == "qadav_last_int_value" {
 				g.usesDynamicIO = true
 			}
 			if g.checker != nil && g.checker.Networks() != nil {
