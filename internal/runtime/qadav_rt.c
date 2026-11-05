@@ -98,6 +98,7 @@ long long   qadav_next_label_id(void);
 void        qadav_reset_label_counter(void);
 const char* qadav_format_icmp_imm(const char* pred, long long res_temp, long long left_temp, long long imm_val);
 const char* qadav_format_br_cond(long long cond_reg, long long then_id, long long else_id);
+const char* qadav_format_br_cond_merge(long long cond_reg, long long then_id, long long merge_id);
 const char* qadav_format_label(const char* prefix, long long id);
 const char* qadav_format_br_label(const char* prefix, long long id);
 int         qadav_scan_if_else(const char* path);
@@ -107,6 +108,16 @@ const char* qadav_get_if_cond_var(void);
 const char* qadav_get_if_cond_op(void);
 long long   qadav_get_if_cond_val(void);
 long long   qadav_get_if_yield_val(void);
+long long   qadav_is_main_proc(const char* name);
+void        qadav_set_proc_is_main(long long is_main);
+long long   qadav_get_proc_is_main(void);
+const char* qadav_format_func_def_with_param(const char* name, const char* param_name);
+const char* qadav_format_param_alloca(const char* param_name);
+const char* qadav_format_param_store(const char* param_name);
+const char* qadav_format_call_i64(const char* callee, long long res_temp, long long arg_temp);
+const char* qadav_format_ret_i64(long long temp_id);
+const char* qadav_format_binop_imm(const char* op, long long res_temp, long long left_reg, long long imm_val);
+const char* qadav_format_store_reg(const char* name, long long reg_id);
 
 const char* get_input_path(void) {
     return qadav_get_input_path();
@@ -273,6 +284,9 @@ const char* format_icmp_imm(const char* pred, long long res_temp, long long left
 const char* format_br_cond(long long cond_reg, long long then_id, long long else_id) {
     return qadav_format_br_cond(cond_reg, then_id, else_id);
 }
+const char* format_br_cond_merge(long long cond_reg, long long then_id, long long merge_id) {
+    return qadav_format_br_cond_merge(cond_reg, then_id, merge_id);
+}
 const char* format_label(const char* prefix, long long id) {
     return qadav_format_label(prefix, id);
 }
@@ -286,6 +300,16 @@ const char* get_if_cond_var(void) { return qadav_get_if_cond_var(); }
 const char* get_if_cond_op(void) { return qadav_get_if_cond_op(); }
 long long get_if_cond_val(void) { return qadav_get_if_cond_val(); }
 long long get_if_yield_val(void) { return qadav_get_if_yield_val(); }
+long long is_main_proc(const char* name) { return qadav_is_main_proc(name); }
+void set_proc_is_main(long long is_main) { qadav_set_proc_is_main(is_main); }
+long long get_proc_is_main(void) { return qadav_get_proc_is_main(); }
+const char* format_func_def_with_param(const char* name, const char* param_name) { return qadav_format_func_def_with_param(name, param_name); }
+const char* format_param_alloca(const char* param_name) { return qadav_format_param_alloca(param_name); }
+const char* format_param_store(const char* param_name) { return qadav_format_param_store(param_name); }
+const char* format_call_i64(const char* callee, long long res_temp, long long arg_temp) { return qadav_format_call_i64(callee, res_temp, arg_temp); }
+const char* format_ret_i64(long long temp_id) { return qadav_format_ret_i64(temp_id); }
+const char* format_binop_imm(const char* op, long long res_temp, long long left_reg, long long imm_val) { return qadav_format_binop_imm(op, res_temp, left_reg, imm_val); }
+const char* format_store_reg(const char* name, long long reg_id) { return qadav_format_store_reg(name, reg_id); }
 
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);

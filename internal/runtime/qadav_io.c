@@ -1435,6 +1435,194 @@ const char* qadav_get_if_cond_op(void) { return g_if_info.cond_op; }
 long long   qadav_get_if_cond_val(void) { return g_if_info.cond_val; }
 long long   qadav_get_if_yield_val(void) { return g_if_info.yield_val; }
 
+long long qadav_is_main_proc(const char* name) {
+    if (!name) return 0;
+    return (name[0] == 'm' && name[1] == 'a' && name[2] == 'i' && name[3] == 'n' && name[4] == '\0') ? 1 : 0;
+}
+
+static long long g_proc_is_main = 1;
+void qadav_set_proc_is_main(long long is_main) {
+    g_proc_is_main = is_main;
+}
+long long qadav_get_proc_is_main(void) {
+    return g_proc_is_main;
+}
+
+const char* qadav_format_func_def_with_param(const char* name, const char* param_name) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "define i64 @\"";
+    while (*p1) buf[bi++] = *p1++;
+    while (*name) buf[bi++] = *name++;
+    const char* p2 = "\"(i64 %";
+    while (*p2) buf[bi++] = *p2++;
+    while (*param_name) buf[bi++] = *param_name++;
+    const char* p3 = ".in) {";
+    while (*p3) buf[bi++] = *p3++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_param_alloca(const char* param_name) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %";
+    while (*p1) buf[bi++] = *p1++;
+    while (*param_name) buf[bi++] = *param_name++;
+    const char* p2 = ".ptr = alloca i64";
+    while (*p2) buf[bi++] = *p2++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_param_store(const char* param_name) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  store i64 %";
+    while (*p1) buf[bi++] = *p1++;
+    const char* s = param_name;
+    while (*s) buf[bi++] = *s++;
+    const char* p2 = ".in, i64* %";
+    while (*p2) buf[bi++] = *p2++;
+    s = param_name;
+    while (*s) buf[bi++] = *s++;
+    const char* p3 = ".ptr";
+    while (*p3) buf[bi++] = *p3++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_br_cond_merge(long long cond_reg, long long then_id, long long merge_id) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  br i1 %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = cond_reg;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = ", label %when_then_";
+    while (*p2) buf[bi++] = *p2++;
+    ni = 0; v = then_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p3 = ", label %when_merge_";
+    while (*p3) buf[bi++] = *p3++;
+    ni = 0; v = merge_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_call_i64(const char* callee, long long res_temp, long long arg_temp) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = res_temp;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = call i64 @\"";
+    while (*p2) buf[bi++] = *p2++;
+    while (*callee) buf[bi++] = *callee++;
+    const char* p3 = "\"(i64 %t";
+    while (*p3) buf[bi++] = *p3++;
+    ni = 0; v = arg_temp;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi++] = ')';
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_ret_i64(long long temp_id) {
+    static char buf[64];
+    int bi = 0;
+    const char* p1 = "  ret i64 %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = temp_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_binop_imm(const char* op, long long res_temp, long long left_reg, long long imm_val) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = res_temp;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi++] = ' ';
+    buf[bi++] = '=';
+    buf[bi++] = ' ';
+    const char* op_str = "sub i64 %t";
+    if (op[0] == 's' && op[1] == 'u' && op[2] == 'b') op_str = "sub i64 %t";
+    else if (op[0] == 'a' && op[1] == 'd' && op[2] == 'd') op_str = "add i64 %t";
+    else if (op[0] == 'm' && op[1] == 'u' && op[2] == 'l') op_str = "mul i64 %t";
+    else if (op[0] == 's' && op[1] == 'l' && op[2] == 't') op_str = "icmp slt i64 %t";
+    else if (op[0] == 's' && op[1] == 'g' && op[2] == 't') op_str = "icmp sgt i64 %t";
+    else if (op[0] == 'e' && op[1] == 'q') op_str = "icmp eq i64 %t";
+    else if (op[0] == 'n' && op[1] == 'e') op_str = "icmp ne i64 %t";
+    else if (op[0] == 's' && op[1] == 'l' && op[2] == 'e') op_str = "icmp sle i64 %t";
+    else if (op[0] == 's' && op[1] == 'g' && op[2] == 'e') op_str = "icmp sge i64 %t";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x8a && (unsigned char)op[2] == 0x96) op_str = "sub i64 %t";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x8a && (unsigned char)op[2] == 0x95) op_str = "add i64 %t";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x8a && (unsigned char)op[2] == 0x97) op_str = "mul i64 %t";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xba) op_str = "icmp slt i64 %t";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xbb) op_str = "icmp sgt i64 %t";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xa1) op_str = "icmp eq i64 %t";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xa0) op_str = "icmp ne i64 %t";
+    while (*op_str) buf[bi++] = *op_str++;
+    ni = 0; v = left_reg;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi++] = ',';
+    buf[bi++] = ' ';
+    ni = 0; v = imm_val;
+    if (v == 0) num[ni++] = '0';
+    else {
+        int neg = 0; unsigned long long uv;
+        if (v < 0) { neg = 1; uv = (unsigned long long)(-v); } else { uv = (unsigned long long)v; }
+        char tmp[32]; int ti = 0;
+        while (uv > 0) { tmp[ti++] = '0' + (char)(uv % 10); uv /= 10; }
+        if (neg) num[ni++] = '-';
+        while (ti > 0) num[ni++] = tmp[--ti];
+    }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_store_reg(const char* name, long long reg_id) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  store i64 %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = reg_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = ", i64* %";
+    while (*p2) buf[bi++] = *p2++;
+    while (*name) buf[bi++] = *name++;
+    const char* p3 = ".ptr";
+    while (*p3) buf[bi++] = *p3++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+
 
 
 

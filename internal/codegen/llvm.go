@@ -623,6 +623,8 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i8* @qadav_format_icmp_imm(i8*, i64, i64, i64)\n")
 		header.WriteString("declare i8* @format_br_cond(i64, i64, i64)\n")
 		header.WriteString("declare i8* @qadav_format_br_cond(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_br_cond_merge(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_br_cond_merge(i64, i64, i64)\n")
 		header.WriteString("declare i8* @format_label(i8*, i64)\n")
 		header.WriteString("declare i8* @qadav_format_label(i8*, i64)\n")
 		header.WriteString("declare i8* @format_br_label(i8*, i64)\n")
@@ -640,7 +642,27 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i64 @get_if_cond_val()\n")
 		header.WriteString("declare i64 @qadav_get_if_cond_val()\n")
 		header.WriteString("declare i64 @get_if_yield_val()\n")
-		header.WriteString("declare i64 @qadav_get_if_yield_val()\n\n")
+		header.WriteString("declare i64 @qadav_get_if_yield_val()\n")
+		header.WriteString("declare i64 @is_main_proc(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_main_proc(i8*)\n")
+		header.WriteString("declare void @set_proc_is_main(i64)\n")
+		header.WriteString("declare void @qadav_set_proc_is_main(i64)\n")
+		header.WriteString("declare i64 @get_proc_is_main()\n")
+		header.WriteString("declare i64 @qadav_get_proc_is_main()\n")
+		header.WriteString("declare i8* @format_func_def_with_param(i8*, i8*)\n")
+		header.WriteString("declare i8* @qadav_format_func_def_with_param(i8*, i8*)\n")
+		header.WriteString("declare i8* @format_param_alloca(i8*)\n")
+		header.WriteString("declare i8* @qadav_format_param_alloca(i8*)\n")
+		header.WriteString("declare i8* @format_param_store(i8*)\n")
+		header.WriteString("declare i8* @qadav_format_param_store(i8*)\n")
+		header.WriteString("declare i8* @format_call_i64(i8*, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_call_i64(i8*, i64, i64)\n")
+		header.WriteString("declare i8* @format_ret_i64(i64)\n")
+		header.WriteString("declare i8* @qadav_format_ret_i64(i64)\n")
+		header.WriteString("declare i8* @format_binop_imm(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_binop_imm(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_store_reg(i8*, i64)\n")
+		header.WriteString("declare i8* @qadav_format_store_reg(i8*, i64)\n\n")
 	}
 
 	// Quantum global state
@@ -1824,6 +1846,7 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "reset_label_counter" || ident.Name == "qadav_reset_label_counter" ||
 				ident.Name == "format_icmp_imm" || ident.Name == "qadav_format_icmp_imm" ||
 				ident.Name == "format_br_cond" || ident.Name == "qadav_format_br_cond" ||
+				ident.Name == "format_br_cond_merge" || ident.Name == "qadav_format_br_cond_merge" ||
 				ident.Name == "format_label" || ident.Name == "qadav_format_label" ||
 				ident.Name == "format_br_label" || ident.Name == "qadav_format_br_label" ||
 				ident.Name == "scan_if_else" || ident.Name == "qadav_scan_if_else" ||
@@ -1832,7 +1855,17 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "get_if_cond_var" || ident.Name == "qadav_get_if_cond_var" ||
 				ident.Name == "get_if_cond_op" || ident.Name == "qadav_get_if_cond_op" ||
 				ident.Name == "get_if_cond_val" || ident.Name == "qadav_get_if_cond_val" ||
-				ident.Name == "get_if_yield_val" || ident.Name == "qadav_get_if_yield_val" {
+				ident.Name == "get_if_yield_val" || ident.Name == "qadav_get_if_yield_val" ||
+				ident.Name == "is_main_proc" || ident.Name == "qadav_is_main_proc" ||
+				ident.Name == "set_proc_is_main" || ident.Name == "qadav_set_proc_is_main" ||
+				ident.Name == "get_proc_is_main" || ident.Name == "qadav_get_proc_is_main" ||
+				ident.Name == "format_func_def_with_param" || ident.Name == "qadav_format_func_def_with_param" ||
+				ident.Name == "format_param_alloca" || ident.Name == "qadav_format_param_alloca" ||
+				ident.Name == "format_param_store" || ident.Name == "qadav_format_param_store" ||
+				ident.Name == "format_call_i64" || ident.Name == "qadav_format_call_i64" ||
+				ident.Name == "format_ret_i64" || ident.Name == "qadav_format_ret_i64" ||
+				ident.Name == "format_binop_imm" || ident.Name == "qadav_format_binop_imm" ||
+				ident.Name == "format_store_reg" || ident.Name == "qadav_format_store_reg" {
 				g.usesDynamicIO = true
 			}
 			if g.checker != nil && g.checker.Networks() != nil {

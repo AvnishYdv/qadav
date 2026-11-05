@@ -54,6 +54,28 @@ func TestSelfHostedCodegenNativeFibByteIdentical(t *testing.T) {
 	}
 }
 
+func TestSelfHostedCodegenNativeFibV2ByteIdentical(t *testing.T) {
+	path := filepath.Join("..", "..", "examples", "fib_v2.ydv")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed reading %s: %v", path, err)
+	}
+
+	irLegacy, codeLegacy := CodegenSourceLegacy(string(src), path)
+	if codeLegacy != 0 {
+		t.Fatalf("Go legacy codegen failed on fib_v2.ydv: %s", irLegacy)
+	}
+
+	irNative, codeNative := CodegenSourceNative(string(src), path)
+	if codeNative != 0 {
+		t.Fatalf("Native self-hosted codegen failed on fib_v2.ydv: %s", irNative)
+	}
+
+	if irLegacy != irNative {
+		t.Fatalf("Byte mismatch on fib_v2.ydv! Legacy len: %d, Native len: %d", len(irLegacy), len(irNative))
+	}
+}
+
 func TestSelfHostedCodegenNativeDotProductByteIdentical(t *testing.T) {
 	path := filepath.Join("..", "..", "examples", "dot_product.ydv")
 	src, err := os.ReadFile(path)
