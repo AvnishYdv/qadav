@@ -363,13 +363,33 @@ func New() *Checker {
 			},
 		})
 	}
-	for _, fnName := range []string{"last_int_value", "qadav_last_int_value"} {
+	for _, fnName := range []string{"last_int_value", "qadav_last_int_value", "get_last_temp", "qadav_get_last_temp", "get_last_emit_kind", "qadav_get_last_emit_kind"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
 			Type: &types.Type{
 				Kind:    types.KindProcess,
 				Params:  []*types.Type{},
 				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"set_last_temp", "qadav_set_last_temp", "set_last_emit_kind", "qadav_set_last_emit_kind"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{},
+			},
+		})
+	}
+	for _, fnName := range []string{"stmt_binop_op", "qadav_stmt_binop_op", "stmt_binop_left", "qadav_stmt_binop_left", "stmt_binop_right", "qadav_stmt_binop_right"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{types.Text},
 			},
 		})
 	}

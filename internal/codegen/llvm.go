@@ -600,7 +600,21 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare void @set_last_int_value(i64)\n")
 		header.WriteString("declare void @qadav_set_last_int_value(i64)\n")
 		header.WriteString("declare i64 @last_int_value()\n")
-		header.WriteString("declare i64 @qadav_last_int_value()\n\n")
+		header.WriteString("declare i64 @qadav_last_int_value()\n")
+		header.WriteString("declare void @set_last_temp(i64)\n")
+		header.WriteString("declare void @qadav_set_last_temp(i64)\n")
+		header.WriteString("declare i64 @get_last_temp()\n")
+		header.WriteString("declare i64 @qadav_get_last_temp()\n")
+		header.WriteString("declare void @set_last_emit_kind(i64)\n")
+		header.WriteString("declare void @qadav_set_last_emit_kind(i64)\n")
+		header.WriteString("declare i64 @get_last_emit_kind()\n")
+		header.WriteString("declare i64 @qadav_get_last_emit_kind()\n")
+		header.WriteString("declare i8* @stmt_binop_op(i64)\n")
+		header.WriteString("declare i8* @qadav_stmt_binop_op(i64)\n")
+		header.WriteString("declare i8* @stmt_binop_left(i64)\n")
+		header.WriteString("declare i8* @qadav_stmt_binop_left(i64)\n")
+		header.WriteString("declare i8* @stmt_binop_right(i64)\n")
+		header.WriteString("declare i8* @qadav_stmt_binop_right(i64)\n\n")
 	}
 
 	// Quantum global state
@@ -1772,7 +1786,14 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "get_string_byte_len" || ident.Name == "qadav_get_string_byte_len" ||
 				ident.Name == "escape_string" || ident.Name == "qadav_escape_string" ||
 				ident.Name == "set_last_int_value" || ident.Name == "qadav_set_last_int_value" ||
-				ident.Name == "last_int_value" || ident.Name == "qadav_last_int_value" {
+				ident.Name == "last_int_value" || ident.Name == "qadav_last_int_value" ||
+				ident.Name == "set_last_temp" || ident.Name == "qadav_set_last_temp" ||
+				ident.Name == "get_last_temp" || ident.Name == "qadav_get_last_temp" ||
+				ident.Name == "set_last_emit_kind" || ident.Name == "qadav_set_last_emit_kind" ||
+				ident.Name == "get_last_emit_kind" || ident.Name == "qadav_get_last_emit_kind" ||
+				ident.Name == "stmt_binop_op" || ident.Name == "qadav_stmt_binop_op" ||
+				ident.Name == "stmt_binop_left" || ident.Name == "qadav_stmt_binop_left" ||
+				ident.Name == "stmt_binop_right" || ident.Name == "qadav_stmt_binop_right" {
 				g.usesDynamicIO = true
 			}
 			if g.checker != nil && g.checker.Networks() != nil {

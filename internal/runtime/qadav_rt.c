@@ -87,6 +87,13 @@ long long   qadav_get_string_byte_len(const char* s);
 const char* qadav_escape_string(const char* s);
 void        qadav_set_last_int_value(long long v);
 long long   qadav_last_int_value(void);
+void        qadav_set_last_temp(long long t);
+long long   qadav_get_last_temp(void);
+void        qadav_set_last_emit_kind(long long k);
+long long   qadav_get_last_emit_kind(void);
+const char* qadav_stmt_binop_op(long long idx);
+const char* qadav_stmt_binop_left(long long idx);
+const char* qadav_stmt_binop_right(long long idx);
 
 const char* get_input_path(void) {
     return qadav_get_input_path();
@@ -238,6 +245,13 @@ long long get_string_byte_len(const char* s) { return qadav_get_string_byte_len(
 const char* escape_string(const char* s) { return qadav_escape_string(s); }
 void set_last_int_value(long long v) { qadav_set_last_int_value(v); }
 long long last_int_value(void) { return qadav_last_int_value(); }
+void set_last_temp(long long t) { qadav_set_last_temp(t); }
+long long get_last_temp(void) { return qadav_get_last_temp(); }
+void set_last_emit_kind(long long k) { qadav_set_last_emit_kind(k); }
+long long get_last_emit_kind(void) { return qadav_get_last_emit_kind(); }
+const char* stmt_binop_op(long long idx) { return qadav_stmt_binop_op(idx); }
+const char* stmt_binop_left(long long idx) { return qadav_stmt_binop_left(idx); }
+const char* stmt_binop_right(long long idx) { return qadav_stmt_binop_right(idx); }
 
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);

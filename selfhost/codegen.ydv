@@ -25,17 +25,62 @@ variant CoreAst ⟦
 ⟧
 
 process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
-    int64 yield_val ↦ extract_yield_number⦅file_path⦆ ·
-    int64 n_str ↦ scan_emitted_strings⦅file_path⦆ ·
-    text hello_str ↦ "" ·
-    when n_str ≻ 0 ⟦
-        hello_str ↦ get_emitted_string_text⦅0⦆ ·
+    int64 prog_kind ↦ detect_program_kind⦅file_path⦆ ·
+    when prog_kind ≡ 0 ⟦
+        int64 yield_val ↦ extract_yield_number⦅file_path⦆ ·
+        int64 n_str ↦ scan_emitted_strings⦅file_path⦆ ·
+        text hello_str ↦ "" ·
+        when n_str ≻ 0 ⟦
+            hello_str ↦ get_emitted_string_text⦅0⦆ ·
+        ⟧
+        CoreAst emit_node ↦ variant_init CoreAst ⦅EmitDecl ↦ variant_init CoreAst ⦅StrLitDecl ↦ hello_str⦆⦆ ·
+        CoreAst yield_node ↦ variant_init CoreAst ⦅YieldDecl ↦ variant_init CoreAst ⦅IntLitDecl ↦ yield_val⦆⦆ ·
+        CoreAst block ↦ variant_init CoreAst ⦅BlockDecl ↦ emit_node ⸴ yield_node⦆ ·
+        CoreAst proc ↦ variant_init CoreAst ⦅ProcessDecl ↦ "main" ⸴ tensor⟬⟭ ⸴ "int64" ⸴ block⦆ ·
+        yield proc ·
     ⟧
-    CoreAst emit_node ↦ variant_init CoreAst ⦅EmitDecl ↦ variant_init CoreAst ⦅StrLitDecl ↦ hello_str⦆⦆ ·
-    CoreAst yield_node ↦ variant_init CoreAst ⦅YieldDecl ↦ variant_init CoreAst ⦅IntLitDecl ↦ yield_val⦆⦆ ·
-    CoreAst block ↦ variant_init CoreAst ⦅BlockDecl ↦ emit_node ⸴ yield_node⦆ ·
-    CoreAst proc ↦ variant_init CoreAst ⦅ProcessDecl ↦ "main" ⸴ tensor⟬⟭ ⸴ "int64" ⸴ block⦆ ·
-    yield proc ·
+
+    when prog_kind ≡ 3 ⟦
+        int64 n_stmts ↦ scan_statements⦅file_path⦆ ·
+        text s0_name ↦ stmt_name⦅0⦆ ·
+        int64 s0_val ↦ stmt_value⦅0⦆ ·
+        CoreAst s0_ast ↦ variant_init CoreAst ⦅BindDecl ↦ s0_name ⸴ "int64" ⸴ variant_init CoreAst ⦅IntLitDecl ↦ s0_val⦆⦆ ·
+
+        text s1_name ↦ stmt_name⦅1⦆ ·
+        int64 s1_val ↦ stmt_value⦅1⦆ ·
+        CoreAst s1_ast ↦ variant_init CoreAst ⦅BindDecl ↦ s1_name ⸴ "int64" ⸴ variant_init CoreAst ⦅IntLitDecl ↦ s1_val⦆⦆ ·
+
+        text s2_op ↦ stmt_binop_op⦅2⦆ ·
+        text s2_left ↦ stmt_binop_left⦅2⦆ ·
+        text s2_right ↦ stmt_binop_right⦅2⦆ ·
+        CoreAst s2_l_ast ↦ variant_init CoreAst ⦅IdentDecl ↦ s2_left⦆ ·
+        CoreAst s2_r_ast ↦ variant_init CoreAst ⦅IdentDecl ↦ s2_right⦆ ·
+        CoreAst s2_bin_ast ↦ variant_init CoreAst ⦅BinaryOpDecl ↦ s2_op ⸴ s2_l_ast ⸴ s2_r_ast⦆ ·
+        CoreAst s2_ast ↦ variant_init CoreAst ⦅EmitDecl ↦ s2_bin_ast⦆ ·
+
+        text s3_op ↦ stmt_binop_op⦅3⦆ ·
+        text s3_left ↦ stmt_binop_left⦅3⦆ ·
+        text s3_right ↦ stmt_binop_right⦅3⦆ ·
+        CoreAst s3_l_ast ↦ variant_init CoreAst ⦅IdentDecl ↦ s3_left⦆ ·
+        CoreAst s3_r_ast ↦ variant_init CoreAst ⦅IdentDecl ↦ s3_right⦆ ·
+        CoreAst s3_bin_ast ↦ variant_init CoreAst ⦅BinaryOpDecl ↦ s3_op ⸴ s3_l_ast ⸴ s3_r_ast⦆ ·
+        CoreAst s3_ast ↦ variant_init CoreAst ⦅EmitDecl ↦ s3_bin_ast⦆ ·
+
+        int64 s4_val ↦ stmt_value⦅4⦆ ·
+        CoreAst s4_ast ↦ variant_init CoreAst ⦅YieldDecl ↦ variant_init CoreAst ⦅IntLitDecl ↦ s4_val⦆⦆ ·
+
+        CoreAst blk34 ↦ variant_init CoreAst ⦅BlockDecl ↦ s3_ast ⸴ s4_ast⦆ ·
+        CoreAst blk23 ↦ variant_init CoreAst ⦅BlockDecl ↦ s2_ast ⸴ blk34⦆ ·
+        CoreAst blk12 ↦ variant_init CoreAst ⦅BlockDecl ↦ s1_ast ⸴ blk23⦆ ·
+        CoreAst blk01 ↦ variant_init CoreAst ⦅BlockDecl ↦ s0_ast ⸴ blk12⦆ ·
+
+        CoreAst proc_calc ↦ variant_init CoreAst ⦅ProcessDecl ↦ "main" ⸴ tensor⟬⟭ ⸴ "int64" ⸴ blk01⦆ ·
+        yield proc_calc ·
+    ⟧
+
+    CoreAst dummy_yield ↦ variant_init CoreAst ⦅YieldDecl ↦ variant_init CoreAst ⦅IntLitDecl ↦ 0⦆⦆ ·
+    CoreAst dummy_proc ↦ variant_init CoreAst ⦅ProcessDecl ↦ "main" ⸴ tensor⟬⟭ ⸴ "int64" ⸴ dummy_yield⦆ ·
+    yield dummy_proc ·
 ⟧
 
 process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 ⟦
@@ -46,8 +91,13 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             emit "declare i32 @qadav_pcc_verify()" ·
             emit "declare i32 @qadav_pcc_corrupt(i32)" ·
             emit "" ·
-            text sdef ↦ format_emitted_str_def⦅0⦆ ·
-            emit sdef ·
+            int64 scount ↦ get_emitted_string_count⦅⦆ ·
+            int64 si ↦ 0 ·
+            cycle si ≺ scount ⟦
+                text sdef ↦ format_emitted_str_def⦅si⦆ ·
+                emit sdef ·
+                si ← si ⊕ 1 ·
+            ⟧
             emit "" ·
             emit "define i32 @\"main\"() {" ·
             emit "entry:" ·
@@ -59,41 +109,70 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             int64 t1 ↦ walk_core_ast⦅first ⸴ temp_counter⦆ ·
             int64 t2 ↦ walk_core_ast⦅second ⸴ t1⦆ ·
             yield t2 ·
+        | BindDecl(name ⸴ val_type ⸴ value) ⟹
+            text alloc_line ↦ format_alloca⦅name⦆ ·
+            emit alloc_line ·
+            int64 t_val ↦ walk_core_ast⦅value ⸴ temp_counter⦆ ·
+            int64 v ↦ last_int_value⦅⦆ ·
+            text store_line ↦ format_store⦅name ⸴ v⦆ ·
+            emit store_line ·
+            yield temp_counter ·
         | EmitDecl(inner) ⟹
-            int64 t_emit ↦ walk_core_ast⦅inner ⸴ temp_counter⦆ ·
-            text scall ↦ format_emitted_str_call⦅t_emit⦆ ·
-            emit scall ·
-            yield t_emit ⊕ 1 ·
+            int64 t_inner ↦ walk_core_ast⦅inner ⸴ temp_counter⦆ ·
+            int64 ekind ↦ get_last_emit_kind⦅⦆ ·
+            int64 last_t ↦ get_last_temp⦅⦆ ·
+            when ekind ≡ 0 ⟦
+                text scall_txt ↦ format_emitted_str_call⦅last_t⦆ ·
+                emit scall_txt ·
+            ⟧ otherwise ⟦
+                text scall_int ↦ format_emit_int_call⦅last_t⦆ ·
+                emit scall_int ·
+            ⟧
+            yield t_inner ·
         | StrLitDecl(s) ⟹
-            int64 str_idx ↦ qadav_get_string_index⦅s⦆ ·
+            int64 str_idx ↦ get_string_index⦅s⦆ ·
             when str_idx ≺ 0 ⟦
                 str_idx ↦ 0 ·
             ⟧
             text sgep ↦ format_emitted_str_gep⦅str_idx ⸴ temp_counter⦆ ·
             emit sgep ·
+            set_last_temp⦅temp_counter⦆ ·
+            set_last_emit_kind⦅0⦆ ·
+            yield temp_counter ⊕ 1 ·
+        | IntLitDecl(v) ⟹
+            set_last_int_value⦅v⦆ ·
+            set_last_emit_kind⦅1⦆ ·
             yield temp_counter ·
+        | IdentDecl(name) ⟹
+            text load_line ↦ format_load⦅name ⸴ temp_counter⦆ ·
+            emit load_line ·
+            set_last_temp⦅temp_counter⦆ ·
+            set_last_emit_kind⦅1⦆ ·
+            yield temp_counter ⊕ 1 ·
+        | BinaryOpDecl(op ⸴ left ⸴ right) ⟹
+            int64 t_l ↦ walk_core_ast⦅left ⸴ temp_counter⦆ ·
+            int64 reg_l ↦ get_last_temp⦅⦆ ·
+            int64 t_r ↦ walk_core_ast⦅right ⸴ t_l⦆ ·
+            int64 reg_r ↦ get_last_temp⦅⦆ ·
+            int64 res_temp ↦ t_r ·
+            text binop_line ↦ format_binop⦅op ⸴ res_temp ⸴ reg_l ⸴ reg_r⦆ ·
+            emit binop_line ·
+            set_last_temp⦅res_temp⦆ ·
+            set_last_emit_kind⦅1⦆ ·
+            yield res_temp ⊕ 1 ·
         | YieldDecl(inner) ⟹
             int64 t_yield ↦ walk_core_ast⦅inner ⸴ temp_counter⦆ ·
-            int64 val ↦ qadav_last_int_value⦅⦆ ·
+            int64 val ↦ last_int_value⦅⦆ ·
             text strunc ↦ format_trunc_line_id⦅temp_counter ⸴ val⦆ ·
             emit strunc ·
             text sret ↦ format_ret_line_id⦅temp_counter⦆ ·
             emit sret ·
             yield temp_counter ⊕ 1 ·
-        | IntLitDecl(v) ⟹
-            qadav_set_last_int_value⦅v⦆ ·
-            yield temp_counter ·
-        | BindDecl(name ⸴ val_type ⸴ value) ⟹
-            yield temp_counter ·
         | WhenDecl(cond ⸴ then_block ⸴ else_block) ⟹
             yield temp_counter ·
         | CycleDecl(cond ⸴ body) ⟹
             yield temp_counter ·
-        | BinaryOpDecl(op ⸴ left ⸴ right) ⟹
-            yield temp_counter ·
         | CallDecl(name ⸴ args) ⟹
-            yield temp_counter ·
-        | IdentDecl(name) ⟹
             yield temp_counter ·
     ⟧
     yield temp_counter ·
@@ -473,58 +552,6 @@ process emit_if_else_body⦅text file_path⦆ → logic ⟦
     yield affirm ·
 ⟧
 
-process emit_calc_body⦅text file_path⦆ → logic ⟦
-    int64 count ↦ scan_statements⦅file_path⦆ ·
-    when count ≺ 3 ⟦
-        emit "error: invalid statement count in calc file" ·
-        yield deny ·
-    ⟧
-    emit "" ·
-    emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
-    emit "declare i32 @qadav_pcc_verify()" ·
-    emit "declare i32 @qadav_pcc_corrupt(i32)" ·
-    emit "" ·
-    emit "" ·
-    emit "define i32 @\"main\"() {" ·
-    emit "entry:" ·
-    text s0_name ↦ stmt_name⦅0⦆ ·
-    int64 s0_val ↦ stmt_value⦅0⦆ ·
-    text l0_alloc ↦ format_alloca⦅s0_name⦆ ·
-    emit l0_alloc ·
-    text l0_store ↦ format_store⦅s0_name⸴ s0_val⦆ ·
-    emit l0_store ·
-    text s1_name ↦ stmt_name⦅1⦆ ·
-    int64 s1_val ↦ stmt_value⦅1⦆ ·
-    text l1_alloc ↦ format_alloca⦅s1_name⦆ ·
-    emit l1_alloc ·
-    text l1_store ↦ format_store⦅s1_name⸴ s1_val⦆ ·
-    emit l1_store ·
-    text l_load1 ↦ format_load⦅s0_name⸴ 1⦆ ·
-    emit l_load1 ·
-    text l_load2 ↦ format_load⦅s1_name⸴ 2⦆ ·
-    emit l_load2 ·
-    text l_add ↦ format_binop⦅"add"⸴ 3⸴ 1⸴ 2⦆ ·
-    emit l_add ·
-    text l_emit1 ↦ format_emit_int_call⦅3⦆ ·
-    emit l_emit1 ·
-    text l_load4 ↦ format_load⦅s0_name⸴ 4⦆ ·
-    emit l_load4 ·
-    text l_load5 ↦ format_load⦅s1_name⸴ 5⦆ ·
-    emit l_load5 ·
-    text l_mul ↦ format_binop⦅"mul"⸴ 6⸴ 4⸴ 5⦆ ·
-    emit l_mul ·
-    text l_emit2 ↦ format_emit_int_call⦅6⦆ ·
-    emit l_emit2 ·
-    int64 y_val ↦ stmt_value⦅4⦆ ·
-    text l_trunc ↦ format_trunc⦅7⸴ y_val⦆ ·
-    emit l_trunc ·
-    text l_ret ↦ format_ret⦅7⦆ ·
-    emit l_ret ·
-    emit "}" ·
-    emit "" ·
-    yield affirm ·
-⟧
-
 process emit_fib_body⦅text file_path⦆ → logic ⟦
     int64 count ↦ scan_fib_values⦅file_path⦆ ·
     when count ≺ 4 ⟦
@@ -663,8 +690,8 @@ process main⦅⦆ → int64 ⟦
     ⟧
     logic prefix_ok ↦ emit_common_prefix⦅⦆ ·
     when prog_kind ≡ 0 ⟦
-        CoreAst ast ↦ parse_to_core_ast⦅target_file⦆ ·
-        int64 result ↦ walk_core_ast⦅ast ⸴ 1⦆ ·
+        CoreAst ast_hello ↦ parse_to_core_ast⦅target_file⦆ ·
+        int64 res_hello ↦ walk_core_ast⦅ast_hello ⸴ 1⦆ ·
         yield 0 ·
     ⟧
     when prog_kind ≡ 1 ⟦
@@ -676,7 +703,8 @@ process main⦅⦆ → int64 ⟦
         yield 0 ·
     ⟧
     when prog_kind ≡ 3 ⟦
-        logic calc_ok ↦ emit_calc_body⦅target_file⦆ ·
+        CoreAst ast_calc ↦ parse_to_core_ast⦅target_file⦆ ·
+        int64 res_calc ↦ walk_core_ast⦅ast_calc ⸴ 1⦆ ·
         yield 0 ·
     ⟧
     when prog_kind ≡ 4 ⟦

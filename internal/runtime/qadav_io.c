@@ -1150,6 +1150,69 @@ long long qadav_last_int_value(void) {
     return g_last_int_val;
 }
 
+static long long g_last_temp_reg = 1;
+static long long g_last_emit_kind_val = 0; // 0 = text, 1 = int
+
+void qadav_set_last_temp(long long t) {
+    g_last_temp_reg = t;
+}
+
+long long qadav_get_last_temp(void) {
+    return g_last_temp_reg;
+}
+
+void qadav_set_last_emit_kind(long long k) {
+    g_last_emit_kind_val = k;
+}
+
+long long qadav_get_last_emit_kind(void) {
+    return g_last_emit_kind_val;
+}
+
+const char* qadav_stmt_binop_op(long long idx) {
+    if (idx < 0 || idx >= g_stmt_count) return "add";
+    const char* s = g_stmts[idx].expr;
+    while (*s) {
+        if ((unsigned char)s[0] == 0xe2 && (unsigned char)s[1] == 0x8a) {
+            if ((unsigned char)s[2] == 0x95) return "add";
+            if ((unsigned char)s[2] == 0x96) return "sub";
+            if ((unsigned char)s[2] == 0x97) return "mul";
+            if ((unsigned char)s[2] == 0x98) return "sdiv";
+        }
+        s++;
+    }
+    return "add";
+}
+
+const char* qadav_stmt_binop_left(long long idx) {
+    static char buf[64];
+    if (idx < 0 || idx >= g_stmt_count) return "";
+    const char* s = g_stmts[idx].expr;
+    int bi = 0;
+    while (*s && (*s == ' ' || *s == '\t')) s++;
+    while (*s && *s != ' ' && *s != '\t' && (unsigned char)*s != 0xe2 && bi < 63) {
+        buf[bi++] = *s++;
+    }
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_stmt_binop_right(long long idx) {
+    static char buf[64];
+    if (idx < 0 || idx >= g_stmt_count) return "";
+    const char* s = g_stmts[idx].expr;
+    while (*s && !((unsigned char)s[0] == 0xe2 && (unsigned char)s[1] == 0x8a)) s++;
+    if (*s) s += 3;
+    while (*s && (*s == ' ' || *s == '\t')) s++;
+    int bi = 0;
+    while (*s && *s != ' ' && *s != '\t' && (unsigned char)*s != 0xc2 && bi < 63) {
+        buf[bi++] = *s++;
+    }
+    buf[bi] = '\0';
+    return buf;
+}
+
+
 
 
 

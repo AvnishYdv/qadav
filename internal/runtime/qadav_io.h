@@ -47,5 +47,13 @@ const char* qadav_escape_string(const char* s);
 void        qadav_set_last_int_value(long long v);
 long long   qadav_last_int_value(void);
 
+void        qadav_set_last_temp(long long t);
+long long   qadav_get_last_temp(void);
+void        qadav_set_last_emit_kind(long long k);
+long long   qadav_get_last_emit_kind(void);
+const char* qadav_stmt_binop_op(long long idx);
+const char* qadav_stmt_binop_left(long long idx);
+const char* qadav_stmt_binop_right(long long idx);
+
 #endif
 

@@ -84,6 +84,10 @@ func CodegenSourceNative(src, filename string) (string, int) {
 		defer os.Remove(targetFile)
 	}
 
+	if absTarget, err := filepath.Abs(targetFile); err == nil {
+		targetFile = absTarget
+	}
+
 	cmd := exec.Command(exePath, targetFile)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
