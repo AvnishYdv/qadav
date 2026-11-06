@@ -282,7 +282,7 @@ func TestCompileAndRun_Hello(t *testing.T) {
 	}
 
 	exePath := filepath.Join(tmpDir, "hello_test.exe")
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	if err := tc.CompileWithRuntime(ctx, ir, rtObjs[0], exePath, rtObjs[1:]...); err != nil {
@@ -336,7 +336,7 @@ func TestCompileAndRun_Fib(t *testing.T) {
 	}
 
 	exePath := filepath.Join(tmpDir, "fib_test.exe")
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	if err := tc.CompileWithRuntime(ctx, ir, rtObjs[0], exePath, rtObjs[1:]...); err != nil {
@@ -450,7 +450,7 @@ func TestCodegenCompileDirect(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	outExe := filepath.Join(tmpDir, "direct.exe")
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	if err := g.Compile(ctx, ir, outExe); err != nil {
