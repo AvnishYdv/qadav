@@ -1,0 +1,24 @@
+// examples/lexer_operator_extract.ydv
+// Just one function — no main, no other processes.
+// This tests whether the walker can compile a real function from lexer.ydv.
+
+process classify_operator⦅text op⦆ → text ⟦
+    text res ↦ "UNKNOWN_OP" ·
+    when op ≡ "⊕" ⟦ res ← "OSUM" · ⟧
+    when op ≡ "⊖" ⟦ res ← "ODIFF" · ⟧
+    when op ≡ "⊗" ⟦ res ← "OTIM" · ⟧
+    when op ≡ "⊘" ⟦ res ← "ODIV" · ⟧
+    when op ≡ "↦" ⟦ res ← "BIND" · ⟧
+    when op ≡ "←" ⟦ res ← "ASSIGN" · ⟧
+    when op ≡ "→" ⟦ res ← "YIELDS" · ⟧
+    when op ≡ "≡" ⟦ res ← "EQUIV" · ⟧
+    when op ≡ "≠" ⟦ res ← "NEQ" · ⟧
+    when op ≡ "⟦" ⟦ res ← "BLOCK_OPEN" · ⟧
+    when op ≡ "⟧" ⟦ res ← "BLOCK_CLOSE" · ⟧
+    when op ≡ "⦅" ⟦ res ← "GROUP_OPEN" · ⟧
+    when op ≡ "⦆" ⟦ res ← "GROUP_CLOSE" · ⟧
+    when op ≡ "·" ⟦ res ← "STMT_END" · ⟧
+    when op ≡ "⸴" ⟦ res ← "SEP" · ⟧
+    yield res ·
+⟧
+

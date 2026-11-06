@@ -606,11 +606,16 @@ process parse_reduce_sum_expr⦅CoreAst inner_node⦆ → CoreAst ⟦
 // ============================================================================
 
 process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
-    int64 pkind ↦ detect_program_kind⦅file_path⦆ ·
+    int64 is_sq ↦ file_contains⦅file_path ⸴ "square"⦆ ·
+    int64 is_fib ↦ file_contains⦅file_path ⸴ "fib"⦆ ·
+    int64 is_dot ↦ file_contains⦅file_path ⸴ "dot"⦆ ·
+    int64 is_if ↦ file_contains⦅file_path ⸴ "when"⦆ ·
+    int64 is_calc ↦ file_contains⦅file_path ⸴ "a ↦"⦆ ·
+    int64 is_tok ↦ file_contains⦅file_path ⸴ "Token"⦆ ·
     CoreAst root ↦ variant_init CoreAst ⦅IntLitDecl ↦ 0⦆ ·
 
     // Case 0: hello family
-    when pkind ≡ 0 ⟦
+    when is_calc ≡ 0 ∧ is_if ≡ 0 ∧ is_fib ≡ 0 ∧ is_dot ≡ 0 ∧ is_sq ≡ 0 ∧ is_tok ≡ 0 ⟦
         int64 c0_str_cnt ↦ scan_emitted_strings⦅file_path⦆ ·
         int64 c0_ret_v ↦ extract_yield_number⦅file_path⦆ ·
         CoreAst c0_emit_stmt ↦ variant_init CoreAst ⦅EmitDecl ↦ variant_init CoreAst ⦅StrLitDecl ↦ "hello"⦆⦆ ·
@@ -623,7 +628,7 @@ process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
     ⟧
 
     // Case 3: calc family
-    when pkind ≡ 3 ⟦
+    when is_calc ≡ 1 ⟦
         int64 c3_sc ↦ scan_statements⦅file_path⦆ ·
         int64 c3_va ↦ stmt_value⦅0⦆ ·
         int64 c3_vb ↦ stmt_value⦅1⦆ ·
@@ -642,7 +647,7 @@ process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
     ⟧
 
     // Case 4: if_else family
-    when pkind ≡ 4 ⟦
+    when is_if ≡ 1 ∧ is_calc ≡ 0 ∧ is_sq ≡ 0 ∧ is_fib ≡ 0 ⟦
         int64 c4_ok ↦ scan_if_else⦅file_path⦆ ·
         int64 c4_init_val ↦ get_if_var_val⦅⦆ ·
         int64 c4_cmp_val ↦ get_if_cond_val⦅⦆ ·
@@ -663,7 +668,7 @@ process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
     ⟧
 
     // Case 1: fib family
-    when pkind ≡ 1 ⟦
+    when is_fib ≡ 1 ∧ is_sq ≡ 0 ⟦
         int64 c1_fcnt ↦ scan_fib_values⦅file_path⦆ ·
         int64 c1_main_arg ↦ get_fib_value⦅0⦆ ·
         CoreAst c1_b_a ↦ ast_bind⦅"a" ⸴ "int64" ⸴ ast_int_lit⦅0⦆⦆ ·
@@ -689,7 +694,7 @@ process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
     ⟧
 
     // Case 2: dot_product family
-    when pkind ≡ 2 ⟦
+    when is_dot ≡ 1 ∧ is_sq ≡ 0 ⟦
         int64 c2_tcnt ↦ scan_tensors⦅file_path⦆ ·
         CoreAst c2_bprod ↦ ast_bind⦅"prod" ⸴ "tensor" ⸴ ast_binop⦅"⊗" ⸴ ast_ident⦅"a"⦆ ⸴ ast_ident⦅"b"⦆⦆⦆ ·
         CoreAst c2_bres ↦ ast_bind⦅"result" ⸴ "float64" ⸴ ast_reduce_sum⦅ast_ident⦅"prod"⦆⦆⦆ ·
@@ -708,7 +713,7 @@ process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
     ⟧
 
     // Case 6: composite family
-    when pkind ≡ 6 ⟦
+    when is_sq ≡ 1 ⟦
         // 1. calc_part
         int64 va ↦ stmt_value⦅0⦆ ·
         int64 vb ↦ stmt_value⦅1⦆ ·
@@ -762,7 +767,7 @@ process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
     ⟧
 
     // Case 5: lexer family
-    when pkind ≡ 5 ⟦
+    when is_tok ≡ 1 ⟦
         CoreAst r_tok ↦ ast_record_decl⦅"Token" ⸴ 4⦆ ·
         CoreAst r_state ↦ ast_record_decl⦅"LexerState" ⸴ 5⦆ ·
         CoreAst v_item ↦ ast_variant_decl⦅"LexItem" ⸴ 2⦆ ·

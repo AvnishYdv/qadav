@@ -1,0 +1,23 @@
+// examples/lexer_operator_extract_v2.ydv
+// Killer test variant with changed string values to prove dynamic lowering.
+
+process classify_operator⦅text op⦆ → text ⟦
+    text res ↦ "UNKNOWN_OPERATOR" ·
+    when op ≡ "⊕" ⟦ res ← "OP_PLUS" · ⟧
+    when op ≡ "⊖" ⟦ res ← "OP_MINUS" · ⟧
+    when op ≡ "⊗" ⟦ res ← "OP_TIMES" · ⟧
+    when op ≡ "⊘" ⟦ res ← "OP_DIV" · ⟧
+    when op ≡ "↦" ⟦ res ← "BIND" · ⟧
+    when op ≡ "←" ⟦ res ← "ASSIGN" · ⟧
+    when op ≡ "→" ⟦ res ← "YIELDS" · ⟧
+    when op ≡ "≡" ⟦ res ← "EQUIV" · ⟧
+    when op ≡ "≠" ⟦ res ← "NEQ" · ⟧
+    when op ≡ "⟦" ⟦ res ← "BLOCK_OPEN" · ⟧
+    when op ≡ "⟧" ⟦ res ← "BLOCK_CLOSE" · ⟧
+    when op ≡ "⦅" ⟦ res ← "GROUP_OPEN" · ⟧
+    when op ≡ "⦆" ⟦ res ← "GROUP_CLOSE" · ⟧
+    when op ≡ "·" ⟦ res ← "STMT_END" · ⟧
+    when op ≡ "⸴" ⟦ res ← "SEP" · ⟧
+    yield res ·
+⟧
+

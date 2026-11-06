@@ -70,12 +70,53 @@ func New() *Checker {
 			Results: []*types.Type{types.Text},
 		},
 	})
+
 	_ = global.Define(&Symbol{
-		Name: "detect_program_kind",
+		Name: "file_contains",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text, types.Text},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_icmp_eq_ptr",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_func_def_text_param",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text, types.Text},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_param_alloca_text",
 		Type: &types.Type{
 			Kind:    types.KindProcess,
 			Params:  []*types.Type{types.Text},
-			Results: []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_param_store_text",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "format_ret_text",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
 		},
 	})
 	_ = global.Define(&Symbol{
@@ -483,7 +524,7 @@ func New() *Checker {
 			},
 		})
 	}
-	for _, fnName := range []string{"set_proc_is_main", "qadav_set_proc_is_main", "set_proc_is_dot", "qadav_set_proc_is_dot"} {
+	for _, fnName := range []string{"set_proc_is_main", "qadav_set_proc_is_main", "set_proc_is_dot", "qadav_set_proc_is_dot", "set_is_terminated", "qadav_set_is_terminated"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
 			Type: &types.Type{
@@ -493,7 +534,7 @@ func New() *Checker {
 			},
 		})
 	}
-	for _, fnName := range []string{"get_proc_is_main", "qadav_get_proc_is_main", "get_proc_is_dot", "qadav_get_proc_is_dot"} {
+	for _, fnName := range []string{"get_proc_is_main", "qadav_get_proc_is_main", "get_proc_is_dot", "qadav_get_proc_is_dot", "get_is_terminated", "qadav_get_is_terminated"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
 			Type: &types.Type{
@@ -634,11 +675,13 @@ func New() *Checker {
 		})
 	}
 	for _, fnName := range []string{
+		"is_text_type", "qadav_is_text_type",
 		"is_tensor_type", "qadav_is_tensor_type",
 		"is_float_type", "qadav_is_float_type",
 		"is_ptr_var", "qadav_is_ptr_var",
 		"is_result_var", "qadav_is_result_var",
 		"is_mul_op", "qadav_is_mul_op",
+		"is_eq_op", "qadav_is_eq_op",
 	} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
@@ -799,36 +842,7 @@ func New() *Checker {
 			},
 		})
 	}
-	for _, fnName := range []string{"get_lexer_line_count", "qadav_get_lexer_line_count"} {
-		_ = global.Define(&Symbol{
-			Name: fnName,
-			Type: &types.Type{
-				Kind:    types.KindProcess,
-				Params:  []*types.Type{},
-				Results: []*types.Type{types.Int64},
-			},
-		})
-	}
-	for _, fnName := range []string{"get_lexer_line", "qadav_get_lexer_line"} {
-		_ = global.Define(&Symbol{
-			Name: fnName,
-			Type: &types.Type{
-				Kind:    types.KindProcess,
-				Params:  []*types.Type{types.Int64},
-				Results: []*types.Type{types.Text},
-			},
-		})
-	}
-	for _, fnName := range []string{"scan_composite_n", "qadav_scan_composite_n"} {
-		_ = global.Define(&Symbol{
-			Name: fnName,
-			Type: &types.Type{
-				Kind:    types.KindProcess,
-				Params:  []*types.Type{types.Text},
-				Results: []*types.Type{types.Int64},
-			},
-		})
-	}
+
 	return &Checker{
 		globalScope:       global,
 		curScope:          global,

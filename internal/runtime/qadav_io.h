@@ -77,6 +77,8 @@ void        qadav_set_proc_is_main(long long is_main);
 long long   qadav_get_proc_is_main(void);
 void        qadav_set_proc_is_dot(long long is_dot);
 long long   qadav_get_proc_is_dot(void);
+void        qadav_set_is_terminated(long long term);
+long long   qadav_get_is_terminated(void);
 const char* qadav_format_func_def_with_param(const char* name, const char* param_name);
 const char* qadav_format_param_alloca(const char* param_name);
 const char* qadav_format_param_store(const char* param_name);
@@ -95,6 +97,7 @@ long long   qadav_is_float_type(const char* typ);
 long long   qadav_is_ptr_var(const char* name);
 long long   qadav_is_result_var(const char* name);
 long long   qadav_is_mul_op(const char* op);
+long long   qadav_is_eq_op(const char* op);
 const char* qadav_format_shape_gep(long long shape_idx, long long temp_id);
 const char* qadav_format_alloca_type(const char* name, const char* typ);
 const char* qadav_format_store_reg_type(const char* name, const char* typ, long long reg_id);
@@ -109,15 +112,19 @@ const char* qadav_format_func_def_2params(const char* name, const char* p1, cons
 const char* qadav_format_call_i64_imm(const char* callee, long long res_temp, long long arg1_temp, long long imm_val);
 const char* qadav_format_call_i64_2args(const char* callee, long long res_temp, long long arg1_temp, long long arg2_temp);
 const char* qadav_format_call_0args(const char* callee, long long res_temp);
+long long   qadav_is_text_type(const char* typ);
 long long   qadav_register_var_type(const char* name, const char* typ);
 long long   qadav_get_var_type_code(const char* name);
 const char* qadav_get_tensor_val_str(long long elem_idx);
 void        qadav_set_current_tensor_walk_idx(long long idx);
 
-long long   qadav_get_lexer_line_count(void);
-const char* qadav_get_lexer_line(long long idx);
+const char* qadav_format_icmp_eq_ptr(long long res_temp, long long t1, long long t2);
+const char* qadav_format_func_def_text_param(const char* name, const char* param_name);
+const char* qadav_format_param_alloca_text(const char* param_name);
+const char* qadav_format_param_store_text(const char* param_name);
+const char* qadav_format_ret_text(long long reg_id);
 
-long long   qadav_scan_composite_n(const char* path);
-
+long long   qadav_file_contains(const char* path, const char* needle);
+long long   qadav_get_string_index(const char* s);
 #endif
 

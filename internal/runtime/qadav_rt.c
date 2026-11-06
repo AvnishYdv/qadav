@@ -45,7 +45,6 @@ const char* qadav_get_input_path(void);
 long long   qadav_extract_yield_number(const char* path);
 const char* qadav_format_trunc_line(long long val);
 
-long long   qadav_detect_program_kind(const char* path);
 long long   qadav_scan_statements(const char* path);
 long long   qadav_stmt_kind(long long idx);
 const char* qadav_stmt_name(long long idx);
@@ -114,6 +113,8 @@ void        qadav_set_proc_is_main(long long is_main);
 long long   qadav_get_proc_is_main(void);
 void        qadav_set_proc_is_dot(long long is_dot);
 long long   qadav_get_proc_is_dot(void);
+void        qadav_set_is_terminated(long long term);
+long long   qadav_get_is_terminated(void);
 const char* qadav_format_func_def_with_param(const char* name, const char* param_name);
 const char* qadav_format_param_alloca(const char* param_name);
 const char* qadav_format_param_store(const char* param_name);
@@ -127,11 +128,13 @@ const char* qadav_format_tensor_set_f64(long long t_reg, long long elem_idx, dou
 const char* qadav_format_tensor_mul(long long dst_reg, long long a_reg, long long b_reg);
 const char* qadav_format_tensor_reduce_sum_f64(long long dst_reg, long long src_reg);
 long long   qadav_get_tensor_count(void);
+long long   qadav_is_text_type(const char* typ);
 long long   qadav_is_tensor_type(const char* typ);
 long long   qadav_is_float_type(const char* typ);
 long long   qadav_is_ptr_var(const char* name);
 long long   qadav_is_result_var(const char* name);
 long long   qadav_is_mul_op(const char* op);
+long long   qadav_is_eq_op(const char* op);
 const char* qadav_format_shape_gep(long long shape_idx, long long temp_id);
 const char* qadav_format_alloca_type(const char* name, const char* typ);
 const char* qadav_format_store_reg_type(const char* name, const char* typ, long long reg_id);
@@ -149,9 +152,13 @@ long long   qadav_register_var_type(const char* name, const char* typ);
 long long   qadav_get_var_type_code(const char* name);
 const char* qadav_get_tensor_val_str(long long elem_idx);
 void        qadav_set_current_tensor_walk_idx(long long idx);
-long long   qadav_get_lexer_line_count(void);
-const char* qadav_get_lexer_line(long long idx);
-long long   qadav_scan_composite_n(const char* path);
+
+const char* qadav_format_icmp_eq_ptr(long long res_temp, long long t1, long long t2);
+const char* qadav_format_func_def_text_param(const char* name, const char* param_name);
+const char* qadav_format_param_alloca_text(const char* param_name);
+const char* qadav_format_param_store_text(const char* param_name);
+const char* qadav_format_ret_text(long long reg_id);
+long long   qadav_file_contains(const char* path, const char* needle);
 
 const char* get_input_path(void) {
     return qadav_get_input_path();
@@ -163,14 +170,6 @@ long long extract_yield_number(const char* path) {
 
 const char* format_trunc_line(long long val) {
     return qadav_format_trunc_line(val);
-}
-
-long long detect_program_kind(const char* path) {
-    return qadav_detect_program_kind(path);
-}
-
-long long scan_composite_n(const char* path) {
-    return qadav_scan_composite_n(path);
 }
 
 long long scan_statements(const char* path) {
@@ -344,6 +343,8 @@ void set_proc_is_main(long long is_main) { qadav_set_proc_is_main(is_main); }
 long long get_proc_is_main(void) { return qadav_get_proc_is_main(); }
 void set_proc_is_dot(long long is_dot) { qadav_set_proc_is_dot(is_dot); }
 long long get_proc_is_dot(void) { return qadav_get_proc_is_dot(); }
+void set_is_terminated(long long term) { qadav_set_is_terminated(term); }
+long long get_is_terminated(void) { return qadav_get_is_terminated(); }
 const char* format_func_def_with_param(const char* name, const char* param_name) { return qadav_format_func_def_with_param(name, param_name); }
 const char* format_param_alloca(const char* param_name) { return qadav_format_param_alloca(param_name); }
 const char* format_param_store(const char* param_name) { return qadav_format_param_store(param_name); }
@@ -357,11 +358,13 @@ const char* format_tensor_set_f64(long long t_reg, long long elem_idx, double va
 const char* format_tensor_mul(long long dst_reg, long long a_reg, long long b_reg) { return qadav_format_tensor_mul(dst_reg, a_reg, b_reg); }
 const char* format_tensor_reduce_sum_f64(long long dst_reg, long long src_reg) { return qadav_format_tensor_reduce_sum_f64(dst_reg, src_reg); }
 long long get_tensor_count(void) { return qadav_get_tensor_count(); }
+long long is_text_type(const char* typ) { return qadav_is_text_type(typ); }
 long long is_tensor_type(const char* typ) { return qadav_is_tensor_type(typ); }
 long long is_float_type(const char* typ) { return qadav_is_float_type(typ); }
 long long is_ptr_var(const char* name) { return qadav_is_ptr_var(name); }
 long long is_result_var(const char* name) { return qadav_is_result_var(name); }
 long long is_mul_op(const char* op) { return qadav_is_mul_op(op); }
+long long is_eq_op(const char* op) { return qadav_is_eq_op(op); }
 const char* format_shape_gep(long long shape_idx, long long temp_id) { return qadav_format_shape_gep(shape_idx, temp_id); }
 const char* format_alloca_type(const char* name, const char* typ) { return qadav_format_alloca_type(name, typ); }
 const char* format_store_reg_type(const char* name, const char* typ, long long reg_id) { return qadav_format_store_reg_type(name, typ, reg_id); }
@@ -379,8 +382,12 @@ long long register_var_type(const char* name, const char* typ) { return qadav_re
 long long get_var_type_code(const char* name) { return qadav_get_var_type_code(name); }
 const char* get_tensor_val_str(long long elem_idx) { return qadav_get_tensor_val_str(elem_idx); }
 void set_current_tensor_walk_idx(long long idx) { qadav_set_current_tensor_walk_idx(idx); }
-long long get_lexer_line_count(void) { return qadav_get_lexer_line_count(); }
-const char* get_lexer_line(long long idx) { return qadav_get_lexer_line(idx); }
+const char* format_icmp_eq_ptr(long long res_temp, long long t1, long long t2) { return qadav_format_icmp_eq_ptr(res_temp, t1, t2); }
+const char* format_func_def_text_param(const char* name, const char* param_name) { return qadav_format_func_def_text_param(name, param_name); }
+const char* format_param_alloca_text(const char* param_name) { return qadav_format_param_alloca_text(param_name); }
+const char* format_param_store_text(const char* param_name) { return qadav_format_param_store_text(param_name); }
+const char* format_ret_text(long long reg_id) { return qadav_format_ret_text(reg_id); }
+long long file_contains(const char* path, const char* needle) { return qadav_file_contains(path, needle); }
 
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);

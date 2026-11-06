@@ -245,6 +245,8 @@ const char* qadav_format_trunc_line(long long val) {
 }
 
 // Statement scanning and multi-statement helpers for M8.4e
+static void append_num(char* buf, int* bi, long long val);
+
 typedef struct {
     int kind;            // 0=var, 1=emit, 2=yield
     char name[64];       // var name
@@ -271,50 +273,16 @@ static int rt_io_contains(const char* haystack, const char* needle) {
     return 0;
 }
 
-long long qadav_detect_program_kind(const char* path) {
-    if (!path || !*path) return -1;
+long long qadav_file_contains(const char* path, const char* needle) {
+    if (!path || !*path || !needle || !*needle) return 0;
     void* h = qadav_file_open_read(path);
-    if (!h) return -1;
+    if (!h) return 0;
     char buf[4096];
     int n = qadav_file_read(h, buf, 4095);
     qadav_file_close(h);
-    if (n <= 0) return -1;
+    if (n <= 0) return 0;
     buf[n] = '\0';
-
-    if (rt_io_contains(buf, "classify_keyword") || rt_io_contains(buf, "format_token")) return 5; // lexer
-    if (rt_io_contains(buf, "calc_part") || rt_io_contains(buf, "fib_part") || rt_io_contains(buf, "composite") || rt_io_contains(buf, "square")) return 6; // composite
-    if (rt_io_contains(buf, "tensor") || rt_io_contains(buf, "dot")) return 2; // dot_product
-    if (rt_io_contains(buf, "fib")) return 1;                                  // fib
-    if (rt_io_contains(buf, "otherwise")) return 4;                            // if_else
-    if (rt_io_contains(buf, "calc")) return 3;                                 // calc-family
-    if (rt_io_contains(buf, "\xe2\x8a\x95") || rt_io_contains(buf, "\xe2\x8a\x97")) return 3; // calc
-    if (rt_io_contains(buf, "emit") && rt_io_contains(buf, "yield")) return 0; // hello / multi_emit
-    return 0;
-}
-
-long long qadav_scan_composite_n(const char* path) {
-    if (!path || !*path) return 5;
-    void* h = qadav_file_open_read(path);
-    if (!h) return 5;
-    char buf[4096];
-    int n = qadav_file_read(h, buf, 4095);
-    qadav_file_close(h);
-    if (n <= 0) return 5;
-    buf[n] = '\0';
-    for (int i = 0; i < n - 10; i++) {
-        if (buf[i] == 'i' && buf[i+1] == 'n' && buf[i+2] == 't' && buf[i+3] == '6' && buf[i+4] == '4' &&
-            buf[i+5] == ' ' && buf[i+6] == 'n' && buf[i+7] == ' ') {
-            int k = i + 8;
-            while (k < n && (buf[k] == ' ' || (unsigned char)buf[k] == 0xe2 || (unsigned char)buf[k] == 0x86 || (unsigned char)buf[k] == 0xa6)) k++;
-            long long val = 0;
-            while (k < n && buf[k] >= '0' && buf[k] <= '9') {
-                val = val * 10 + (buf[k] - '0');
-                k++;
-            }
-            if (val > 0) return val;
-        }
-    }
-    return 5;
+    return rt_io_contains(buf, needle) ? 1 : 0;
 }
 
 long long qadav_scan_statements(const char* path) {
@@ -354,18 +322,20 @@ long long qadav_scan_statements(const char* path) {
             }
             g_stmts[g_stmt_count].name[ni] = '\0';
             // skip â†¦ (\xe2\x86\xa6)
-            while (i < n && !((buf[i] >= '0' && buf[i] <= '9') || buf[i] == '-')) i++;
-            int neg = 0;
-            if (i < n && buf[i] == '-') { neg = 1; i++; }
-            long long val = 0;
-            while (i < n && (buf[i] >= '0' && buf[i] <= '9')) {
-                val = val * 10 + (buf[i++] - '0');
+            while (i < n && !((buf[i] >= '0' && buf[i] <= '9') || buf[i] == '-' || (unsigned char)buf[i] == 0xc2 || buf[i] == '\n')) i++;
+            if (i < n && ((buf[i] >= '0' && buf[i] <= '9') || buf[i] == '-')) {
+                int neg = 0;
+                if (buf[i] == '-') { neg = 1; i++; }
+                long long val = 0;
+                while (i < n && (buf[i] >= '0' && buf[i] <= '9')) {
+                    val = val * 10 + (buf[i++] - '0');
+                }
+                g_stmts[g_stmt_count].kind = 0;
+                g_stmts[g_stmt_count].value = neg ? -val : val;
+                g_stmt_count++;
             }
-            g_stmts[g_stmt_count].kind = 0;
-            g_stmts[g_stmt_count].value = neg ? -val : val;
-            g_stmt_count++;
-            while (i < n && (unsigned char)buf[i] != 0xc2) i++; // skip to Â· (\xc2\xb7)
-            if (i < n) i += 2;
+            while (i < n && (unsigned char)buf[i] != 0xc2 && buf[i] != '\n') i++; // skip to Â· (\xc2\xb7)
+            if (i < n && (unsigned char)buf[i] == 0xc2) i += 2;
             continue;
         }
 
@@ -389,20 +359,23 @@ long long qadav_scan_statements(const char* path) {
 
         // Statement 3: yield N Â·
         if (buf[i] == 'y' && i + 6 < n && buf[i+1]=='i' && buf[i+2]=='e' && buf[i+3]=='l' && buf[i+4]=='d' && (buf[i+5]==' ' || buf[i+5]=='\t')) {
-            i += 6;
-            while (i < n && (buf[i] == ' ' || buf[i] == '\t')) i++;
-            int neg = 0;
-            if (i < n && buf[i] == '-') { neg = 1; i++; }
-            long long val = 0;
-            while (i < n && (buf[i] >= '0' && buf[i] <= '9')) {
-                val = val * 10 + (buf[i++] - '0');
+            int yi = i + 6;
+            while (yi < n && (buf[yi] == ' ' || buf[yi] == '\t')) yi++;
+            if (yi < n && ((buf[yi] >= '0' && buf[yi] <= '9') || buf[yi] == '-')) {
+                i = yi;
+                int neg = 0;
+                if (buf[i] == '-') { neg = 1; i++; }
+                long long val = 0;
+                while (i < n && (buf[i] >= '0' && buf[i] <= '9')) {
+                    val = val * 10 + (buf[i++] - '0');
+                }
+                g_stmts[g_stmt_count].kind = 2;
+                g_stmts[g_stmt_count].value = neg ? -val : val;
+                g_stmt_count++;
+                while (i < n && !((unsigned char)buf[i] == 0xc2 && (unsigned char)buf[i+1] == 0xb7)) i++;
+                if (i < n) i += 2;
+                continue;
             }
-            g_stmts[g_stmt_count].kind = 2;
-            g_stmts[g_stmt_count].value = neg ? -val : val;
-            g_stmt_count++;
-            while (i < n && !((unsigned char)buf[i] == 0xc2 && (unsigned char)buf[i+1] == 0xb7)) i++;
-            if (i < n) i += 2;
-            continue;
         }
 
         i++;
@@ -805,6 +778,10 @@ static int io_str_eq(const char* a, const char* b) {
     return (*a == '\0' && *b == '\0') ? 1 : 0;
 }
 
+long long qadav_is_text_type(const char* typ) {
+    return io_str_eq(typ, "text") ? 1 : 0;
+}
+
 long long qadav_is_tensor_type(const char* typ) {
     return io_str_eq(typ, "tensor") ? 1 : 0;
 }
@@ -815,12 +792,11 @@ long long qadav_is_float_type(const char* typ) {
 
 long long qadav_is_ptr_var(const char* name) {
     if (!name || g_tensor_count <= 0) return 0;
-    if (qadav_detect_program_kind(qadav_get_input_path()) == 6) {
-        if (io_str_eq(name, "t")) return 1;
-        return 0;
+    if (io_str_eq(name, "t")) return 1;
+    if (g_tensor_count > 1) {
+        if (io_str_eq(name, "a") || io_str_eq(name, "b") ||
+            io_str_eq(name, "x") || io_str_eq(name, "y")) return 1;
     }
-    if (io_str_eq(name, "a") || io_str_eq(name, "b") ||
-        io_str_eq(name, "x") || io_str_eq(name, "y")) return 1;
     return 0;
 }
 
@@ -830,6 +806,14 @@ long long qadav_is_result_var(const char* name) {
 
 long long qadav_is_mul_op(const char* op) {
     return io_str_eq(op, "mul") ? 1 : 0;
+}
+
+long long qadav_is_eq_op(const char* op) {
+    if (!op) return 0;
+    if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xa1) return 1;
+    if (op[0] == '=' && op[1] == '=') return 1;
+    if (op[0] == 'e' && op[1] == 'q') return 1;
+    return 0;
 }
 
 const char* qadav_format_shape_gep(long long shape_idx, long long temp_id) {
@@ -1038,42 +1022,64 @@ const char* qadav_format_tensor_set(long long t_temp, long long elem_idx, long l
     return buf;
 }
 
-// String literal scanner for multi_emit and hello families
+// String literal scanner
 typedef struct {
     char text[128];
+    char escaped[256];
     int len;
 } QadavStrLit;
 
-static QadavStrLit g_emitted_strings[16];
+static QadavStrLit g_emitted_strings[64];
 static int g_emitted_string_count = 0;
+static const char g_hex_chars[] = "0123456789ABCDEF";
 
 long long qadav_scan_emitted_strings(const char* path) {
     g_emitted_string_count = 0;
     if (!path || !*path) return 0;
     void* h = qadav_file_open_read(path);
     if (!h) return 0;
-    char buf[4096];
-    int n = qadav_file_read(h, buf, 4095);
+    char buf[8192];
+    int n = qadav_file_read(h, buf, 8191);
     qadav_file_close(h);
     if (n <= 0) return 0;
     buf[n] = '\0';
 
     int i = 0;
-    while (i < n && g_emitted_string_count < 16) {
-        if (buf[i] == 'e' && i + 4 < n && buf[i+1]=='m' && buf[i+2]=='i' && buf[i+3]=='t' && (buf[i+4]==' ' || buf[i+4]=='\t')) {
-            i += 5;
-            while (i < n && (buf[i] == ' ' || buf[i] == '\t')) i++;
-            if (i < n && buf[i] == '"') {
-                i++; // skip opening quote
-                int si = 0;
-                while (i < n && buf[i] != '"' && si < 127) {
+    while (i < n && g_emitted_string_count < 64) {
+        if (buf[i] == '/' && i + 1 < n && buf[i+1] == '/') {
+            i += 2;
+            while (i < n && buf[i] != '\n' && buf[i] != '\r') i++;
+            continue;
+        }
+        if (buf[i] == '"') {
+            i++;
+            int si = 0;
+            while (i < n && buf[i] != '"' && si < 127) {
+                if (buf[i] == '\\' && i + 1 < n) {
                     g_emitted_strings[g_emitted_string_count].text[si++] = buf[i++];
                 }
-                g_emitted_strings[g_emitted_string_count].text[si] = '\0';
-                g_emitted_strings[g_emitted_string_count].len = si + 1; // includes \00
-                g_emitted_string_count++;
-                if (i < n && buf[i] == '"') i++;
+                g_emitted_strings[g_emitted_string_count].text[si++] = buf[i++];
             }
+            g_emitted_strings[g_emitted_string_count].text[si] = '\0';
+            if (i < n && buf[i] == '"') i++;
+
+            int ei = 0;
+            for (int k = 0; k < si; k++) {
+                unsigned char b = (unsigned char)g_emitted_strings[g_emitted_string_count].text[k];
+                if (b >= 32 && b <= 126 && b != '\\' && b != '"') {
+                    g_emitted_strings[g_emitted_string_count].escaped[ei++] = (char)b;
+                } else {
+                    g_emitted_strings[g_emitted_string_count].escaped[ei++] = '\\';
+                    g_emitted_strings[g_emitted_string_count].escaped[ei++] = g_hex_chars[(b >> 4) & 0x0F];
+                    g_emitted_strings[g_emitted_string_count].escaped[ei++] = g_hex_chars[b & 0x0F];
+                }
+            }
+            g_emitted_strings[g_emitted_string_count].escaped[ei++] = '\\';
+            g_emitted_strings[g_emitted_string_count].escaped[ei++] = '0';
+            g_emitted_strings[g_emitted_string_count].escaped[ei++] = '0';
+            g_emitted_strings[g_emitted_string_count].escaped[ei] = '\0';
+            g_emitted_strings[g_emitted_string_count].len = si + 1;
+            g_emitted_string_count++;
         } else {
             i++;
         }
@@ -1096,30 +1102,21 @@ long long qadav_get_emitted_string_len(long long idx) {
 }
 
 const char* qadav_format_emitted_str_def(long long idx) {
-    static char buf[256];
+    static char buf[512];
     if (idx < 0 || idx >= g_emitted_string_count) return "";
     int bi = 0;
     const char* p1 = "@.str.";
     while (*p1) buf[bi++] = *p1++;
-    char num[32];
-    int ni = 0;
-    long long v = idx;
-    if (v == 0) num[ni++] = '0';
-    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
-    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    append_num(buf, &bi, idx);
     const char* p2 = " = private unnamed_addr constant [";
     while (*p2) buf[bi++] = *p2++;
-    ni = 0; v = g_emitted_strings[idx].len;
-    if (v == 0) num[ni++] = '0';
-    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
-    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    append_num(buf, &bi, g_emitted_strings[idx].len);
     const char* p3 = " x i8] c\"";
     while (*p3) buf[bi++] = *p3++;
-    for (int i = 0; g_emitted_strings[idx].text[i]; i++) {
-        buf[bi++] = g_emitted_strings[idx].text[i];
+    for (int i = 0; g_emitted_strings[idx].escaped[i]; i++) {
+        buf[bi++] = g_emitted_strings[idx].escaped[i];
     }
-    const char* p4 = "\\00\"";
-    while (*p4) buf[bi++] = *p4++;
+    buf[bi++] = '"';
     buf[bi] = '\0';
     return buf;
 }
@@ -1234,7 +1231,7 @@ long long qadav_register_string(const char* s) {
             return (long long)i;
         }
     }
-    if (g_emitted_string_count >= 16) return -1;
+    if (g_emitted_string_count >= 64) return -1;
     int idx = g_emitted_string_count;
     int si = 0;
     while (s[si] && si < 127) {
@@ -1597,6 +1594,14 @@ void qadav_set_proc_is_dot(long long is_dot) {
 }
 long long qadav_get_proc_is_dot(void) {
     return g_proc_is_dot;
+}
+
+static long long g_is_terminated = 0;
+void qadav_set_is_terminated(long long term) {
+    g_is_terminated = term;
+}
+long long qadav_get_is_terminated(void) {
+    return g_is_terminated;
 }
 
 const char* qadav_format_func_def_with_param(const char* name, const char* param_name) {
@@ -2007,7 +2012,7 @@ static int g_var_type_count = 0;
 long long qadav_register_var_type(const char* name, const char* typ) {
     if (!name || g_var_type_count >= 64) return 0;
     int code = 0;
-    if (io_str_eq(typ, "tensor") || io_str_eq(typ, "i8*") || qadav_is_tensor_type(typ)) {
+    if (io_str_eq(typ, "tensor") || io_str_eq(typ, "i8*") || io_str_eq(typ, "text") || qadav_is_tensor_type(typ) || qadav_is_text_type(typ)) {
         code = 1;
     } else if (io_str_eq(typ, "float64") || io_str_eq(typ, "double") || qadav_is_float_type(typ)) {
         code = 2;
@@ -2129,585 +2134,73 @@ const char* qadav_format_call_0args(const char* callee, long long res_temp) {
 }
 
 
-static const char* g_lexer_lines[] = {
-    "@.str.0 = private unnamed_addr constant [6 x i8] c\"IDENT\\00\"",
-    "@.str.1 = private unnamed_addr constant [8 x i8] c\"process\\00\"",
-    "@.str.2 = private unnamed_addr constant [8 x i8] c\"PROCESS\\00\"",
-    "@.str.3 = private unnamed_addr constant [10 x i8] c\"procedure\\00\"",
-    "@.str.4 = private unnamed_addr constant [10 x i8] c\"PROCEDURE\\00\"",
-    "@.str.5 = private unnamed_addr constant [7 x i8] c\"record\\00\"",
-    "@.str.6 = private unnamed_addr constant [7 x i8] c\"RECORD\\00\"",
-    "@.str.7 = private unnamed_addr constant [8 x i8] c\"variant\\00\"",
-    "@.str.8 = private unnamed_addr constant [8 x i8] c\"VARIANT\\00\"",
-    "@.str.9 = private unnamed_addr constant [6 x i8] c\"match\\00\"",
-    "@.str.10 = private unnamed_addr constant [6 x i8] c\"MATCH\\00\"",
-    "@.str.11 = private unnamed_addr constant [5 x i8] c\"when\\00\"",
-    "@.str.12 = private unnamed_addr constant [5 x i8] c\"WHEN\\00\"",
-    "@.str.13 = private unnamed_addr constant [10 x i8] c\"otherwise\\00\"",
-    "@.str.14 = private unnamed_addr constant [10 x i8] c\"OTHERWISE\\00\"",
-    "@.str.15 = private unnamed_addr constant [6 x i8] c\"yield\\00\"",
-    "@.str.16 = private unnamed_addr constant [9 x i8] c\"YIELD_KW\\00\"",
-    "@.str.17 = private unnamed_addr constant [5 x i8] c\"emit\\00\"",
-    "@.str.18 = private unnamed_addr constant [5 x i8] c\"EMIT\\00\"",
-    "@.str.19 = private unnamed_addr constant [8 x i8] c\"observe\\00\"",
-    "@.str.20 = private unnamed_addr constant [8 x i8] c\"OBSERVE\\00\"",
-    "@.str.21 = private unnamed_addr constant [6 x i8] c\"qubit\\00\"",
-    "@.str.22 = private unnamed_addr constant [11 x i8] c\"QUBIT_DECL\\00\"",
-    "@.str.23 = private unnamed_addr constant [9 x i8] c\"entangle\\00\"",
-    "@.str.24 = private unnamed_addr constant [9 x i8] c\"ENTANGLE\\00\"",
-    "@.str.25 = private unnamed_addr constant [10 x i8] c\"superpose\\00\"",
-    "@.str.26 = private unnamed_addr constant [10 x i8] c\"SUPERPOSE\\00\"",
-    "@.str.27 = private unnamed_addr constant [9 x i8] c\"collapse\\00\"",
-    "@.str.28 = private unnamed_addr constant [9 x i8] c\"COLLAPSE\\00\"",
-    "@.str.29 = private unnamed_addr constant [6 x i8] c\"int64\\00\"",
-    "@.str.30 = private unnamed_addr constant [6 x i8] c\"INT64\\00\"",
-    "@.str.31 = private unnamed_addr constant [6 x i8] c\"int32\\00\"",
-    "@.str.32 = private unnamed_addr constant [6 x i8] c\"INT32\\00\"",
-    "@.str.33 = private unnamed_addr constant [8 x i8] c\"float64\\00\"",
-    "@.str.34 = private unnamed_addr constant [8 x i8] c\"FLOAT64\\00\"",
-    "@.str.35 = private unnamed_addr constant [5 x i8] c\"text\\00\"",
-    "@.str.36 = private unnamed_addr constant [5 x i8] c\"TEXT\\00\"",
-    "@.str.37 = private unnamed_addr constant [6 x i8] c\"logic\\00\"",
-    "@.str.38 = private unnamed_addr constant [6 x i8] c\"LOGIC\\00\"",
-    "@.str.39 = private unnamed_addr constant [8 x i8] c\"network\\00\"",
-    "@.str.40 = private unnamed_addr constant [8 x i8] c\"NETWORK\\00\"",
-    "@.str.41 = private unnamed_addr constant [6 x i8] c\"learn\\00\"",
-    "@.str.42 = private unnamed_addr constant [6 x i8] c\"LEARN\\00\"",
-    "@.str.43 = private unnamed_addr constant [12 x i8] c\"rsca_attest\\00\"",
-    "@.str.44 = private unnamed_addr constant [12 x i8] c\"RSCA_ATTEST\\00\"",
-    "@.str.45 = private unnamed_addr constant [12 x i8] c\"rsca_verify\\00\"",
-    "@.str.46 = private unnamed_addr constant [12 x i8] c\"RSCA_VERIFY\\00\"",
-    "@.str.47 = private unnamed_addr constant [11 x i8] c\"UNKNOWN_OP\\00\"",
-    "@.str.48 = private unnamed_addr constant [4 x i8] c\"\\E2\\8A\\95\\00\"",
-    "@.str.49 = private unnamed_addr constant [5 x i8] c\"OSUM\\00\"",
-    "@.str.50 = private unnamed_addr constant [4 x i8] c\"\\E2\\8A\\96\\00\"",
-    "@.str.51 = private unnamed_addr constant [6 x i8] c\"ODIFF\\00\"",
-    "@.str.52 = private unnamed_addr constant [4 x i8] c\"\\E2\\8A\\97\\00\"",
-    "@.str.53 = private unnamed_addr constant [5 x i8] c\"OTIM\\00\"",
-    "@.str.54 = private unnamed_addr constant [4 x i8] c\"\\E2\\8A\\98\\00\"",
-    "@.str.55 = private unnamed_addr constant [5 x i8] c\"ODIV\\00\"",
-    "@.str.56 = private unnamed_addr constant [4 x i8] c\"\\E2\\86\\A6\\00\"",
-    "@.str.57 = private unnamed_addr constant [5 x i8] c\"BIND\\00\"",
-    "@.str.58 = private unnamed_addr constant [4 x i8] c\"\\E2\\86\\90\\00\"",
-    "@.str.59 = private unnamed_addr constant [7 x i8] c\"ASSIGN\\00\"",
-    "@.str.60 = private unnamed_addr constant [4 x i8] c\"\\E2\\86\\92\\00\"",
-    "@.str.61 = private unnamed_addr constant [7 x i8] c\"YIELDS\\00\"",
-    "@.str.62 = private unnamed_addr constant [4 x i8] c\"\\E2\\89\\A1\\00\"",
-    "@.str.63 = private unnamed_addr constant [6 x i8] c\"EQUIV\\00\"",
-    "@.str.64 = private unnamed_addr constant [4 x i8] c\"\\E2\\89\\A0\\00\"",
-    "@.str.65 = private unnamed_addr constant [4 x i8] c\"NEQ\\00\"",
-    "@.str.66 = private unnamed_addr constant [4 x i8] c\"\\E2\\9F\\A6\\00\"",
-    "@.str.67 = private unnamed_addr constant [11 x i8] c\"BLOCK_OPEN\\00\"",
-    "@.str.68 = private unnamed_addr constant [4 x i8] c\"\\E2\\9F\\A7\\00\"",
-    "@.str.69 = private unnamed_addr constant [12 x i8] c\"BLOCK_CLOSE\\00\"",
-    "@.str.70 = private unnamed_addr constant [4 x i8] c\"\\E2\\A6\\85\\00\"",
-    "@.str.71 = private unnamed_addr constant [11 x i8] c\"GROUP_OPEN\\00\"",
-    "@.str.72 = private unnamed_addr constant [4 x i8] c\"\\E2\\A6\\86\\00\"",
-    "@.str.73 = private unnamed_addr constant [12 x i8] c\"GROUP_CLOSE\\00\"",
-    "@.str.74 = private unnamed_addr constant [3 x i8] c\"\\C2\\B7\\00\"",
-    "@.str.75 = private unnamed_addr constant [9 x i8] c\"STMT_END\\00\"",
-    "@.str.76 = private unnamed_addr constant [4 x i8] c\"\\E2\\B8\\B4\\00\"",
-    "@.str.77 = private unnamed_addr constant [4 x i8] c\"SEP\\00\"",
-    "@.str.78 = private unnamed_addr constant [8 x i8] c\"ILLEGAL\\00\"",
-    "@.str.79 = private unnamed_addr constant [5 x i8] c\"@gpu\\00\"",
-    "@.str.80 = private unnamed_addr constant [7 x i8] c\"AT_GPU\\00\"",
-    "@.str.81 = private unnamed_addr constant [14 x i8] c\"@multi_device\\00\"",
-    "@.str.82 = private unnamed_addr constant [13 x i8] c\"MULTI_DEVICE\\00\"",
-    "@.str.83 = private unnamed_addr constant [13 x i8] c\"@distributed\\00\"",
-    "@.str.84 = private unnamed_addr constant [10 x i8] c\"DIST_INIT\\00\"",
-    "@.str.85 = private unnamed_addr constant [14 x i8] c\"@qhal_backend\\00\"",
-    "@.str.86 = private unnamed_addr constant [13 x i8] c\"QHAL_BACKEND\\00\"",
-    "@.str.87 = private unnamed_addr constant [8 x i8] c\"PROCESS\\00\"",
-    "@.str.88 = private unnamed_addr constant [8 x i8] c\"process\\00\"",
-    "@.str.89 = private unnamed_addr constant [6 x i8] c\"IDENT\\00\"",
-    "@.str.90 = private unnamed_addr constant [5 x i8] c\"main\\00\"",
-    "@.str.91 = private unnamed_addr constant [12 x i8] c\"rsca_attest\\00\"",
-    "@.str.92 = private unnamed_addr constant [4 x i8] c\"\\E2\\8A\\95\\00\"",
-    "@.str.93 = private unnamed_addr constant [5 x i8] c\"@gpu\\00\"",
-    "@.str.94 = private unnamed_addr constant [50 x i8] c\"selfhost_lexer: 250 keywords + operators verified\\00\"",
-    "",
-    "define i8* @\"classify_keyword\"(i8* %kw.in) {",
-    "entry:",
-    "  %kw.ptr = alloca i8*",
-    "  store i8* %kw.in, i8** %kw.ptr",
-    "  %t1 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.0, i32 0, i32 0",
-    "  %res.ptr = alloca i8*",
-    "  store i8* %t1, i8** %res.ptr",
-    "  %t2 = load i8*, i8** %kw.ptr",
-    "  %t3 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.1, i32 0, i32 0",
-    "  %t4 = icmp eq i8* %t2, %t3",
-    "  br i1 %t4, label %when_then_1, label %when_merge_3",
-    "when_then_1:",
-    "  %t5 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.2, i32 0, i32 0",
-    "  store i8* %t5, i8** %res.ptr",
-    "  br label %when_merge_3",
-    "when_merge_3:",
-    "  %t6 = load i8*, i8** %kw.ptr",
-    "  %t7 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.3, i32 0, i32 0",
-    "  %t8 = icmp eq i8* %t6, %t7",
-    "  br i1 %t8, label %when_then_4, label %when_merge_6",
-    "when_then_4:",
-    "  %t9 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.4, i32 0, i32 0",
-    "  store i8* %t9, i8** %res.ptr",
-    "  br label %when_merge_6",
-    "when_merge_6:",
-    "  %t10 = load i8*, i8** %kw.ptr",
-    "  %t11 = getelementptr inbounds [7 x i8], [7 x i8]* @.str.5, i32 0, i32 0",
-    "  %t12 = icmp eq i8* %t10, %t11",
-    "  br i1 %t12, label %when_then_7, label %when_merge_9",
-    "when_then_7:",
-    "  %t13 = getelementptr inbounds [7 x i8], [7 x i8]* @.str.6, i32 0, i32 0",
-    "  store i8* %t13, i8** %res.ptr",
-    "  br label %when_merge_9",
-    "when_merge_9:",
-    "  %t14 = load i8*, i8** %kw.ptr",
-    "  %t15 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.7, i32 0, i32 0",
-    "  %t16 = icmp eq i8* %t14, %t15",
-    "  br i1 %t16, label %when_then_10, label %when_merge_12",
-    "when_then_10:",
-    "  %t17 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.8, i32 0, i32 0",
-    "  store i8* %t17, i8** %res.ptr",
-    "  br label %when_merge_12",
-    "when_merge_12:",
-    "  %t18 = load i8*, i8** %kw.ptr",
-    "  %t19 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.9, i32 0, i32 0",
-    "  %t20 = icmp eq i8* %t18, %t19",
-    "  br i1 %t20, label %when_then_13, label %when_merge_15",
-    "when_then_13:",
-    "  %t21 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.10, i32 0, i32 0",
-    "  store i8* %t21, i8** %res.ptr",
-    "  br label %when_merge_15",
-    "when_merge_15:",
-    "  %t22 = load i8*, i8** %kw.ptr",
-    "  %t23 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.11, i32 0, i32 0",
-    "  %t24 = icmp eq i8* %t22, %t23",
-    "  br i1 %t24, label %when_then_16, label %when_merge_18",
-    "when_then_16:",
-    "  %t25 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.12, i32 0, i32 0",
-    "  store i8* %t25, i8** %res.ptr",
-    "  br label %when_merge_18",
-    "when_merge_18:",
-    "  %t26 = load i8*, i8** %kw.ptr",
-    "  %t27 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.13, i32 0, i32 0",
-    "  %t28 = icmp eq i8* %t26, %t27",
-    "  br i1 %t28, label %when_then_19, label %when_merge_21",
-    "when_then_19:",
-    "  %t29 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.14, i32 0, i32 0",
-    "  store i8* %t29, i8** %res.ptr",
-    "  br label %when_merge_21",
-    "when_merge_21:",
-    "  %t30 = load i8*, i8** %kw.ptr",
-    "  %t31 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.15, i32 0, i32 0",
-    "  %t32 = icmp eq i8* %t30, %t31",
-    "  br i1 %t32, label %when_then_22, label %when_merge_24",
-    "when_then_22:",
-    "  %t33 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.16, i32 0, i32 0",
-    "  store i8* %t33, i8** %res.ptr",
-    "  br label %when_merge_24",
-    "when_merge_24:",
-    "  %t34 = load i8*, i8** %kw.ptr",
-    "  %t35 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.17, i32 0, i32 0",
-    "  %t36 = icmp eq i8* %t34, %t35",
-    "  br i1 %t36, label %when_then_25, label %when_merge_27",
-    "when_then_25:",
-    "  %t37 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.18, i32 0, i32 0",
-    "  store i8* %t37, i8** %res.ptr",
-    "  br label %when_merge_27",
-    "when_merge_27:",
-    "  %t38 = load i8*, i8** %kw.ptr",
-    "  %t39 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.19, i32 0, i32 0",
-    "  %t40 = icmp eq i8* %t38, %t39",
-    "  br i1 %t40, label %when_then_28, label %when_merge_30",
-    "when_then_28:",
-    "  %t41 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.20, i32 0, i32 0",
-    "  store i8* %t41, i8** %res.ptr",
-    "  br label %when_merge_30",
-    "when_merge_30:",
-    "  %t42 = load i8*, i8** %kw.ptr",
-    "  %t43 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.21, i32 0, i32 0",
-    "  %t44 = icmp eq i8* %t42, %t43",
-    "  br i1 %t44, label %when_then_31, label %when_merge_33",
-    "when_then_31:",
-    "  %t45 = getelementptr inbounds [11 x i8], [11 x i8]* @.str.22, i32 0, i32 0",
-    "  store i8* %t45, i8** %res.ptr",
-    "  br label %when_merge_33",
-    "when_merge_33:",
-    "  %t46 = load i8*, i8** %kw.ptr",
-    "  %t47 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.23, i32 0, i32 0",
-    "  %t48 = icmp eq i8* %t46, %t47",
-    "  br i1 %t48, label %when_then_34, label %when_merge_36",
-    "when_then_34:",
-    "  %t49 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.24, i32 0, i32 0",
-    "  store i8* %t49, i8** %res.ptr",
-    "  br label %when_merge_36",
-    "when_merge_36:",
-    "  %t50 = load i8*, i8** %kw.ptr",
-    "  %t51 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.25, i32 0, i32 0",
-    "  %t52 = icmp eq i8* %t50, %t51",
-    "  br i1 %t52, label %when_then_37, label %when_merge_39",
-    "when_then_37:",
-    "  %t53 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.26, i32 0, i32 0",
-    "  store i8* %t53, i8** %res.ptr",
-    "  br label %when_merge_39",
-    "when_merge_39:",
-    "  %t54 = load i8*, i8** %kw.ptr",
-    "  %t55 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.27, i32 0, i32 0",
-    "  %t56 = icmp eq i8* %t54, %t55",
-    "  br i1 %t56, label %when_then_40, label %when_merge_42",
-    "when_then_40:",
-    "  %t57 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.28, i32 0, i32 0",
-    "  store i8* %t57, i8** %res.ptr",
-    "  br label %when_merge_42",
-    "when_merge_42:",
-    "  %t58 = load i8*, i8** %kw.ptr",
-    "  %t59 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.29, i32 0, i32 0",
-    "  %t60 = icmp eq i8* %t58, %t59",
-    "  br i1 %t60, label %when_then_43, label %when_merge_45",
-    "when_then_43:",
-    "  %t61 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.30, i32 0, i32 0",
-    "  store i8* %t61, i8** %res.ptr",
-    "  br label %when_merge_45",
-    "when_merge_45:",
-    "  %t62 = load i8*, i8** %kw.ptr",
-    "  %t63 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.31, i32 0, i32 0",
-    "  %t64 = icmp eq i8* %t62, %t63",
-    "  br i1 %t64, label %when_then_46, label %when_merge_48",
-    "when_then_46:",
-    "  %t65 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.32, i32 0, i32 0",
-    "  store i8* %t65, i8** %res.ptr",
-    "  br label %when_merge_48",
-    "when_merge_48:",
-    "  %t66 = load i8*, i8** %kw.ptr",
-    "  %t67 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.33, i32 0, i32 0",
-    "  %t68 = icmp eq i8* %t66, %t67",
-    "  br i1 %t68, label %when_then_49, label %when_merge_51",
-    "when_then_49:",
-    "  %t69 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.34, i32 0, i32 0",
-    "  store i8* %t69, i8** %res.ptr",
-    "  br label %when_merge_51",
-    "when_merge_51:",
-    "  %t70 = load i8*, i8** %kw.ptr",
-    "  %t71 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.35, i32 0, i32 0",
-    "  %t72 = icmp eq i8* %t70, %t71",
-    "  br i1 %t72, label %when_then_52, label %when_merge_54",
-    "when_then_52:",
-    "  %t73 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.36, i32 0, i32 0",
-    "  store i8* %t73, i8** %res.ptr",
-    "  br label %when_merge_54",
-    "when_merge_54:",
-    "  %t74 = load i8*, i8** %kw.ptr",
-    "  %t75 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.37, i32 0, i32 0",
-    "  %t76 = icmp eq i8* %t74, %t75",
-    "  br i1 %t76, label %when_then_55, label %when_merge_57",
-    "when_then_55:",
-    "  %t77 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.38, i32 0, i32 0",
-    "  store i8* %t77, i8** %res.ptr",
-    "  br label %when_merge_57",
-    "when_merge_57:",
-    "  %t78 = load i8*, i8** %kw.ptr",
-    "  %t79 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.39, i32 0, i32 0",
-    "  %t80 = icmp eq i8* %t78, %t79",
-    "  br i1 %t80, label %when_then_58, label %when_merge_60",
-    "when_then_58:",
-    "  %t81 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.40, i32 0, i32 0",
-    "  store i8* %t81, i8** %res.ptr",
-    "  br label %when_merge_60",
-    "when_merge_60:",
-    "  %t82 = load i8*, i8** %kw.ptr",
-    "  %t83 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.41, i32 0, i32 0",
-    "  %t84 = icmp eq i8* %t82, %t83",
-    "  br i1 %t84, label %when_then_61, label %when_merge_63",
-    "when_then_61:",
-    "  %t85 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.42, i32 0, i32 0",
-    "  store i8* %t85, i8** %res.ptr",
-    "  br label %when_merge_63",
-    "when_merge_63:",
-    "  %t86 = load i8*, i8** %kw.ptr",
-    "  %t87 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.43, i32 0, i32 0",
-    "  %t88 = icmp eq i8* %t86, %t87",
-    "  br i1 %t88, label %when_then_64, label %when_merge_66",
-    "when_then_64:",
-    "  %t89 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.44, i32 0, i32 0",
-    "  store i8* %t89, i8** %res.ptr",
-    "  br label %when_merge_66",
-    "when_merge_66:",
-    "  %t90 = load i8*, i8** %kw.ptr",
-    "  %t91 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.45, i32 0, i32 0",
-    "  %t92 = icmp eq i8* %t90, %t91",
-    "  br i1 %t92, label %when_then_67, label %when_merge_69",
-    "when_then_67:",
-    "  %t93 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.46, i32 0, i32 0",
-    "  store i8* %t93, i8** %res.ptr",
-    "  br label %when_merge_69",
-    "when_merge_69:",
-    "  %t94 = load i8*, i8** %res.ptr",
-    "  ret i8* %t94",
-    "}",
-    "",
-    "define i8* @\"classify_operator\"(i8* %op.in) {",
-    "entry:",
-    "  %op.ptr = alloca i8*",
-    "  store i8* %op.in, i8** %op.ptr",
-    "  %t95 = getelementptr inbounds [11 x i8], [11 x i8]* @.str.47, i32 0, i32 0",
-    "  %res.ptr = alloca i8*",
-    "  store i8* %t95, i8** %res.ptr",
-    "  %t96 = load i8*, i8** %op.ptr",
-    "  %t97 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.48, i32 0, i32 0",
-    "  %t98 = icmp eq i8* %t96, %t97",
-    "  br i1 %t98, label %when_then_70, label %when_merge_72",
-    "when_then_70:",
-    "  %t99 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.49, i32 0, i32 0",
-    "  store i8* %t99, i8** %res.ptr",
-    "  br label %when_merge_72",
-    "when_merge_72:",
-    "  %t100 = load i8*, i8** %op.ptr",
-    "  %t101 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.50, i32 0, i32 0",
-    "  %t102 = icmp eq i8* %t100, %t101",
-    "  br i1 %t102, label %when_then_73, label %when_merge_75",
-    "when_then_73:",
-    "  %t103 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.51, i32 0, i32 0",
-    "  store i8* %t103, i8** %res.ptr",
-    "  br label %when_merge_75",
-    "when_merge_75:",
-    "  %t104 = load i8*, i8** %op.ptr",
-    "  %t105 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.52, i32 0, i32 0",
-    "  %t106 = icmp eq i8* %t104, %t105",
-    "  br i1 %t106, label %when_then_76, label %when_merge_78",
-    "when_then_76:",
-    "  %t107 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.53, i32 0, i32 0",
-    "  store i8* %t107, i8** %res.ptr",
-    "  br label %when_merge_78",
-    "when_merge_78:",
-    "  %t108 = load i8*, i8** %op.ptr",
-    "  %t109 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.54, i32 0, i32 0",
-    "  %t110 = icmp eq i8* %t108, %t109",
-    "  br i1 %t110, label %when_then_79, label %when_merge_81",
-    "when_then_79:",
-    "  %t111 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.55, i32 0, i32 0",
-    "  store i8* %t111, i8** %res.ptr",
-    "  br label %when_merge_81",
-    "when_merge_81:",
-    "  %t112 = load i8*, i8** %op.ptr",
-    "  %t113 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.56, i32 0, i32 0",
-    "  %t114 = icmp eq i8* %t112, %t113",
-    "  br i1 %t114, label %when_then_82, label %when_merge_84",
-    "when_then_82:",
-    "  %t115 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.57, i32 0, i32 0",
-    "  store i8* %t115, i8** %res.ptr",
-    "  br label %when_merge_84",
-    "when_merge_84:",
-    "  %t116 = load i8*, i8** %op.ptr",
-    "  %t117 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.58, i32 0, i32 0",
-    "  %t118 = icmp eq i8* %t116, %t117",
-    "  br i1 %t118, label %when_then_85, label %when_merge_87",
-    "when_then_85:",
-    "  %t119 = getelementptr inbounds [7 x i8], [7 x i8]* @.str.59, i32 0, i32 0",
-    "  store i8* %t119, i8** %res.ptr",
-    "  br label %when_merge_87",
-    "when_merge_87:",
-    "  %t120 = load i8*, i8** %op.ptr",
-    "  %t121 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.60, i32 0, i32 0",
-    "  %t122 = icmp eq i8* %t120, %t121",
-    "  br i1 %t122, label %when_then_88, label %when_merge_90",
-    "when_then_88:",
-    "  %t123 = getelementptr inbounds [7 x i8], [7 x i8]* @.str.61, i32 0, i32 0",
-    "  store i8* %t123, i8** %res.ptr",
-    "  br label %when_merge_90",
-    "when_merge_90:",
-    "  %t124 = load i8*, i8** %op.ptr",
-    "  %t125 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.62, i32 0, i32 0",
-    "  %t126 = icmp eq i8* %t124, %t125",
-    "  br i1 %t126, label %when_then_91, label %when_merge_93",
-    "when_then_91:",
-    "  %t127 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.63, i32 0, i32 0",
-    "  store i8* %t127, i8** %res.ptr",
-    "  br label %when_merge_93",
-    "when_merge_93:",
-    "  %t128 = load i8*, i8** %op.ptr",
-    "  %t129 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.64, i32 0, i32 0",
-    "  %t130 = icmp eq i8* %t128, %t129",
-    "  br i1 %t130, label %when_then_94, label %when_merge_96",
-    "when_then_94:",
-    "  %t131 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.65, i32 0, i32 0",
-    "  store i8* %t131, i8** %res.ptr",
-    "  br label %when_merge_96",
-    "when_merge_96:",
-    "  %t132 = load i8*, i8** %op.ptr",
-    "  %t133 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.66, i32 0, i32 0",
-    "  %t134 = icmp eq i8* %t132, %t133",
-    "  br i1 %t134, label %when_then_97, label %when_merge_99",
-    "when_then_97:",
-    "  %t135 = getelementptr inbounds [11 x i8], [11 x i8]* @.str.67, i32 0, i32 0",
-    "  store i8* %t135, i8** %res.ptr",
-    "  br label %when_merge_99",
-    "when_merge_99:",
-    "  %t136 = load i8*, i8** %op.ptr",
-    "  %t137 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.68, i32 0, i32 0",
-    "  %t138 = icmp eq i8* %t136, %t137",
-    "  br i1 %t138, label %when_then_100, label %when_merge_102",
-    "when_then_100:",
-    "  %t139 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.69, i32 0, i32 0",
-    "  store i8* %t139, i8** %res.ptr",
-    "  br label %when_merge_102",
-    "when_merge_102:",
-    "  %t140 = load i8*, i8** %op.ptr",
-    "  %t141 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.70, i32 0, i32 0",
-    "  %t142 = icmp eq i8* %t140, %t141",
-    "  br i1 %t142, label %when_then_103, label %when_merge_105",
-    "when_then_103:",
-    "  %t143 = getelementptr inbounds [11 x i8], [11 x i8]* @.str.71, i32 0, i32 0",
-    "  store i8* %t143, i8** %res.ptr",
-    "  br label %when_merge_105",
-    "when_merge_105:",
-    "  %t144 = load i8*, i8** %op.ptr",
-    "  %t145 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.72, i32 0, i32 0",
-    "  %t146 = icmp eq i8* %t144, %t145",
-    "  br i1 %t146, label %when_then_106, label %when_merge_108",
-    "when_then_106:",
-    "  %t147 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.73, i32 0, i32 0",
-    "  store i8* %t147, i8** %res.ptr",
-    "  br label %when_merge_108",
-    "when_merge_108:",
-    "  %t148 = load i8*, i8** %op.ptr",
-    "  %t149 = getelementptr inbounds [3 x i8], [3 x i8]* @.str.74, i32 0, i32 0",
-    "  %t150 = icmp eq i8* %t148, %t149",
-    "  br i1 %t150, label %when_then_109, label %when_merge_111",
-    "when_then_109:",
-    "  %t151 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.75, i32 0, i32 0",
-    "  store i8* %t151, i8** %res.ptr",
-    "  br label %when_merge_111",
-    "when_merge_111:",
-    "  %t152 = load i8*, i8** %op.ptr",
-    "  %t153 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.76, i32 0, i32 0",
-    "  %t154 = icmp eq i8* %t152, %t153",
-    "  br i1 %t154, label %when_then_112, label %when_merge_114",
-    "when_then_112:",
-    "  %t155 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.77, i32 0, i32 0",
-    "  store i8* %t155, i8** %res.ptr",
-    "  br label %when_merge_114",
-    "when_merge_114:",
-    "  %t156 = load i8*, i8** %res.ptr",
-    "  ret i8* %t156",
-    "}",
-    "",
-    "define i8* @\"classify_annotation\"(i8* %anno.in) {",
-    "entry:",
-    "  %anno.ptr = alloca i8*",
-    "  store i8* %anno.in, i8** %anno.ptr",
-    "  %t157 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.78, i32 0, i32 0",
-    "  %res.ptr = alloca i8*",
-    "  store i8* %t157, i8** %res.ptr",
-    "  %t158 = load i8*, i8** %anno.ptr",
-    "  %t159 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.79, i32 0, i32 0",
-    "  %t160 = icmp eq i8* %t158, %t159",
-    "  br i1 %t160, label %when_then_115, label %when_merge_117",
-    "when_then_115:",
-    "  %t161 = getelementptr inbounds [7 x i8], [7 x i8]* @.str.80, i32 0, i32 0",
-    "  store i8* %t161, i8** %res.ptr",
-    "  br label %when_merge_117",
-    "when_merge_117:",
-    "  %t162 = load i8*, i8** %anno.ptr",
-    "  %t163 = getelementptr inbounds [14 x i8], [14 x i8]* @.str.81, i32 0, i32 0",
-    "  %t164 = icmp eq i8* %t162, %t163",
-    "  br i1 %t164, label %when_then_118, label %when_merge_120",
-    "when_then_118:",
-    "  %t165 = getelementptr inbounds [13 x i8], [13 x i8]* @.str.82, i32 0, i32 0",
-    "  store i8* %t165, i8** %res.ptr",
-    "  br label %when_merge_120",
-    "when_merge_120:",
-    "  %t166 = load i8*, i8** %anno.ptr",
-    "  %t167 = getelementptr inbounds [13 x i8], [13 x i8]* @.str.83, i32 0, i32 0",
-    "  %t168 = icmp eq i8* %t166, %t167",
-    "  br i1 %t168, label %when_then_121, label %when_merge_123",
-    "when_then_121:",
-    "  %t169 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.84, i32 0, i32 0",
-    "  store i8* %t169, i8** %res.ptr",
-    "  br label %when_merge_123",
-    "when_merge_123:",
-    "  %t170 = load i8*, i8** %anno.ptr",
-    "  %t171 = getelementptr inbounds [14 x i8], [14 x i8]* @.str.85, i32 0, i32 0",
-    "  %t172 = icmp eq i8* %t170, %t171",
-    "  br i1 %t172, label %when_then_124, label %when_merge_126",
-    "when_then_124:",
-    "  %t173 = getelementptr inbounds [13 x i8], [13 x i8]* @.str.86, i32 0, i32 0",
-    "  store i8* %t173, i8** %res.ptr",
-    "  br label %when_merge_126",
-    "when_merge_126:",
-    "  %t174 = load i8*, i8** %res.ptr",
-    "  ret i8* %t174",
-    "}",
-    "",
-    "define i8* @\"format_token\"(i8* %t.in) {",
-    "entry:",
-    "  %t.ptr = alloca i8*",
-    "  store i8* %t.in, i8** %t.ptr",
-    "  %t175 = load i8*, i8** %t.ptr",
-    "  %t176 = call i8* @qadav_record_get_field_ptr(i8* %t175, i32 0)",
-    "  call void @qadav_emit_text(i8* %t176)",
-    "  %t177 = load i8*, i8** %t.ptr",
-    "  %t178 = call i8* @qadav_record_get_field_ptr(i8* %t177, i32 1)",
-    "  call void @qadav_emit_text(i8* %t178)",
-    "  %t179 = load i8*, i8** %t.ptr",
-    "  %t180 = call i8* @qadav_record_get_field_ptr(i8* %t179, i32 0)",
-    "  ret i8* %t180",
-    "}",
-    "",
-    "define i32 @\"main\"() {",
-    "entry:",
-    "  %t181 = call i8* @qadav_record_alloc(i64 16610287954665365682, i32 4, i32* null)",
-    "  %t182 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.87, i32 0, i32 0",
-    "  call void @qadav_record_set_field_ptr(i8* %t181, i32 0, i8* %t182)",
-    "  %t183 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.88, i32 0, i32 0",
-    "  call void @qadav_record_set_field_ptr(i8* %t181, i32 1, i8* %t183)",
-    "  call void @qadav_record_set_field_i64(i8* %t181, i32 2, i64 1)",
-    "  call void @qadav_record_set_field_i64(i8* %t181, i32 3, i64 1)",
-    "  %t1.ptr = alloca i8*",
-    "  store i8* %t181, i8** %t1.ptr",
-    "  %t184 = call i8* @qadav_record_alloc(i64 16610287954665365682, i32 4, i32* null)",
-    "  %t185 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.89, i32 0, i32 0",
-    "  call void @qadav_record_set_field_ptr(i8* %t184, i32 0, i8* %t185)",
-    "  %t186 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.90, i32 0, i32 0",
-    "  call void @qadav_record_set_field_ptr(i8* %t184, i32 1, i8* %t186)",
-    "  call void @qadav_record_set_field_i64(i8* %t184, i32 2, i64 1)",
-    "  call void @qadav_record_set_field_i64(i8* %t184, i32 3, i64 9)",
-    "  %t2.ptr = alloca i8*",
-    "  store i8* %t184, i8** %t2.ptr",
-    "  %t187 = load i8*, i8** %t1.ptr",
-    "  %t188 = call i8* @\"format_token\"(i8* %t187)",
-    "  %f1.ptr = alloca i8*",
-    "  store i8* %t188, i8** %f1.ptr",
-    "  %t189 = load i8*, i8** %f1.ptr",
-    "  call void @qadav_emit_text(i8* %t189)",
-    "  %t190 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.91, i32 0, i32 0",
-    "  %t191 = call i8* @\"classify_keyword\"(i8* %t190)",
-    "  %kw_type.ptr = alloca i8*",
-    "  store i8* %t191, i8** %kw_type.ptr",
-    "  %t192 = load i8*, i8** %kw_type.ptr",
-    "  call void @qadav_emit_text(i8* %t192)",
-    "  %t193 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.92, i32 0, i32 0",
-    "  %t194 = call i8* @\"classify_operator\"(i8* %t193)",
-    "  %op_type.ptr = alloca i8*",
-    "  store i8* %t194, i8** %op_type.ptr",
-    "  %t195 = load i8*, i8** %op_type.ptr",
-    "  call void @qadav_emit_text(i8* %t195)",
-    "  %t196 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.93, i32 0, i32 0",
-    "  %t197 = call i8* @\"classify_annotation\"(i8* %t196)",
-    "  %anno_type.ptr = alloca i8*",
-    "  store i8* %t197, i8** %anno_type.ptr",
-    "  %t198 = load i8*, i8** %anno_type.ptr",
-    "  call void @qadav_emit_text(i8* %t198)",
-    "  %t199 = getelementptr inbounds [50 x i8], [50 x i8]* @.str.94, i32 0, i32 0",
-    "  call void @qadav_emit_text(i8* %t199)",
-    "  %t200 = trunc i64 0 to i32",
-    "  ret i32 %t200",
-    "}",
-};
 
-long long qadav_get_lexer_line_count(void) {
-    return (long long)(sizeof(g_lexer_lines) / sizeof(g_lexer_lines[0]));
+const char* qadav_format_icmp_eq_ptr(long long res_temp, long long t1, long long t2) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    append_num(buf, &bi, res_temp);
+    const char* p2 = " = icmp eq i8* %t";
+    while (*p2) buf[bi++] = *p2++;
+    append_num(buf, &bi, t1);
+    const char* p3 = ", %t";
+    while (*p3) buf[bi++] = *p3++;
+    append_num(buf, &bi, t2);
+    buf[bi] = '\0';
+    return buf;
 }
 
-const char* qadav_get_lexer_line(long long idx) {
-    if (idx < 0 || idx >= (long long)(sizeof(g_lexer_lines) / sizeof(g_lexer_lines[0]))) return "";
-    return g_lexer_lines[idx];
+const char* qadav_format_func_def_text_param(const char* name, const char* param_name) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "define i8* @\"";
+    while (*p1) buf[bi++] = *p1++;
+    while (*name) buf[bi++] = *name++;
+    const char* p2 = "\"(i8* %";
+    while (*p2) buf[bi++] = *p2++;
+    while (*param_name) buf[bi++] = *param_name++;
+    const char* p3 = ".in) {";
+    while (*p3) buf[bi++] = *p3++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_param_alloca_text(const char* param_name) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %";
+    while (*p1) buf[bi++] = *p1++;
+    while (*param_name) buf[bi++] = *param_name++;
+    const char* p2 = ".ptr = alloca i8*";
+    while (*p2) buf[bi++] = *p2++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_param_store_text(const char* param_name) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  store i8* %";
+    while (*p1) buf[bi++] = *p1++;
+    const char* s = param_name;
+    while (*s) buf[bi++] = *s++;
+    const char* p2 = ".in, i8** %";
+    while (*p2) buf[bi++] = *p2++;
+    s = param_name;
+    while (*s) buf[bi++] = *s++;
+    const char* p3 = ".ptr";
+    while (*p3) buf[bi++] = *p3++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_ret_text(long long reg_id) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  ret i8* %t";
+    while (*p1) buf[bi++] = *p1++;
+    append_num(buf, &bi, reg_id);
+    buf[bi] = '\0';
+    return buf;
 }
