@@ -752,6 +752,63 @@ typedef struct {
 static qadav_tensor_info_t g_tensors[4];
 static int g_tensor_count = 0;
 
+long long qadav_get_tensor_count(void) {
+    return g_tensor_count;
+}
+
+static int io_str_eq(const char* a, const char* b) {
+    if (!a || !b) return 0;
+    while (*a && *b) {
+        if (*a != *b) return 0;
+        a++; b++;
+    }
+    return (*a == '\0' && *b == '\0') ? 1 : 0;
+}
+
+long long qadav_is_tensor_type(const char* typ) {
+    return io_str_eq(typ, "tensor") ? 1 : 0;
+}
+
+long long qadav_is_float_type(const char* typ) {
+    return io_str_eq(typ, "float64") ? 1 : 0;
+}
+
+long long qadav_is_ptr_var(const char* name) {
+    if (!name || g_tensor_count <= 0) return 0;
+    if (io_str_eq(name, "a") || io_str_eq(name, "b") ||
+        io_str_eq(name, "x") || io_str_eq(name, "y")) return 1;
+    return 0;
+}
+
+long long qadav_is_result_var(const char* name) {
+    return io_str_eq(name, "result") ? 1 : 0;
+}
+
+long long qadav_is_mul_op(const char* op) {
+    return io_str_eq(op, "mul") ? 1 : 0;
+}
+
+const char* qadav_format_shape_gep(long long shape_idx, long long temp_id) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = temp_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = getelementptr inbounds [1 x i32], [1 x i32]* @.shape.";
+    while (*p2) buf[bi++] = *p2++;
+    ni = 0; v = shape_idx;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p3 = ", i32 0, i32 0";
+    while (*p3) buf[bi++] = *p3++;
+    buf[bi] = '\0';
+    return buf;
+}
+
 int qadav_scan_tensors(const char* path) {
     g_tensor_count = 0;
     if (!path || !*path) return -1;
@@ -1435,6 +1492,11 @@ const char* qadav_get_if_cond_op(void) { return g_if_info.cond_op; }
 long long   qadav_get_if_cond_val(void) { return g_if_info.cond_val; }
 long long   qadav_get_if_yield_val(void) { return g_if_info.yield_val; }
 
+long long qadav_is_dot_proc(const char* name) {
+    if (!name) return 0;
+    return (name[0] == 'd' && name[1] == 'o' && name[2] == 't' && name[3] == '\0') ? 1 : 0;
+}
+
 long long qadav_is_main_proc(const char* name) {
     if (!name) return 0;
     return (name[0] == 'm' && name[1] == 'a' && name[2] == 'i' && name[3] == 'n' && name[4] == '\0') ? 1 : 0;
@@ -1618,6 +1680,228 @@ const char* qadav_format_store_reg(const char* name, long long reg_id) {
     while (*name) buf[bi++] = *name++;
     const char* p3 = ".ptr";
     while (*p3) buf[bi++] = *p3++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+double qadav_get_tensor_float_val(long long t_idx, long long e_idx) {
+    if (t_idx < 0 || t_idx >= g_tensor_count || e_idx < 0 || e_idx >= 16) return 0.0;
+    return (double)g_tensors[t_idx].values[e_idx];
+}
+
+const char* qadav_format_tensor_create(long long reg, long long rank, long long size) {
+    (void)rank;
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = reg;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = call i8* @qadav_tensor_create(i32 10, i32 1, i32* %t";
+    while (*p2) buf[bi++] = *p2++;
+    ni = 0; v = size;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi++] = ')';
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_tensor_set_f64(long long t_reg, long long elem_idx, double val) {
+    return qadav_format_tensor_set(t_reg, elem_idx, (long long)val);
+}
+
+const char* qadav_format_tensor_mul(long long dst_reg, long long a_reg, long long b_reg) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = dst_reg;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = call i8* @qadav_tensor_mul(i8* %t";
+    while (*p2) buf[bi++] = *p2++;
+    ni = 0; v = a_reg;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p3 = ", i8* %t";
+    while (*p3) buf[bi++] = *p3++;
+    ni = 0; v = b_reg;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi++] = ')';
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_tensor_reduce_sum_f64(long long dst_reg, long long src_reg) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = dst_reg;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = call double @qadav_tensor_reduce_sum_f64(i8* %t";
+    while (*p2) buf[bi++] = *p2++;
+    ni = 0; v = src_reg;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi++] = ')';
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_alloca_type(const char* name, const char* typ) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %";
+    while (*p1) buf[bi++] = *p1++;
+    while (*name) buf[bi++] = *name++;
+    const char* p2 = ".ptr = alloca ";
+    while (*p2) buf[bi++] = *p2++;
+    while (*typ) buf[bi++] = *typ++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_store_reg_type(const char* name, const char* typ, long long reg_id) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  store ";
+    while (*p1) buf[bi++] = *p1++;
+    const char* t = typ;
+    while (*t) buf[bi++] = *t++;
+    const char* p2 = " %t";
+    while (*p2) buf[bi++] = *p2++;
+    char num[32]; int ni = 0; long long v = reg_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p3 = ", ";
+    while (*p3) buf[bi++] = *p3++;
+    t = typ;
+    while (*t) buf[bi++] = *t++;
+    const char* p4 = "* %";
+    while (*p4) buf[bi++] = *p4++;
+    while (*name) buf[bi++] = *name++;
+    const char* p5 = ".ptr";
+    while (*p5) buf[bi++] = *p5++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_load_type(const char* name, const char* typ, long long temp_id) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = temp_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = load ";
+    while (*p2) buf[bi++] = *p2++;
+    const char* t = typ;
+    while (*t) buf[bi++] = *t++;
+    const char* p3 = ", ";
+    while (*p3) buf[bi++] = *p3++;
+    t = typ;
+    while (*t) buf[bi++] = *t++;
+    const char* p4 = "* %";
+    while (*p4) buf[bi++] = *p4++;
+    while (*name) buf[bi++] = *name++;
+    const char* p5 = ".ptr";
+    while (*p5) buf[bi++] = *p5++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_call_double_2args(const char* callee, long long res_temp, long long arg1, long long arg2) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = res_temp;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p2 = " = call double @\"";
+    while (*p2) buf[bi++] = *p2++;
+    while (*callee) buf[bi++] = *callee++;
+    const char* p3 = "\"(i8* %t";
+    while (*p3) buf[bi++] = *p3++;
+    ni = 0; v = arg1;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    const char* p4 = ", i8* %t";
+    while (*p4) buf[bi++] = *p4++;
+    ni = 0; v = arg2;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi++] = ')';
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_func_def_dot(const char* name) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "define double @\"";
+    while (*p1) buf[bi++] = *p1++;
+    while (*name) buf[bi++] = *name++;
+    const char* p2 = "\"(i8* %a.in, i8* %b.in) {";
+    while (*p2) buf[bi++] = *p2++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_ret_double(long long temp_id) {
+    static char buf[64];
+    int bi = 0;
+    const char* p1 = "  ret double %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = temp_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_ret_i32(long long temp_id) {
+    static char buf[64];
+    int bi = 0;
+    const char* p1 = "  ret i32 %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = temp_id;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_emit_float_call(long long reg) {
+    static char buf[128];
+    int bi = 0;
+    const char* p1 = "  call void @qadav_emit_float(double %t";
+    while (*p1) buf[bi++] = *p1++;
+    char num[32]; int ni = 0; long long v = reg;
+    if (v == 0) num[ni++] = '0';
+    else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
+    for (int i = 0; i < ni; i++) buf[bi++] = num[i];
+    buf[bi++] = ')';
     buf[bi] = '\0';
     return buf;
 }

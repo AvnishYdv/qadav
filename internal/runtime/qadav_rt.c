@@ -108,6 +108,7 @@ const char* qadav_get_if_cond_var(void);
 const char* qadav_get_if_cond_op(void);
 long long   qadav_get_if_cond_val(void);
 long long   qadav_get_if_yield_val(void);
+long long   qadav_is_dot_proc(const char* name);
 long long   qadav_is_main_proc(const char* name);
 void        qadav_set_proc_is_main(long long is_main);
 long long   qadav_get_proc_is_main(void);
@@ -118,6 +119,26 @@ const char* qadav_format_call_i64(const char* callee, long long res_temp, long l
 const char* qadav_format_ret_i64(long long temp_id);
 const char* qadav_format_binop_imm(const char* op, long long res_temp, long long left_reg, long long imm_val);
 const char* qadav_format_store_reg(const char* name, long long reg_id);
+double      qadav_get_tensor_float_val(long long t_idx, long long e_idx);
+const char* qadav_format_tensor_create(long long reg, long long rank, long long size);
+const char* qadav_format_tensor_set_f64(long long t_reg, long long elem_idx, double val);
+const char* qadav_format_tensor_mul(long long dst_reg, long long a_reg, long long b_reg);
+const char* qadav_format_tensor_reduce_sum_f64(long long dst_reg, long long src_reg);
+long long   qadav_get_tensor_count(void);
+long long   qadav_is_tensor_type(const char* typ);
+long long   qadav_is_float_type(const char* typ);
+long long   qadav_is_ptr_var(const char* name);
+long long   qadav_is_result_var(const char* name);
+long long   qadav_is_mul_op(const char* op);
+const char* qadav_format_shape_gep(long long shape_idx, long long temp_id);
+const char* qadav_format_alloca_type(const char* name, const char* typ);
+const char* qadav_format_store_reg_type(const char* name, const char* typ, long long reg_id);
+const char* qadav_format_load_type(const char* name, const char* typ, long long temp_id);
+const char* qadav_format_call_double_2args(const char* callee, long long res_temp, long long arg1, long long arg2);
+const char* qadav_format_func_def_dot(const char* name);
+const char* qadav_format_ret_double(long long temp_id);
+const char* qadav_format_ret_i32(long long temp_id);
+const char* qadav_format_emit_float_call(long long reg);
 
 const char* get_input_path(void) {
     return qadav_get_input_path();
@@ -300,6 +321,7 @@ const char* get_if_cond_var(void) { return qadav_get_if_cond_var(); }
 const char* get_if_cond_op(void) { return qadav_get_if_cond_op(); }
 long long get_if_cond_val(void) { return qadav_get_if_cond_val(); }
 long long get_if_yield_val(void) { return qadav_get_if_yield_val(); }
+long long is_dot_proc(const char* name) { return qadav_is_dot_proc(name); }
 long long is_main_proc(const char* name) { return qadav_is_main_proc(name); }
 void set_proc_is_main(long long is_main) { qadav_set_proc_is_main(is_main); }
 long long get_proc_is_main(void) { return qadav_get_proc_is_main(); }
@@ -310,6 +332,26 @@ const char* format_call_i64(const char* callee, long long res_temp, long long ar
 const char* format_ret_i64(long long temp_id) { return qadav_format_ret_i64(temp_id); }
 const char* format_binop_imm(const char* op, long long res_temp, long long left_reg, long long imm_val) { return qadav_format_binop_imm(op, res_temp, left_reg, imm_val); }
 const char* format_store_reg(const char* name, long long reg_id) { return qadav_format_store_reg(name, reg_id); }
+double get_tensor_float_val(long long t_idx, long long e_idx) { return qadav_get_tensor_float_val(t_idx, e_idx); }
+const char* format_tensor_create(long long reg, long long rank, long long size) { return qadav_format_tensor_create(reg, rank, size); }
+const char* format_tensor_set_f64(long long t_reg, long long elem_idx, double val) { return qadav_format_tensor_set_f64(t_reg, elem_idx, val); }
+const char* format_tensor_mul(long long dst_reg, long long a_reg, long long b_reg) { return qadav_format_tensor_mul(dst_reg, a_reg, b_reg); }
+const char* format_tensor_reduce_sum_f64(long long dst_reg, long long src_reg) { return qadav_format_tensor_reduce_sum_f64(dst_reg, src_reg); }
+long long get_tensor_count(void) { return qadav_get_tensor_count(); }
+long long is_tensor_type(const char* typ) { return qadav_is_tensor_type(typ); }
+long long is_float_type(const char* typ) { return qadav_is_float_type(typ); }
+long long is_ptr_var(const char* name) { return qadav_is_ptr_var(name); }
+long long is_result_var(const char* name) { return qadav_is_result_var(name); }
+long long is_mul_op(const char* op) { return qadav_is_mul_op(op); }
+const char* format_shape_gep(long long shape_idx, long long temp_id) { return qadav_format_shape_gep(shape_idx, temp_id); }
+const char* format_alloca_type(const char* name, const char* typ) { return qadav_format_alloca_type(name, typ); }
+const char* format_store_reg_type(const char* name, const char* typ, long long reg_id) { return qadav_format_store_reg_type(name, typ, reg_id); }
+const char* format_load_type(const char* name, const char* typ, long long temp_id) { return qadav_format_load_type(name, typ, temp_id); }
+const char* format_call_double_2args(const char* callee, long long res_temp, long long arg1, long long arg2) { return qadav_format_call_double_2args(callee, res_temp, arg1, arg2); }
+const char* format_func_def_dot(const char* name) { return qadav_format_func_def_dot(name); }
+const char* format_ret_double(long long temp_id) { return qadav_format_ret_double(temp_id); }
+const char* format_ret_i32(long long temp_id) { return qadav_format_ret_i32(temp_id); }
+const char* format_emit_float_call(long long reg) { return qadav_format_emit_float_call(reg); }
 
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);

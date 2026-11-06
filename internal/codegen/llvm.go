@@ -643,6 +643,8 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i64 @qadav_get_if_cond_val()\n")
 		header.WriteString("declare i64 @get_if_yield_val()\n")
 		header.WriteString("declare i64 @qadav_get_if_yield_val()\n")
+		header.WriteString("declare i64 @is_dot_proc(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_dot_proc(i8*)\n")
 		header.WriteString("declare i64 @is_main_proc(i8*)\n")
 		header.WriteString("declare i64 @qadav_is_main_proc(i8*)\n")
 		header.WriteString("declare void @set_proc_is_main(i64)\n")
@@ -662,7 +664,47 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i8* @format_binop_imm(i8*, i64, i64, i64)\n")
 		header.WriteString("declare i8* @qadav_format_binop_imm(i8*, i64, i64, i64)\n")
 		header.WriteString("declare i8* @format_store_reg(i8*, i64)\n")
-		header.WriteString("declare i8* @qadav_format_store_reg(i8*, i64)\n\n")
+		header.WriteString("declare i8* @qadav_format_store_reg(i8*, i64)\n")
+		header.WriteString("declare double @get_tensor_float_val(i64, i64)\n")
+		header.WriteString("declare double @qadav_get_tensor_float_val(i64, i64)\n")
+		header.WriteString("declare i8* @format_tensor_create(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_tensor_create(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_tensor_set_f64(i64, i64, double)\n")
+		header.WriteString("declare i8* @qadav_format_tensor_set_f64(i64, i64, double)\n")
+		header.WriteString("declare i8* @format_tensor_mul(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_tensor_mul(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_tensor_reduce_sum_f64(i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_tensor_reduce_sum_f64(i64, i64)\n")
+		header.WriteString("declare i64 @get_tensor_count()\n")
+		header.WriteString("declare i64 @qadav_get_tensor_count()\n")
+		header.WriteString("declare i8* @format_shape_gep(i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_shape_gep(i64, i64)\n")
+		header.WriteString("declare i64 @is_tensor_type(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_tensor_type(i8*)\n")
+		header.WriteString("declare i64 @is_float_type(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_float_type(i8*)\n")
+		header.WriteString("declare i64 @is_ptr_var(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_ptr_var(i8*)\n")
+		header.WriteString("declare i64 @is_result_var(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_result_var(i8*)\n")
+		header.WriteString("declare i64 @is_mul_op(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_mul_op(i8*)\n")
+		header.WriteString("declare i8* @format_alloca_type(i8*, i8*)\n")
+		header.WriteString("declare i8* @qadav_format_alloca_type(i8*, i8*)\n")
+		header.WriteString("declare i8* @format_store_reg_type(i8*, i8*, i64)\n")
+		header.WriteString("declare i8* @qadav_format_store_reg_type(i8*, i8*, i64)\n")
+		header.WriteString("declare i8* @format_load_type(i8*, i8*, i64)\n")
+		header.WriteString("declare i8* @qadav_format_load_type(i8*, i8*, i64)\n")
+		header.WriteString("declare i8* @format_call_double_2args(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_call_double_2args(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_func_def_dot(i8*)\n")
+		header.WriteString("declare i8* @qadav_format_func_def_dot(i8*)\n")
+		header.WriteString("declare i8* @format_ret_double(i64)\n")
+		header.WriteString("declare i8* @qadav_format_ret_double(i64)\n")
+		header.WriteString("declare i8* @format_ret_i32(i64)\n")
+		header.WriteString("declare i8* @qadav_format_ret_i32(i64)\n")
+		header.WriteString("declare i8* @format_emit_float_call(i64)\n")
+		header.WriteString("declare i8* @qadav_format_emit_float_call(i64)\n\n")
 	}
 
 	// Quantum global state
@@ -1856,6 +1898,7 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "get_if_cond_op" || ident.Name == "qadav_get_if_cond_op" ||
 				ident.Name == "get_if_cond_val" || ident.Name == "qadav_get_if_cond_val" ||
 				ident.Name == "get_if_yield_val" || ident.Name == "qadav_get_if_yield_val" ||
+				ident.Name == "is_dot_proc" || ident.Name == "qadav_is_dot_proc" ||
 				ident.Name == "is_main_proc" || ident.Name == "qadav_is_main_proc" ||
 				ident.Name == "set_proc_is_main" || ident.Name == "qadav_set_proc_is_main" ||
 				ident.Name == "get_proc_is_main" || ident.Name == "qadav_get_proc_is_main" ||
@@ -1865,7 +1908,27 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "format_call_i64" || ident.Name == "qadav_format_call_i64" ||
 				ident.Name == "format_ret_i64" || ident.Name == "qadav_format_ret_i64" ||
 				ident.Name == "format_binop_imm" || ident.Name == "qadav_format_binop_imm" ||
-				ident.Name == "format_store_reg" || ident.Name == "qadav_format_store_reg" {
+				ident.Name == "format_store_reg" || ident.Name == "qadav_format_store_reg" ||
+				ident.Name == "get_tensor_float_val" || ident.Name == "qadav_get_tensor_float_val" ||
+				ident.Name == "format_tensor_create" || ident.Name == "qadav_format_tensor_create" ||
+				ident.Name == "format_tensor_set_f64" || ident.Name == "qadav_format_tensor_set_f64" ||
+				ident.Name == "format_tensor_mul" || ident.Name == "qadav_format_tensor_mul" ||
+				ident.Name == "format_tensor_reduce_sum_f64" || ident.Name == "qadav_format_tensor_reduce_sum_f64" ||
+				ident.Name == "get_tensor_count" || ident.Name == "qadav_get_tensor_count" ||
+				ident.Name == "format_shape_gep" || ident.Name == "qadav_format_shape_gep" ||
+				ident.Name == "is_tensor_type" || ident.Name == "qadav_is_tensor_type" ||
+				ident.Name == "is_float_type" || ident.Name == "qadav_is_float_type" ||
+				ident.Name == "is_ptr_var" || ident.Name == "qadav_is_ptr_var" ||
+				ident.Name == "is_result_var" || ident.Name == "qadav_is_result_var" ||
+				ident.Name == "is_mul_op" || ident.Name == "qadav_is_mul_op" ||
+				ident.Name == "format_alloca_type" || ident.Name == "qadav_format_alloca_type" ||
+				ident.Name == "format_store_reg_type" || ident.Name == "qadav_format_store_reg_type" ||
+				ident.Name == "format_load_type" || ident.Name == "qadav_format_load_type" ||
+				ident.Name == "format_call_double_2args" || ident.Name == "qadav_format_call_double_2args" ||
+				ident.Name == "format_func_def_dot" || ident.Name == "qadav_format_func_def_dot" ||
+				ident.Name == "format_ret_double" || ident.Name == "qadav_format_ret_double" ||
+				ident.Name == "format_ret_i32" || ident.Name == "qadav_format_ret_i32" ||
+				ident.Name == "format_emit_float_call" || ident.Name == "qadav_format_emit_float_call" {
 				g.usesDynamicIO = true
 			}
 			if g.checker != nil && g.checker.Networks() != nil {

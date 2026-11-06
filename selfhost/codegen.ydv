@@ -21,6 +21,9 @@ variant CoreAst ⟦
     | BinaryOpDecl(op ↦ text ⸴ left ↦ CoreAst ⸴ right ↦ CoreAst) ·
     | CallDecl(name ↦ text ⸴ args ↦ tensor) ·
     | Call1Decl(name ↦ text ⸴ arg ↦ CoreAst) ·
+    | Call2Decl(name ↦ text ⸴ arg1 ↦ CoreAst ⸴ arg2 ↦ CoreAst) ·
+    | TensorDecl(idx ↦ int64 ⸴ elem_count ↦ int64) ·
+    | ReduceSumDecl(inner ↦ CoreAst) ·
     | IdentDecl(name ↦ text) ·
     | IntLitDecl(value ↦ int64) ·
     | StrLitDecl(value ↦ text) ·
@@ -88,6 +91,42 @@ process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
 
         CoreAst full_program ↦ variant_init CoreAst ⦅BlockDecl ↦ proc_fib ⸴ proc_main⦆ ·
         yield full_program ·
+    ⟧
+
+    when prog_kind ≡ 2 ⟦
+        int64 d_tcount ↦ scan_tensors⦅file_path⦆ ·
+        int64 d_a_size ↦ get_tensor_size⦅0⦆ ·
+        int64 d_b_size ↦ get_tensor_size⦅1⦆ ·
+
+        CoreAst d_mul_l ↦ variant_init CoreAst ⦅IdentDecl ↦ "a"⦆ ·
+        CoreAst d_mul_r ↦ variant_init CoreAst ⦅IdentDecl ↦ "b"⦆ ·
+        CoreAst d_mul_node ↦ variant_init CoreAst ⦅BinaryOpDecl ↦ "mul" ⸴ d_mul_l ⸴ d_mul_r⦆ ·
+        CoreAst d_sum_node ↦ variant_init CoreAst ⦅ReduceSumDecl ↦ d_mul_node⦆ ·
+        CoreAst d_yield_dot ↦ variant_init CoreAst ⦅YieldDecl ↦ d_sum_node⦆ ·
+        CoreAst d_proc_dot ↦ variant_init CoreAst ⦅ProcessDecl ↦ "dot" ⸴ "" ⸴ "float64" ⸴ d_yield_dot⦆ ·
+
+        CoreAst d_t0_node ↦ variant_init CoreAst ⦅TensorDecl ↦ 0 ⸴ d_a_size⦆ ·
+        CoreAst d_s0_bind ↦ variant_init CoreAst ⦅BindDecl ↦ "x" ⸴ "tensor" ⸴ d_t0_node⦆ ·
+
+        CoreAst d_t1_node ↦ variant_init CoreAst ⦅TensorDecl ↦ 1 ⸴ d_b_size⦆ ·
+        CoreAst d_s1_bind ↦ variant_init CoreAst ⦅BindDecl ↦ "y" ⸴ "tensor" ⸴ d_t1_node⦆ ·
+
+        CoreAst d_call_x ↦ variant_init CoreAst ⦅IdentDecl ↦ "x"⦆ ·
+        CoreAst d_call_y ↦ variant_init CoreAst ⦅IdentDecl ↦ "y"⦆ ·
+        CoreAst d_call_dot ↦ variant_init CoreAst ⦅Call2Decl ↦ "dot" ⸴ d_call_x ⸴ d_call_y⦆ ·
+        CoreAst d_s2_bind ↦ variant_init CoreAst ⦅BindDecl ↦ "result" ⸴ "float64" ⸴ d_call_dot⦆ ·
+
+        CoreAst d_emit_res ↦ variant_init CoreAst ⦅EmitDecl ↦ variant_init CoreAst ⦅IdentDecl ↦ "result"⦆⦆ ·
+        CoreAst d_yield_zero ↦ variant_init CoreAst ⦅YieldDecl ↦ variant_init CoreAst ⦅IntLitDecl ↦ 0⦆⦆ ·
+
+        CoreAst d_blk34 ↦ variant_init CoreAst ⦅BlockDecl ↦ d_emit_res ⸴ d_yield_zero⦆ ·
+        CoreAst d_blk234 ↦ variant_init CoreAst ⦅BlockDecl ↦ d_s2_bind ⸴ d_blk34⦆ ·
+        CoreAst d_blk1234 ↦ variant_init CoreAst ⦅BlockDecl ↦ d_s1_bind ⸴ d_blk234⦆ ·
+        CoreAst d_blk_main ↦ variant_init CoreAst ⦅BlockDecl ↦ d_s0_bind ⸴ d_blk1234⦆ ·
+        CoreAst d_proc_main ↦ variant_init CoreAst ⦅ProcessDecl ↦ "main" ⸴ "" ⸴ "int64" ⸴ d_blk_main⦆ ·
+
+        CoreAst d_full_prog ↦ variant_init CoreAst ⦅BlockDecl ↦ d_proc_dot ⸴ d_proc_main⦆ ·
+        yield d_full_prog ·
     ⟧
 
     when prog_kind ≡ 3 ⟦
@@ -174,14 +213,26 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 emit "declare i32 @qadav_pcc_corrupt(i32)" ·
                 emit "" ·
                 reset_label_counter⦅⦆ ·
-                int64 scount ↦ get_emitted_string_count⦅⦆ ·
-                int64 si ↦ 0 ·
-                cycle si ≺ scount ⟦
-                    text sdef ↦ format_emitted_str_def⦅si⦆ ·
-                    emit sdef ·
-                    si ← si ⊕ 1 ·
+                int64 t_cnt ↦ get_tensor_count⦅⦆ ·
+                when t_cnt ≻ 0 ⟦
+                    int64 ti ↦ 0 ·
+                    cycle ti ≺ t_cnt ⟦
+                        int64 tsz ↦ get_tensor_size⦅ti⦆ ·
+                        text sh_line ↦ format_shape_const⦅ti ⸴ tsz⦆ ·
+                        emit sh_line ·
+                        ti ← ti ⊕ 1 ·
+                    ⟧
+                    emit "" ·
+                ⟧ otherwise ⟦
+                    int64 scount ↦ get_emitted_string_count⦅⦆ ·
+                    int64 si ↦ 0 ·
+                    cycle si ≺ scount ⟦
+                        text sdef ↦ format_emitted_str_def⦅si⦆ ·
+                        emit sdef ·
+                        si ← si ⊕ 1 ·
+                    ⟧
+                    emit "" ·
                 ⟧
-                emit "" ·
             ⟧
             int64 is_m_proc ↦ is_main_proc⦅name⦆ ·
             when is_m_proc ≡ 1 ⟦
@@ -190,13 +241,24 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 emit "entry:" ·
             ⟧ otherwise ⟦
                 set_proc_is_main⦅0⦆ ·
-                text fdef ↦ format_func_def_with_param⦅name ⸴ param_name⦆ ·
-                emit fdef ·
-                emit "entry:" ·
-                text p_alloca ↦ format_param_alloca⦅param_name⦆ ·
-                emit p_alloca ·
-                text p_store ↦ format_param_store⦅param_name⦆ ·
-                emit p_store ·
+                int64 is_d_proc ↦ is_dot_proc⦅name⦆ ·
+                when is_d_proc ≡ 1 ⟦
+                    text fdef_dot ↦ format_func_def_dot⦅name⦆ ·
+                    emit fdef_dot ·
+                    emit "entry:" ·
+                    emit "  %a.ptr = alloca i8*" ·
+                    emit "  store i8* %a.in, i8** %a.ptr" ·
+                    emit "  %b.ptr = alloca i8*" ·
+                    emit "  store i8* %b.in, i8** %b.ptr" ·
+                ⟧ otherwise ⟦
+                    text fdef ↦ format_func_def_with_param⦅name ⸴ param_name⦆ ·
+                    emit fdef ·
+                    emit "entry:" ·
+                    text p_alloca ↦ format_param_alloca⦅param_name⦆ ·
+                    emit p_alloca ·
+                    text p_store ↦ format_param_store⦅param_name⦆ ·
+                    emit p_store ·
+                ⟧
             ⟧
             int64 t_proc ↦ walk_core_ast⦅body ⸴ temp_counter⦆ ·
             emit "}" ·
@@ -209,15 +271,31 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
         | BindDecl(name ⸴ val_type ⸴ value) ⟹
             int64 t_val_bind ↦ walk_core_ast⦅value ⸴ temp_counter⦆ ·
             int64 last_t_bind ↦ get_last_temp⦅⦆ ·
-            text alloc_line_bind ↦ format_alloca⦅name⦆ ·
-            emit alloc_line_bind ·
-            when last_t_bind ≺ 0 ⟦
-                int64 v_bind ↦ last_int_value⦅⦆ ·
-                text store_line_bind ↦ format_store⦅name ⸴ v_bind⦆ ·
-                emit store_line_bind ·
+            int64 is_t_type ↦ is_tensor_type⦅val_type⦆ ·
+            when is_t_type ≡ 1 ⟦
+                text a_line ↦ format_alloca_type⦅name ⸴ "i8*"⦆ ·
+                emit a_line ·
+                text s_line ↦ format_store_reg_type⦅name ⸴ "i8*" ⸴ last_t_bind⦆ ·
+                emit s_line ·
             ⟧ otherwise ⟦
-                text store_reg_bind ↦ format_store_reg⦅name ⸴ last_t_bind⦆ ·
-                emit store_reg_bind ·
+                int64 is_f_type ↦ is_float_type⦅val_type⦆ ·
+                when is_f_type ≡ 1 ⟦
+                    text a_f_line ↦ format_alloca_type⦅name ⸴ "double"⦆ ·
+                    emit a_f_line ·
+                    text s_f_line ↦ format_store_reg_type⦅name ⸴ "double" ⸴ last_t_bind⦆ ·
+                    emit s_f_line ·
+                ⟧ otherwise ⟦
+                    text alloc_line_bind ↦ format_alloca⦅name⦆ ·
+                    emit alloc_line_bind ·
+                    when last_t_bind ≺ 0 ⟦
+                        int64 v_bind ↦ last_int_value⦅⦆ ·
+                        text store_line_bind ↦ format_store⦅name ⸴ v_bind⦆ ·
+                        emit store_line_bind ·
+                    ⟧ otherwise ⟦
+                        text store_reg_bind ↦ format_store_reg⦅name ⸴ last_t_bind⦆ ·
+                        emit store_reg_bind ·
+                    ⟧
+                ⟧
             ⟧
             yield t_val_bind ·
         | EmitDecl(inner) ⟹
@@ -228,8 +306,13 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 text scall_txt_emit ↦ format_emitted_str_call⦅last_t_emit⦆ ·
                 emit scall_txt_emit ·
             ⟧ otherwise ⟦
-                text scall_int_emit ↦ format_emit_int_call⦅last_t_emit⦆ ·
-                emit scall_int_emit ·
+                when ekind_emit ≡ 3 ⟦
+                    text scall_flt_emit ↦ format_emit_float_call⦅last_t_emit⦆ ·
+                    emit scall_flt_emit ·
+                ⟧ otherwise ⟦
+                    text scall_int_emit ↦ format_emit_int_call⦅last_t_emit⦆ ·
+                    emit scall_int_emit ·
+                ⟧
             ⟧
             yield t_inner_emit ·
         | StrLitDecl(s) ⟹
@@ -248,24 +331,58 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             set_last_emit_kind⦅1⦆ ·
             yield temp_counter ·
         | IdentDecl(name) ⟹
-            text load_line ↦ format_load⦅name ⸴ temp_counter⦆ ·
-            emit load_line ·
-            set_last_temp⦅temp_counter⦆ ·
-            set_last_emit_kind⦅1⦆ ·
-            yield temp_counter ⊕ 1 ·
+            int64 is_p_var ↦ is_ptr_var⦅name⦆ ·
+            when is_p_var ≡ 1 ⟦
+                text l_ptr ↦ format_load_type⦅name ⸴ "i8*" ⸴ temp_counter⦆ ·
+                emit l_ptr ·
+                set_last_temp⦅temp_counter⦆ ·
+                set_last_emit_kind⦅2⦆ ·
+                yield temp_counter ⊕ 1 ·
+            ⟧ otherwise ⟦
+                int64 is_r_var ↦ is_result_var⦅name⦆ ·
+                when is_r_var ≡ 1 ⟦
+                    int64 is_d ↦ get_tensor_count⦅⦆ ·
+                    when is_d ≻ 0 ⟦
+                        text l_dbl ↦ format_load_type⦅name ⸴ "double" ⸴ temp_counter⦆ ·
+                        emit l_dbl ·
+                        set_last_temp⦅temp_counter⦆ ·
+                        set_last_emit_kind⦅3⦆ ·
+                        yield temp_counter ⊕ 1 ·
+                    ⟧ otherwise ⟦
+                        text load_line_d ↦ format_load⦅name ⸴ temp_counter⦆ ·
+                        emit load_line_d ·
+                        set_last_temp⦅temp_counter⦆ ·
+                        set_last_emit_kind⦅1⦆ ·
+                        yield temp_counter ⊕ 1 ·
+                    ⟧
+                ⟧ otherwise ⟦
+                    text load_line_i ↦ format_load⦅name ⸴ temp_counter⦆ ·
+                    emit load_line_i ·
+                    set_last_temp⦅temp_counter⦆ ·
+                    set_last_emit_kind⦅1⦆ ·
+                    yield temp_counter ⊕ 1 ·
+                ⟧
+            ⟧
         | BinaryOpDecl(op ⸴ left ⸴ right) ⟹
             int64 t_l_bin ↦ walk_core_ast⦅left ⸴ temp_counter⦆ ·
             int64 reg_l_bin ↦ get_last_temp⦅⦆ ·
             int64 t_r_bin ↦ walk_core_ast⦅right ⸴ t_l_bin⦆ ·
             int64 reg_r_bin ↦ get_last_temp⦅⦆ ·
             int64 res_temp_bin ↦ t_r_bin ·
-            when reg_r_bin ≺ 0 ⟦
-                int64 imm_val_bin ↦ last_int_value⦅⦆ ·
-                text binop_imm_l ↦ format_binop_imm⦅op ⸴ res_temp_bin ⸴ reg_l_bin ⸴ imm_val_bin⦆ ·
-                emit binop_imm_l ·
+            int64 t_cnt_bin ↦ get_tensor_count⦅⦆ ·
+            int64 is_m_op ↦ is_mul_op⦅op⦆ ·
+            when is_m_op ≡ 1 ∧ t_cnt_bin ≻ 0 ⟦
+                text mul_line ↦ format_tensor_mul⦅res_temp_bin ⸴ reg_l_bin ⸴ reg_r_bin⦆ ·
+                emit mul_line ·
             ⟧ otherwise ⟦
-                text binop_l ↦ format_binop⦅op ⸴ res_temp_bin ⸴ reg_l_bin ⸴ reg_r_bin⦆ ·
-                emit binop_l ·
+                when reg_r_bin ≺ 0 ⟦
+                    int64 imm_val_bin ↦ last_int_value⦅⦆ ·
+                    text binop_imm_l ↦ format_binop_imm⦅op ⸴ res_temp_bin ⸴ reg_l_bin ⸴ imm_val_bin⦆ ·
+                    emit binop_imm_l ·
+                ⟧ otherwise ⟦
+                    text binop_l ↦ format_binop⦅op ⸴ res_temp_bin ⸴ reg_l_bin ⸴ reg_r_bin⦆ ·
+                    emit binop_l ·
+                ⟧
             ⟧
             set_last_temp⦅res_temp_bin⦆ ·
             set_last_emit_kind⦅1⦆ ·
@@ -282,9 +399,16 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 yield t_yield_y ⊕ 1 ·
             ⟧ otherwise ⟦
                 int64 last_t_y ↦ get_last_temp⦅⦆ ·
-                text sret64_y ↦ format_ret_i64⦅last_t_y⦆ ·
-                emit sret64_y ·
-                yield t_yield_y ·
+                int64 t_cnt_y ↦ get_tensor_count⦅⦆ ·
+                when t_cnt_y ≻ 0 ⟦
+                    text sret_dbl ↦ format_ret_double⦅last_t_y⦆ ·
+                    emit sret_dbl ·
+                    yield t_yield_y ·
+                ⟧ otherwise ⟦
+                    text sret64_y ↦ format_ret_i64⦅last_t_y⦆ ·
+                    emit sret64_y ·
+                    yield t_yield_y ·
+                ⟧
             ⟧
         | WhenDecl(cond ⸴ then_block ⸴ else_block) ⟹
             int64 t_cond_wh ↦ walk_core_ast⦅cond ⸴ temp_counter⦆ ·
@@ -334,6 +458,42 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             set_last_temp⦅res_temp_c1⦆ ·
             set_last_emit_kind⦅1⦆ ·
             yield res_temp_c1 ⊕ 1 ·
+        | Call2Decl(name ⸴ arg1 ⸴ arg2) ⟹
+            int64 t_a1 ↦ walk_core_ast⦅arg1 ⸴ temp_counter⦆ ·
+            int64 reg_a1 ↦ get_last_temp⦅⦆ ·
+            int64 t_a2 ↦ walk_core_ast⦅arg2 ⸴ t_a1⦆ ·
+            int64 reg_a2 ↦ get_last_temp⦅⦆ ·
+            int64 res_temp_c2 ↦ t_a2 ·
+            text c2_line ↦ format_call_double_2args⦅name ⸴ res_temp_c2 ⸴ reg_a1 ⸴ reg_a2⦆ ·
+            emit c2_line ·
+            set_last_temp⦅res_temp_c2⦆ ·
+            set_last_emit_kind⦅3⦆ ·
+            yield res_temp_c2 ⊕ 1 ·
+        | TensorDecl(idx ⸴ elem_count) ⟹
+            int64 gep_temp ↦ temp_counter ·
+            int64 cr_temp ↦ temp_counter ⊕ 1 ·
+            text gep_line ↦ format_shape_gep⦅idx ⸴ gep_temp⦆ ·
+            emit gep_line ·
+            text cr_line ↦ format_tensor_create⦅cr_temp ⸴ 1 ⸴ gep_temp⦆ ·
+            emit cr_line ·
+            int64 elem_i ↦ 0 ·
+            cycle elem_i ≺ elem_count ⟦
+                int64 iv ↦ get_tensor_int_val⦅idx ⸴ elem_i⦆ ·
+                text s_elem ↦ format_tensor_set⦅cr_temp ⸴ elem_i ⸴ iv⦆ ·
+                emit s_elem ·
+                elem_i ← elem_i ⊕ 1 ·
+            ⟧
+            set_last_temp⦅cr_temp⦆ ·
+            yield cr_temp ⊕ 1 ·
+        | ReduceSumDecl(inner) ⟹
+            int64 t_inner_rsum ↦ walk_core_ast⦅inner ⸴ temp_counter⦆ ·
+            int64 last_t_rsum ↦ get_last_temp⦅⦆ ·
+            int64 res_temp_rsum ↦ t_inner_rsum ·
+            text rsum_line ↦ format_tensor_reduce_sum_f64⦅res_temp_rsum ⸴ last_t_rsum⦆ ·
+            emit rsum_line ·
+            set_last_temp⦅res_temp_rsum⦆ ·
+            set_last_emit_kind⦅3⦆ ·
+            yield res_temp_rsum ⊕ 1 ·
     ⟧
     yield temp_counter ·
 ⟧
@@ -680,76 +840,6 @@ process emit_common_prefix⦅⦆ → logic ⟦
     yield affirm ·
 ⟧
 
-process emit_dot_body⦅text file_path⦆ → logic ⟦
-    int64 tcount ↦ scan_tensors⦅file_path⦆ ·
-    when tcount ≺ 2 ⟦
-        emit "error: dot_product.ydv needs at least 2 tensors" ·
-        yield deny ·
-    ⟧
-    int64 a_size ↦ get_tensor_size⦅0⦆ ·
-    int64 b_size ↦ get_tensor_size⦅1⦆ ·
-
-    emit "" ·
-    emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
-    emit "declare i32 @qadav_pcc_verify()" ·
-    emit "declare i32 @qadav_pcc_corrupt(i32)" ·
-    emit "" ·
-    text sh0 ↦ format_shape_const⦅0⸴ a_size⦆ ·
-    emit sh0 ·
-    text sh1 ↦ format_shape_const⦅1⸴ b_size⦆ ·
-    emit sh1 ·
-    emit "" ·
-    emit "define double @\"dot\"(i8* %a.in, i8* %b.in) {" ·
-    emit "entry:" ·
-    emit "  %a.ptr = alloca i8*" ·
-    emit "  store i8* %a.in, i8** %a.ptr" ·
-    emit "  %b.ptr = alloca i8*" ·
-    emit "  store i8* %b.in, i8** %b.ptr" ·
-    emit "  %t1 = load i8*, i8** %a.ptr" ·
-    emit "  %t2 = load i8*, i8** %b.ptr" ·
-    emit "  %t3 = call i8* @qadav_tensor_mul(i8* %t1, i8* %t2)" ·
-    emit "  %t4 = call double @qadav_tensor_reduce_sum_f64(i8* %t3)" ·
-    emit "  ret double %t4" ·
-    emit "}" ·
-    emit "" ·
-    emit "define i32 @\"main\"() {" ·
-    emit "entry:" ·
-    emit "  %t5 = getelementptr inbounds [1 x i32], [1 x i32]* @.shape.0, i32 0, i32 0" ·
-    emit "  %t6 = call i8* @qadav_tensor_create(i32 10, i32 1, i32* %t5)" ·
-    int64 i ↦ 0 ·
-    cycle i ≺ a_size ⟦
-        int64 av ↦ get_tensor_int_val⦅0⸴ i⦆ ·
-        text sline_a ↦ format_tensor_set⦅6⸴ i⸴ av⦆ ·
-        emit sline_a ·
-        i ← i ⊕ 1 ·
-    ⟧
-    emit "  %x.ptr = alloca i8*" ·
-    emit "  store i8* %t6, i8** %x.ptr" ·
-    emit "  %t7 = getelementptr inbounds [1 x i32], [1 x i32]* @.shape.1, i32 0, i32 0" ·
-    emit "  %t8 = call i8* @qadav_tensor_create(i32 10, i32 1, i32* %t7)" ·
-    int64 j ↦ 0 ·
-    cycle j ≺ b_size ⟦
-        int64 bv ↦ get_tensor_int_val⦅1⸴ j⦆ ·
-        text sline_b ↦ format_tensor_set⦅8⸴ j⸴ bv⦆ ·
-        emit sline_b ·
-        j ← j ⊕ 1 ·
-    ⟧
-    emit "  %y.ptr = alloca i8*" ·
-    emit "  store i8* %t8, i8** %y.ptr" ·
-    emit "  %t9 = load i8*, i8** %x.ptr" ·
-    emit "  %t10 = load i8*, i8** %y.ptr" ·
-    emit "  %t11 = call double @\"dot\"(i8* %t9, i8* %t10)" ·
-    emit "  %result.ptr = alloca double" ·
-    emit "  store double %t11, double* %result.ptr" ·
-    emit "  %t12 = load double, double* %result.ptr" ·
-    emit "  call void @qadav_emit_float(double %t12)" ·
-    emit "  %t13 = trunc i64 0 to i32" ·
-    emit "  ret i32 %t13" ·
-    emit "}" ·
-    emit "" ·
-    yield affirm ·
-⟧
-
 process main⦅⦆ → int64 ⟦
     text target_file ↦ get_input_path⦅⦆ ·
     int64 prog_kind ↦ detect_program_kind⦅target_file⦆ ·
@@ -769,7 +859,8 @@ process main⦅⦆ → int64 ⟦
         yield 0 ·
     ⟧
     when prog_kind ≡ 2 ⟦
-        logic dot_ok ↦ emit_dot_body⦅target_file⦆ ·
+        CoreAst ast_dot ↦ parse_to_core_ast⦅target_file⦆ ·
+        int64 res_dot ↦ walk_core_ast⦅ast_dot ⸴ 1⦆ ·
         yield 0 ·
     ⟧
     when prog_kind ≡ 3 ⟦

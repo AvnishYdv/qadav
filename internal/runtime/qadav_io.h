@@ -71,6 +71,7 @@ const char* qadav_get_if_cond_op(void);
 long long   qadav_get_if_cond_val(void);
 long long   qadav_get_if_yield_val(void);
 
+long long   qadav_is_dot_proc(const char* name);
 long long   qadav_is_main_proc(const char* name);
 void        qadav_set_proc_is_main(long long is_main);
 long long   qadav_get_proc_is_main(void);
@@ -81,6 +82,26 @@ const char* qadav_format_call_i64(const char* callee, long long res_temp, long l
 const char* qadav_format_ret_i64(long long temp_id);
 const char* qadav_format_binop_imm(const char* op, long long res_temp, long long left_reg, long long imm_val);
 const char* qadav_format_store_reg(const char* name, long long reg_id);
+double      qadav_get_tensor_float_val(long long t_idx, long long e_idx);
+const char* qadav_format_tensor_create(long long reg, long long rank, long long size);
+const char* qadav_format_tensor_set_f64(long long t_reg, long long elem_idx, double val);
+const char* qadav_format_tensor_mul(long long dst_reg, long long a_reg, long long b_reg);
+const char* qadav_format_tensor_reduce_sum_f64(long long dst_reg, long long src_reg);
+long long   qadav_get_tensor_count(void);
+long long   qadav_is_tensor_type(const char* typ);
+long long   qadav_is_float_type(const char* typ);
+long long   qadav_is_ptr_var(const char* name);
+long long   qadav_is_result_var(const char* name);
+long long   qadav_is_mul_op(const char* op);
+const char* qadav_format_shape_gep(long long shape_idx, long long temp_id);
+const char* qadav_format_alloca_type(const char* name, const char* typ);
+const char* qadav_format_store_reg_type(const char* name, const char* typ, long long reg_id);
+const char* qadav_format_load_type(const char* name, const char* typ, long long temp_id);
+const char* qadav_format_call_double_2args(const char* callee, long long res_temp, long long arg1, long long arg2);
+const char* qadav_format_func_def_dot(const char* name);
+const char* qadav_format_ret_double(long long temp_id);
+const char* qadav_format_ret_i32(long long temp_id);
+const char* qadav_format_emit_float_call(long long reg);
 
 #endif
 
