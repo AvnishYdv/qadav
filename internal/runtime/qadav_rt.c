@@ -45,7 +45,6 @@ const char* qadav_get_input_path(void);
 long long   qadav_extract_yield_number(const char* path);
 const char* qadav_format_trunc_line(long long val);
 
-long long   qadav_scan_statements(const char* path);
 long long   qadav_stmt_kind(long long idx);
 const char* qadav_stmt_name(long long idx);
 long long   qadav_stmt_value(long long idx);
@@ -58,26 +57,34 @@ const char* qadav_format_emit_int_call(long long temp_id);
 const char* qadav_format_trunc(long long temp_id, long long val);
 const char* qadav_format_ret(long long temp_id);
 
-int         qadav_scan_fib_values(const char* path);
 long long   qadav_get_fib_value(long long idx);
 const char* qadav_format_icmp_slt(long long t_cur, long long t_prev, long long val);
 const char* qadav_format_sub(long long t_cur, long long t_prev, long long val);
 const char* qadav_format_store_direct(long long val);
 
-int         qadav_scan_tensors(const char* path);
 const char* qadav_get_tensor_name(long long idx);
 long long   qadav_get_tensor_size(long long idx);
 long long   qadav_get_tensor_int_val(long long t_idx, long long e_idx);
 const char* qadav_format_shape_const(long long shape_idx, long long size);
 const char* qadav_format_tensor_set(long long t_temp, long long elem_idx, long long int_val);
 
-long long   qadav_scan_emitted_strings(const char* path);
-long long   qadav_get_emitted_string_count(void);
-const char* qadav_get_emitted_string_text(long long idx);
-long long   qadav_get_emitted_string_len(long long idx);
-const char* qadav_format_emitted_str_def(long long idx);
-const char* qadav_format_emitted_str_gep(long long str_idx, long long temp_id);
-const char* qadav_format_emitted_str_call(long long temp_id);
+long long   qadav_tokenize_file(const char* path);
+long long   qadav_token_count(void);
+const char* qadav_token_kind(long long idx);
+long long   qadav_token_kind_code(long long idx);
+const char* qadav_token_literal(long long idx);
+long long   qadav_token_int_val(long long idx);
+long long   qadav_token_is(long long idx, const char* s);
+long long   qadav_token_line(long long idx);
+long long   qadav_token_col(long long idx);
+
+long long   qadav_str_table_add(const char* str);
+long long   qadav_str_table_count(void);
+const char* qadav_str_table_get(long long idx);
+const char* qadav_str_table_def(long long idx);
+const char* qadav_str_table_gep(long long idx, long long temp_id);
+const char* qadav_str_table_emit(long long temp_id);
+long long   qadav_str_table_reset(void);
 const char* qadav_format_trunc_line_id(long long temp_id, long long val);
 const char* qadav_format_ret_line_id(long long temp_id);
 long long   qadav_register_string(const char* s);
@@ -100,7 +107,6 @@ const char* qadav_format_br_cond(long long cond_reg, long long then_id, long lon
 const char* qadav_format_br_cond_merge(long long cond_reg, long long then_id, long long merge_id);
 const char* qadav_format_label(const char* prefix, long long id);
 const char* qadav_format_br_label(const char* prefix, long long id);
-int         qadav_scan_if_else(const char* path);
 const char* qadav_get_if_var_name(void);
 long long   qadav_get_if_var_val(void);
 const char* qadav_get_if_cond_var(void);
@@ -135,6 +141,7 @@ long long   qadav_is_ptr_var(const char* name);
 long long   qadav_is_result_var(const char* name);
 long long   qadav_is_mul_op(const char* op);
 long long   qadav_is_eq_op(const char* op);
+long long   qadav_is_var_y(const char* name);
 const char* qadav_format_shape_gep(long long shape_idx, long long temp_id);
 const char* qadav_format_alloca_type(const char* name, const char* typ);
 const char* qadav_format_store_reg_type(const char* name, const char* typ, long long reg_id);
@@ -158,7 +165,6 @@ const char* qadav_format_func_def_text_param(const char* name, const char* param
 const char* qadav_format_param_alloca_text(const char* param_name);
 const char* qadav_format_param_store_text(const char* param_name);
 const char* qadav_format_ret_text(long long reg_id);
-long long   qadav_file_contains(const char* path, const char* needle);
 
 const char* get_input_path(void) {
     return qadav_get_input_path();
@@ -172,9 +178,6 @@ const char* format_trunc_line(long long val) {
     return qadav_format_trunc_line(val);
 }
 
-long long scan_statements(const char* path) {
-    return qadav_scan_statements(path);
-}
 
 long long stmt_kind(long long idx) {
     return qadav_stmt_kind(idx);
@@ -220,9 +223,6 @@ const char* format_ret(long long temp_id) {
     return qadav_format_ret(temp_id);
 }
 
-long long scan_fib_values(const char* path) {
-    return qadav_scan_fib_values(path);
-}
 
 long long get_fib_value(long long idx) {
     return qadav_get_fib_value(idx);
@@ -240,9 +240,6 @@ const char* format_store_direct(long long val) {
     return qadav_format_store_direct(val);
 }
 
-long long scan_tensors(const char* path) {
-    return qadav_scan_tensors(path);
-}
 
 const char* get_tensor_name(long long idx) {
     return qadav_get_tensor_name(idx);
@@ -264,33 +261,23 @@ const char* format_tensor_set(long long t_temp, long long elem_idx, long long in
     return qadav_format_tensor_set(t_temp, elem_idx, int_val);
 }
 
-long long scan_emitted_strings(const char* path) {
-    return qadav_scan_emitted_strings(path);
-}
+long long tokenize_file(const char* path) { return qadav_tokenize_file(path); }
+long long token_count(void) { return qadav_token_count(); }
+const char* token_kind(long long idx) { return qadav_token_kind(idx); }
+long long token_kind_code(long long idx) { return qadav_token_kind_code(idx); }
+const char* token_literal(long long idx) { return qadav_token_literal(idx); }
+long long token_int_val(long long idx) { return qadav_token_int_val(idx); }
+long long token_is(long long idx, const char* s) { return qadav_token_is(idx, s); }
+long long token_line(long long idx) { return qadav_token_line(idx); }
+long long token_col(long long idx) { return qadav_token_col(idx); }
 
-long long get_emitted_string_count(void) {
-    return qadav_get_emitted_string_count();
-}
-
-const char* get_emitted_string_text(long long idx) {
-    return qadav_get_emitted_string_text(idx);
-}
-
-long long get_emitted_string_len(long long idx) {
-    return qadav_get_emitted_string_len(idx);
-}
-
-const char* format_emitted_str_def(long long idx) {
-    return qadav_format_emitted_str_def(idx);
-}
-
-const char* format_emitted_str_gep(long long str_idx, long long temp_id) {
-    return qadav_format_emitted_str_gep(str_idx, temp_id);
-}
-
-const char* format_emitted_str_call(long long temp_id) {
-    return qadav_format_emitted_str_call(temp_id);
-}
+long long str_table_add(const char* str) { return qadav_str_table_add(str); }
+long long str_table_count(void) { return qadav_str_table_count(); }
+const char* str_table_get(long long idx) { return qadav_str_table_get(idx); }
+const char* str_table_def(long long idx) { return qadav_str_table_def(idx); }
+const char* str_table_gep(long long idx, long long temp_id) { return qadav_str_table_gep(idx, temp_id); }
+const char* str_table_emit(long long temp_id) { return qadav_str_table_emit(temp_id); }
+long long str_table_reset(void) { return qadav_str_table_reset(); }
 
 const char* format_trunc_line_id(long long temp_id, long long val) {
     return qadav_format_trunc_line_id(temp_id, val);
@@ -330,7 +317,6 @@ const char* format_label(const char* prefix, long long id) {
 const char* format_br_label(const char* prefix, long long id) {
     return qadav_format_br_label(prefix, id);
 }
-int scan_if_else(const char* path) { return qadav_scan_if_else(path); }
 const char* get_if_var_name(void) { return qadav_get_if_var_name(); }
 long long get_if_var_val(void) { return qadav_get_if_var_val(); }
 const char* get_if_cond_var(void) { return qadav_get_if_cond_var(); }
@@ -365,6 +351,7 @@ long long is_ptr_var(const char* name) { return qadav_is_ptr_var(name); }
 long long is_result_var(const char* name) { return qadav_is_result_var(name); }
 long long is_mul_op(const char* op) { return qadav_is_mul_op(op); }
 long long is_eq_op(const char* op) { return qadav_is_eq_op(op); }
+long long is_var_y(const char* name) { return qadav_is_var_y(name); }
 const char* format_shape_gep(long long shape_idx, long long temp_id) { return qadav_format_shape_gep(shape_idx, temp_id); }
 const char* format_alloca_type(const char* name, const char* typ) { return qadav_format_alloca_type(name, typ); }
 const char* format_store_reg_type(const char* name, const char* typ, long long reg_id) { return qadav_format_store_reg_type(name, typ, reg_id); }
@@ -387,7 +374,6 @@ const char* format_func_def_text_param(const char* name, const char* param_name)
 const char* format_param_alloca_text(const char* param_name) { return qadav_format_param_alloca_text(param_name); }
 const char* format_param_store_text(const char* param_name) { return qadav_format_param_store_text(param_name); }
 const char* format_ret_text(long long reg_id) { return qadav_format_ret_text(reg_id); }
-long long file_contains(const char* path, const char* needle) { return qadav_file_contains(path, needle); }
 
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);

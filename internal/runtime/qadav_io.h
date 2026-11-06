@@ -26,17 +26,28 @@ const char* qadav_get_input_path(void);
 long long   qadav_extract_yield_number(const char* path);
 const char* qadav_format_trunc_line(long long val);
 
-int         qadav_scan_fib_values(const char* path);
+long long   qadav_tokenize_file(const char* path);
+long long   qadav_token_count(void);
+const char* qadav_token_kind(long long idx);
+long long   qadav_token_kind_code(long long idx);
+const char* qadav_token_literal(long long idx);
+long long   qadav_token_int_val(long long idx);
+long long   qadav_token_is(long long idx, const char* s);
+long long   qadav_token_line(long long idx);
+long long   qadav_token_col(long long idx);
+
+long long   qadav_str_table_add(const char* str);
+long long   qadav_str_table_count(void);
+const char* qadav_str_table_get(long long idx);
+const char* qadav_str_table_def(long long idx);
+const char* qadav_str_table_gep(long long idx, long long temp_id);
+const char* qadav_str_table_emit(long long temp_id);
+long long   qadav_str_table_reset(void);
+
 long long   qadav_get_fib_value(long long idx);
 const char* qadav_format_icmp_slt(long long t_cur, long long t_prev, long long val);
 const char* qadav_format_sub(long long t_cur, long long t_prev, long long val);
 const char* qadav_format_store_direct(long long val);
-
-long long   qadav_scan_emitted_strings(const char* path);
-long long   qadav_get_emitted_string_count(void);
-const char* qadav_format_emitted_str_def(long long idx);
-const char* qadav_format_emitted_str_gep(long long str_idx, long long temp_id);
-const char* qadav_format_emitted_str_call(long long temp_id);
 const char* qadav_format_trunc_line_id(long long temp_id, long long val);
 const char* qadav_format_ret_line_id(long long temp_id);
 
@@ -63,7 +74,6 @@ const char* qadav_format_br_cond_merge(long long cond_reg, long long then_id, lo
 const char* qadav_format_label(const char* prefix, long long id);
 const char* qadav_format_br_label(const char* prefix, long long id);
 
-int         qadav_scan_if_else(const char* path);
 const char* qadav_get_if_var_name(void);
 long long   qadav_get_if_var_val(void);
 const char* qadav_get_if_cond_var(void);
@@ -98,6 +108,7 @@ long long   qadav_is_ptr_var(const char* name);
 long long   qadav_is_result_var(const char* name);
 long long   qadav_is_mul_op(const char* op);
 long long   qadav_is_eq_op(const char* op);
+long long   qadav_is_var_y(const char* name);
 const char* qadav_format_shape_gep(long long shape_idx, long long temp_id);
 const char* qadav_format_alloca_type(const char* name, const char* typ);
 const char* qadav_format_store_reg_type(const char* name, const char* typ, long long reg_id);
@@ -123,8 +134,6 @@ const char* qadav_format_func_def_text_param(const char* name, const char* param
 const char* qadav_format_param_alloca_text(const char* param_name);
 const char* qadav_format_param_store_text(const char* param_name);
 const char* qadav_format_ret_text(long long reg_id);
-
-long long   qadav_file_contains(const char* path, const char* needle);
 long long   qadav_get_string_index(const char* s);
 #endif
 

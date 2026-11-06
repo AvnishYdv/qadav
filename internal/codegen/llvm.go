@@ -557,7 +557,6 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i64 @extract_yield_number(i8*)\n")
 		header.WriteString("declare i8* @format_trunc_line(i64)\n")
 
-				header.WriteString("declare i64 @file_contains(i8*, i8*)\n")
 		header.WriteString("declare i8* @format_icmp_eq_ptr(i64, i64, i64)\n")
 		header.WriteString("declare i8* @format_func_def_text_param(i8*, i8*)\n")
 		header.WriteString("declare i8* @format_param_alloca_text(i8*)\n")
@@ -586,13 +585,22 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i64 @get_tensor_int_val(i64, i64)\n")
 		header.WriteString("declare i8* @format_shape_const(i64, i64)\n")
 		header.WriteString("declare i8* @format_tensor_set(i64, i64, i64)\n")
-		header.WriteString("declare i64 @scan_emitted_strings(i8*)\n")
-		header.WriteString("declare i64 @get_emitted_string_count()\n")
-		header.WriteString("declare i8* @get_emitted_string_text(i64)\n")
-		header.WriteString("declare i64 @get_emitted_string_len(i64)\n")
-		header.WriteString("declare i8* @format_emitted_str_def(i64)\n")
-		header.WriteString("declare i8* @format_emitted_str_gep(i64, i64)\n")
-		header.WriteString("declare i8* @format_emitted_str_call(i64)\n")
+		header.WriteString("declare i64 @tokenize_file(i8*)\n")
+		header.WriteString("declare i64 @token_count()\n")
+		header.WriteString("declare i8* @token_kind(i64)\n")
+		header.WriteString("declare i64 @token_kind_code(i64)\n")
+		header.WriteString("declare i8* @token_literal(i64)\n")
+		header.WriteString("declare i64 @token_int_val(i64)\n")
+		header.WriteString("declare i64 @token_is(i64, i8*)\n")
+		header.WriteString("declare i64 @token_line(i64)\n")
+		header.WriteString("declare i64 @token_col(i64)\n")
+		header.WriteString("declare i64 @str_table_add(i8*)\n")
+		header.WriteString("declare i64 @str_table_count()\n")
+		header.WriteString("declare i8* @str_table_get(i64)\n")
+		header.WriteString("declare i8* @str_table_def(i64)\n")
+		header.WriteString("declare i8* @str_table_gep(i64, i64)\n")
+		header.WriteString("declare i8* @str_table_emit(i64)\n")
+		header.WriteString("declare i64 @str_table_reset()\n")
 		header.WriteString("declare i8* @format_trunc_line_id(i64, i64)\n")
 		header.WriteString("declare i8* @format_ret_line_id(i64)\n")
 		header.WriteString("declare i64 @register_string(i8*)\n")
@@ -707,6 +715,8 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i64 @qadav_is_mul_op(i8*)\n")
 		header.WriteString("declare i64 @is_eq_op(i8*)\n")
 		header.WriteString("declare i64 @qadav_is_eq_op(i8*)\n")
+		header.WriteString("declare i64 @is_var_y(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_var_y(i8*)\n")
 		header.WriteString("declare i8* @format_alloca_type(i8*, i8*)\n")
 		header.WriteString("declare i8* @qadav_format_alloca_type(i8*, i8*)\n")
 		header.WriteString("declare i8* @format_store_reg_type(i8*, i8*, i64)\n")
@@ -1892,7 +1902,7 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				g.usesGetTargetKind = true
 			}
 			if ident.Name == "get_input_path" || ident.Name == "extract_yield_number" || ident.Name == "format_trunc_line" ||
-				ident.Name == "file_contains" || ident.Name == "format_icmp_eq_ptr" || ident.Name == "format_func_def_text_param" || ident.Name == "format_param_alloca_text" || ident.Name == "format_param_store_text" || ident.Name == "format_ret_text" || ident.Name == "scan_statements" ||
+				ident.Name == "format_icmp_eq_ptr" || ident.Name == "format_func_def_text_param" || ident.Name == "format_param_alloca_text" || ident.Name == "format_param_store_text" || ident.Name == "format_ret_text" || ident.Name == "scan_statements" ||
 				ident.Name == "stmt_kind" || ident.Name == "stmt_name" || ident.Name == "stmt_value" || ident.Name == "stmt_expr" ||
 				ident.Name == "format_alloca" || ident.Name == "format_store" || ident.Name == "format_load" ||
 				ident.Name == "format_binop" || ident.Name == "format_emit_int_call" || ident.Name == "format_trunc" || ident.Name == "format_ret" ||
@@ -1900,10 +1910,15 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "format_sub" || ident.Name == "format_store_direct" ||
 				ident.Name == "scan_tensors" || ident.Name == "get_tensor_name" || ident.Name == "get_tensor_size" ||
 				ident.Name == "get_tensor_int_val" || ident.Name == "format_shape_const" || ident.Name == "format_tensor_set" ||
-				ident.Name == "scan_emitted_strings" || ident.Name == "get_emitted_string_count" ||
-				ident.Name == "get_emitted_string_text" || ident.Name == "get_emitted_string_len" ||
-				ident.Name == "format_emitted_str_def" || ident.Name == "format_emitted_str_gep" ||
-				ident.Name == "format_emitted_str_call" || ident.Name == "format_trunc_line_id" ||
+				ident.Name == "tokenize_file" || ident.Name == "token_count" ||
+				ident.Name == "token_kind" || ident.Name == "token_kind_code" ||
+				ident.Name == "token_literal" || ident.Name == "token_int_val" ||
+				ident.Name == "token_is" ||
+				ident.Name == "token_line" || ident.Name == "token_col" ||
+				ident.Name == "str_table_add" || ident.Name == "str_table_count" ||
+				ident.Name == "str_table_get" || ident.Name == "str_table_def" ||
+				ident.Name == "str_table_gep" || ident.Name == "str_table_emit" ||
+				ident.Name == "str_table_reset" || ident.Name == "format_trunc_line_id" ||
 				ident.Name == "format_ret_line_id" ||
 				ident.Name == "register_string" || ident.Name == "qadav_register_string" ||
 				ident.Name == "get_string_index" || ident.Name == "qadav_get_string_index" ||
@@ -1961,6 +1976,7 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "is_result_var" || ident.Name == "qadav_is_result_var" ||
 				ident.Name == "is_mul_op" || ident.Name == "qadav_is_mul_op" ||
 				ident.Name == "is_eq_op" || ident.Name == "qadav_is_eq_op" ||
+				ident.Name == "is_var_y" || ident.Name == "qadav_is_var_y" ||
 				ident.Name == "format_alloca_type" || ident.Name == "qadav_format_alloca_type" ||
 				ident.Name == "format_store_reg_type" || ident.Name == "qadav_format_store_reg_type" ||
 				ident.Name == "format_load_type" || ident.Name == "qadav_format_load_type" ||

@@ -1,0 +1,12 @@
+// examples/lexer_annotation_extract.ydv
+// Just one function — classify_annotation from lexer.ydv.
+
+process classify_annotation⦅text anno⦆ → text ⟦
+    text res ↦ "ILLEGAL" ·
+    when anno ≡ "@gpu" ⟦ res ← "AT_GPU" · ⟧
+    when anno ≡ "@multi_device" ⟦ res ← "MULTI_DEVICE" · ⟧
+    when anno ≡ "@distributed" ⟦ res ← "DIST_INIT" · ⟧
+    when anno ≡ "@qhal_backend" ⟦ res ← "QHAL_BACKEND" · ⟧
+    yield res ·
+⟧
+

@@ -605,185 +605,306 @@ process parse_reduce_sum_expr⦅CoreAst inner_node⦆ → CoreAst ⟦
 // Dispatches directly through Qadav tokenization and AST construction
 // ============================================================================
 
-process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
-    int64 is_sq ↦ file_contains⦅file_path ⸴ "square"⦆ ·
-    int64 is_fib ↦ file_contains⦅file_path ⸴ "fib"⦆ ·
-    int64 is_dot ↦ file_contains⦅file_path ⸴ "dot"⦆ ·
-    int64 is_if ↦ file_contains⦅file_path ⸴ "when"⦆ ·
-    int64 is_calc ↦ file_contains⦅file_path ⸴ "a ↦"⦆ ·
-    int64 is_tok ↦ file_contains⦅file_path ⸴ "Token"⦆ ·
-    CoreAst root ↦ variant_init CoreAst ⦅IntLitDecl ↦ 0⦆ ·
+process parse_primary⦅int64 idx⦆ → CoreAst ⟦
+    int64 kcode ↦ token_kind_code⦅idx⦆ ·
+    when kcode ≡ 3 ⟦
+        text s ↦ token_literal⦅idx⦆ ·
+        yield ast_str_lit⦅s⦆ ·
+    ⟧
+    when kcode ≡ 4 ⟦
+        int64 v ↦ token_int_val⦅idx⦆ ·
+        yield ast_int_lit⦅v⦆ ·
+    ⟧
+    when kcode ≡ 2 ⟦
+        text id ↦ token_literal⦅idx⦆ ·
+        yield ast_ident⦅id⦆ ·
+    ⟧
+    yield ast_int_lit⦅0⦆ ·
+⟧
 
-    // Case 0: hello family
-    when is_calc ≡ 0 ∧ is_if ≡ 0 ∧ is_fib ≡ 0 ∧ is_dot ≡ 0 ∧ is_sq ≡ 0 ∧ is_tok ≡ 0 ⟦
-        int64 c0_str_cnt ↦ scan_emitted_strings⦅file_path⦆ ·
-        int64 c0_ret_v ↦ extract_yield_number⦅file_path⦆ ·
-        CoreAst c0_emit_stmt ↦ variant_init CoreAst ⦅EmitDecl ↦ variant_init CoreAst ⦅StrLitDecl ↦ "hello"⦆⦆ ·
-        when c0_str_cnt ≻ 1 ⟦
-            c0_emit_stmt ← ast_block⦅variant_init CoreAst ⦅EmitDecl ↦ variant_init CoreAst ⦅StrLitDecl ↦ "line1"⦆⦆ ⸴ variant_init CoreAst ⦅EmitDecl ↦ variant_init CoreAst ⦅StrLitDecl ↦ "line2"⦆⦆⦆ ·
+process parse_binary_op⦅text op ⸴ CoreAst left ⸴ CoreAst right⦆ → CoreAst ⟦
+    yield ast_binop⦅op ⸴ left ⸴ right⦆ ·
+⟧
+
+process parse_expression⦅int64 idx⦆ → CoreAst ⟦
+    CoreAst left ↦ parse_primary⦅idx⦆ ·
+    int64 op_code ↦ token_kind_code⦅idx ⊕ 1⦆ ·
+    when op_code ≡ 13 ∨ op_code ≡ 14 ∨ op_code ≡ 15 ∨ op_code ≡ 16 ∨ op_code ≡ 17 ∨ op_code ≡ 18 ∨ op_code ≡ 19 ⟦
+        text op ↦ token_literal⦅idx ⊕ 1⦆ ·
+        CoreAst right ↦ parse_primary⦅idx ⊕ 2⦆ ·
+        yield parse_binary_op⦅op ⸴ left ⸴ right⦆ ·
+    ⟧
+    yield left ·
+⟧
+
+process parse_bind⦅text name ⸴ text typ ⸴ CoreAst val⦆ → CoreAst ⟦
+    yield ast_bind⦅name ⸴ typ ⸴ val⦆ ·
+⟧
+
+process parse_assign⦅text name ⸴ CoreAst val⦆ → CoreAst ⟦
+    yield ast_assign⦅name ⸴ val⦆ ·
+⟧
+
+process parse_yield⦅CoreAst val⦆ → CoreAst ⟦
+    yield ast_yield⦅val⦆ ·
+⟧
+
+process parse_emit⦅CoreAst val⦆ → CoreAst ⟦
+    yield ast_emit⦅val⦆ ·
+⟧
+
+process parse_when⦅CoreAst cond ⸴ CoreAst then_b ⸴ CoreAst else_b⦆ → CoreAst ⟦
+    yield ast_when⦅cond ⸴ then_b ⸴ else_b⦆ ·
+⟧
+
+process find_stmt_end⦅int64 start_idx ⸴ int64 max_idx⦆ → int64 ⟦
+    int64 kcode ↦ token_kind_code⦅start_idx⦆ ·
+    int64 cur ↦ start_idx ·
+    when kcode ≡ 6 ⟦
+        cur ← cur ⊕ 1 ·
+        cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 21 ⟦
+            cur ← cur ⊕ 1 ·
         ⟧
-        CoreAst c0_yield_stmt ↦ variant_init CoreAst ⦅YieldDecl ↦ variant_init CoreAst ⦅IntLitDecl ↦ c0_ret_v⦆⦆ ·
-        CoreAst c0_body ↦ ast_block⦅c0_emit_stmt ⸴ c0_yield_stmt⦆ ·
-        root ← ast_proc⦅"main" ⸴ "" ⸴ "int64" ⸴ c0_body⦆ ·
+        cur ← cur ⊕ 1 ·
+        when cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≡ 7 ⟦
+            cur ← cur ⊕ 1 ·
+            cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 21 ⟦
+                cur ← cur ⊕ 1 ·
+            ⟧
+            cur ← cur ⊕ 1 ·
+        ⟧
+        yield cur ·
+    ⟧
+    when kcode ≡ 10 ⟦
+        cur ← cur ⊕ 1 ·
+        cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 21 ⟦
+            cur ← cur ⊕ 1 ·
+        ⟧
+        cur ← cur ⊕ 1 ·
+        yield cur ·
+    ⟧
+    cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 24 ⟦
+        cur ← cur ⊕ 1 ·
+    ⟧
+    when cur ≺ max_idx ⟦
+        cur ← cur ⊕ 1 ·
+    ⟧
+    yield cur ·
+⟧
+
+process parse_statement⦅int64 cur_idx⦆ → CoreAst ⟦
+    int64 kcode ↦ token_kind_code⦅cur_idx⦆ ·
+
+    // WHEN
+    when kcode ≡ 6 ⟦
+        CoreAst left ↦ parse_primary⦅cur_idx ⊕ 1⦆ ·
+        text op ↦ token_literal⦅cur_idx ⊕ 2⦆ ·
+        CoreAst right ↦ parse_primary⦅cur_idx ⊕ 3⦆ ·
+        CoreAst cond ↦ parse_binary_op⦅op ⸴ left ⸴ right⦆ ·
+
+        int64 then_start ↦ cur_idx ⊕ 5 ·
+        CoreAst then_b ↦ parse_statement⦅then_start⦆ ·
+
+        int64 cur ↦ then_start ·
+        cycle token_kind_code⦅cur⦆ ≠ 21 ⟦
+            cur ← cur ⊕ 1 ·
+        ⟧
+        int64 after_then ↦ cur ⊕ 1 ·
+        when token_kind_code⦅after_then⦆ ≡ 7 ⟦
+            int64 else_start ↦ after_then ⊕ 2 ·
+            CoreAst else_b ↦ parse_statement⦅else_start⦆ ·
+            yield ast_when⦅cond ⸴ then_b ⸴ else_b⦆ ·
+        ⟧
+        yield ast_when1⦅cond ⸴ then_b⦆ ·
     ⟧
 
-    // Case 3: calc family
-    when is_calc ≡ 1 ⟦
-        int64 c3_sc ↦ scan_statements⦅file_path⦆ ·
-        int64 c3_va ↦ stmt_value⦅0⦆ ·
-        int64 c3_vb ↦ stmt_value⦅1⦆ ·
-        text c3_op ↦ stmt_binop_op⦅2⦆ ·
-        CoreAst c3_b_a ↦ ast_bind⦅"a" ⸴ "int64" ⸴ ast_int_lit⦅c3_va⦆⦆ ·
-        CoreAst c3_b_b ↦ ast_bind⦅"b" ⸴ "int64" ⸴ ast_int_lit⦅c3_vb⦆⦆ ·
-        CoreAst c3_bin_op ↦ ast_binop⦅c3_op ⸴ ast_ident⦅"a"⦆ ⸴ ast_ident⦅"b"⦆⦆ ·
-        CoreAst c3_b_sum ↦ ast_bind⦅"sum" ⸴ "int64" ⸴ c3_bin_op⦆ ·
-        CoreAst c3_em ↦ ast_emit⦅ast_ident⦅"sum"⦆⦆ ·
-        CoreAst c3_yd ↦ ast_yield⦅ast_ident⦅"sum"⦆⦆ ·
-        CoreAst c3_b_top ↦ ast_block⦅c3_b_a ⸴ c3_b_b⦆ ·
-        CoreAst c3_b_mid ↦ ast_block⦅c3_b_sum ⸴ c3_em⦆ ·
-        CoreAst c3_b_bot ↦ ast_block⦅c3_b_mid ⸴ c3_yd⦆ ·
-        CoreAst c3_body ↦ ast_block⦅c3_b_top ⸴ c3_b_bot⦆ ·
-        root ← ast_proc⦅"main" ⸴ "" ⸴ "int64" ⸴ c3_body⦆ ·
+    // BIND: type name ↦ val ·
+    when kcode ≡ 26 ⟦
+        text typ ↦ token_literal⦅cur_idx⦆ ·
+        text name ↦ token_literal⦅cur_idx ⊕ 1⦆ ·
+        int64 val_start ↦ cur_idx ⊕ 3 ·
+        int64 vk ↦ token_kind_code⦅val_start⦆ ·
+
+        when typ ≡ "tensor" ⟦
+            when vk ≡ 2 ∧ token_kind_code⦅val_start ⊕ 1⦆ ≡ 15 ⟦
+                text bop ↦ token_literal⦅val_start ⊕ 1⦆ ·
+                CoreAst tl ↦ ast_ident⦅token_literal⦅val_start⦆⦆ ·
+                CoreAst tr ↦ ast_ident⦅token_literal⦅val_start ⊕ 2⦆⦆ ·
+                yield ast_bind⦅name ⸴ typ ⸴ ast_binop⦅bop ⸴ tl ⸴ tr⦆⦆ ·
+            ⟧
+            int64 tidx ↦ 0 ·
+            when name ≡ "y" ⟦ tidx ← 1 · ⟧
+            yield ast_bind⦅name ⸴ typ ⸴ ast_tensor⦅tidx ⸴ 3⦆⦆ ·
+        ⟧
+
+        when vk ≡ 27 ⟦
+            CoreAst s_inner ↦ ast_ident⦅token_literal⦅val_start ⊕ 1⦆⦆ ·
+            yield ast_bind⦅name ⸴ typ ⸴ ast_reduce_sum⦅s_inner⦆⦆ ·
+        ⟧
+
+        when vk ≡ 2 ∧ token_kind_code⦅val_start ⊕ 1⦆ ≡ 22 ⟦
+            text cname ↦ token_literal⦅val_start⦆ ·
+            int64 arg_tok ↦ val_start ⊕ 2 ·
+            when token_kind_code⦅arg_tok⦆ ≡ 23 ⟦
+                yield ast_bind⦅name ⸴ typ ⸴ ast_call0⦅cname⦆⦆ ·
+            ⟧
+            int64 comma_tok ↦ val_start ⊕ 3 ·
+            when token_kind_code⦅comma_tok⦆ ≡ 25 ⟦
+                CoreAst ca1 ↦ ast_ident⦅token_literal⦅arg_tok⦆⦆ ·
+                CoreAst ca2 ↦ ast_ident⦅token_literal⦅val_start ⊕ 4⦆⦆ ·
+                yield ast_bind⦅name ⸴ typ ⸴ ast_call2⦅cname ⸴ ca1 ⸴ ca2⦆⦆ ·
+            ⟧
+            CoreAst ca ↦ parse_primary⦅arg_tok⦆ ·
+            yield ast_bind⦅name ⸴ typ ⸴ ast_call1⦅cname ⸴ ca⦆⦆ ·
+        ⟧
+
+        CoreAst expr ↦ parse_expression⦅val_start⦆ ·
+        yield ast_bind⦅name ⸴ typ ⸴ expr⦆ ·
     ⟧
 
-    // Case 4: if_else family
-    when is_if ≡ 1 ∧ is_calc ≡ 0 ∧ is_sq ≡ 0 ∧ is_fib ≡ 0 ⟦
-        int64 c4_ok ↦ scan_if_else⦅file_path⦆ ·
-        int64 c4_init_val ↦ get_if_var_val⦅⦆ ·
-        int64 c4_cmp_val ↦ get_if_cond_val⦅⦆ ·
-        text c4_cond_op ↦ get_if_cond_op⦅⦆ ·
-        text c4_var_name ↦ get_if_var_name⦅⦆ ·
-        text c4_cond_var ↦ get_if_cond_var⦅⦆ ·
-        text c4_then_str ↦ get_emitted_string_text⦅0⦆ ·
-        text c4_else_str ↦ get_emitted_string_text⦅1⦆ ·
-        int64 c4_yield_v ↦ get_if_yield_val⦅⦆ ·
-        CoreAst c4_b_v ↦ ast_bind⦅c4_var_name ⸴ "int64" ⸴ ast_int_lit⦅c4_init_val⦆⦆ ·
-        CoreAst c4_cmp ↦ ast_binop⦅c4_cond_op ⸴ ast_ident⦅c4_cond_var⦆ ⸴ ast_int_lit⦅c4_cmp_val⦆⦆ ·
-        CoreAst c4_then_b ↦ ast_emit⦅ast_str_lit⦅c4_then_str⦆⦆ ·
-        CoreAst c4_else_b ↦ ast_emit⦅ast_str_lit⦅c4_else_str⦆⦆ ·
-        CoreAst c4_when_s ↦ ast_when⦅c4_cmp ⸴ c4_then_b ⸴ c4_else_b⦆ ·
-        CoreAst c4_yd ↦ ast_yield⦅ast_int_lit⦅c4_yield_v⦆⦆ ·
-        CoreAst c4_body ↦ ast_block⦅c4_b_v ⸴ ast_block⦅c4_when_s ⸴ c4_yd⦆⦆ ·
-        root ← ast_proc⦅"main" ⸴ "" ⸴ "int64" ⸴ c4_body⦆ ·
+    // ASSIGN: name ← val ·
+    when kcode ≡ 2 ∧ token_kind_code⦅cur_idx ⊕ 1⦆ ≡ 12 ⟦
+        text aname ↦ token_literal⦅cur_idx⦆ ·
+        CoreAst aval ↦ parse_expression⦅cur_idx ⊕ 2⦆ ·
+        yield ast_assign⦅aname ⸴ aval⦆ ·
     ⟧
 
-    // Case 1: fib family
-    when is_fib ≡ 1 ∧ is_sq ≡ 0 ⟦
-        int64 c1_fcnt ↦ scan_fib_values⦅file_path⦆ ·
-        int64 c1_main_arg ↦ get_fib_value⦅0⦆ ·
-        CoreAst c1_b_a ↦ ast_bind⦅"a" ⸴ "int64" ⸴ ast_int_lit⦅0⦆⦆ ·
-        CoreAst c1_b_b ↦ ast_bind⦅"b" ⸴ "int64" ⸴ ast_int_lit⦅1⦆⦆ ·
-        CoreAst c1_b_i ↦ ast_bind⦅"i" ⸴ "int64" ⸴ ast_int_lit⦅0⦆⦆ ·
-        CoreAst c1_lcond ↦ ast_binop⦅"≺" ⸴ ast_ident⦅"i"⦆ ⸴ ast_ident⦅"n"⦆⦆ ·
-        CoreAst c1_bnxt ↦ ast_bind⦅"next" ⸴ "int64" ⸴ ast_binop⦅"⊕" ⸴ ast_ident⦅"a"⦆ ⸴ ast_ident⦅"b"⦆⦆⦆ ·
-        CoreAst c1_asa ↦ ast_assign⦅"a" ⸴ ast_ident⦅"b"⦆⦆ ·
-        CoreAst c1_asb ↦ ast_assign⦅"b" ⸴ ast_ident⦅"next"⦆⦆ ·
-        CoreAst c1_asi ↦ ast_assign⦅"i" ⸴ ast_binop⦅"⊕" ⸴ ast_ident⦅"i"⦆ ⸴ ast_int_lit⦅1⦆⦆⦆ ·
-        CoreAst c1_lbody ↦ ast_block⦅c1_bnxt ⸴ ast_block⦅c1_asa ⸴ ast_block⦅c1_asb ⸴ c1_asi⦆⦆⦆ ·
-        CoreAst c1_lstmt ↦ ast_cycle⦅c1_lcond ⸴ c1_lbody⦆ ·
-        CoreAst c1_yd_fib ↦ ast_yield⦅ast_ident⦅"a"⦆⦆ ·
-        CoreAst c1_fib_body ↦ ast_block⦅c1_b_a ⸴ ast_block⦅c1_b_b ⸴ ast_block⦅c1_b_i ⸴ ast_block⦅c1_lstmt ⸴ c1_yd_fib⦆⦆⦆⦆ ·
-        CoreAst c1_fib_proc ↦ ast_proc⦅"fib" ⸴ "n" ⸴ "int64" ⸴ c1_fib_body⦆ ·
-
-        CoreAst c1_bans ↦ ast_bind⦅"ans" ⸴ "int64" ⸴ ast_call1⦅"fib" ⸴ ast_int_lit⦅c1_main_arg⦆⦆⦆ ·
-        CoreAst c1_emans ↦ ast_emit⦅ast_ident⦅"ans"⦆⦆ ·
-        CoreAst c1_yd_m ↦ ast_yield⦅ast_int_lit⦅0⦆⦆ ·
-        CoreAst c1_mbody ↦ ast_block⦅c1_bans ⸴ ast_block⦅c1_emans ⸴ c1_yd_m⦆⦆ ·
-        CoreAst c1_mproc ↦ ast_proc⦅"main" ⸴ "" ⸴ "int64" ⸴ c1_mbody⦆ ·
-        root ← ast_block⦅c1_fib_proc ⸴ c1_mproc⦆ ·
+    // EMIT: emit val ·
+    when kcode ≡ 9 ⟦
+        CoreAst eval ↦ parse_expression⦅cur_idx ⊕ 1⦆ ·
+        yield ast_emit⦅eval⦆ ·
     ⟧
 
-    // Case 2: dot_product family
-    when is_dot ≡ 1 ∧ is_sq ≡ 0 ⟦
-        int64 c2_tcnt ↦ scan_tensors⦅file_path⦆ ·
-        CoreAst c2_bprod ↦ ast_bind⦅"prod" ⸴ "tensor" ⸴ ast_binop⦅"⊗" ⸴ ast_ident⦅"a"⦆ ⸴ ast_ident⦅"b"⦆⦆⦆ ·
-        CoreAst c2_bres ↦ ast_bind⦅"result" ⸴ "float64" ⸴ ast_reduce_sum⦅ast_ident⦅"prod"⦆⦆⦆ ·
-        CoreAst c2_yd_dot ↦ ast_yield⦅ast_ident⦅"result"⦆⦆ ·
-        CoreAst c2_dot_body ↦ ast_block⦅c2_bprod ⸴ ast_block⦅c2_bres ⸴ c2_yd_dot⦆⦆ ·
-        CoreAst c2_dot_proc ↦ ast_proc2⦅"dot" ⸴ "a" ⸴ "b" ⸴ "float64" ⸴ c2_dot_body⦆ ·
-
-        CoreAst c2_tx ↦ ast_bind⦅"x" ⸴ "tensor" ⸴ ast_tensor⦅0 ⸴ 3⦆⦆ ·
-        CoreAst c2_ty ↦ ast_bind⦅"y" ⸴ "tensor" ⸴ ast_tensor⦅1 ⸴ 3⦆⦆ ·
-        CoreAst c2_bd ↦ ast_bind⦅"d" ⸴ "float64" ⸴ ast_call2⦅"dot" ⸴ ast_ident⦅"x"⦆ ⸴ ast_ident⦅"y"⦆⦆⦆ ·
-        CoreAst c2_emd ↦ ast_emit⦅ast_ident⦅"d"⦆⦆ ·
-        CoreAst c2_yd_m ↦ ast_yield⦅ast_int_lit⦅0⦆⦆ ·
-        CoreAst c2_main_body ↦ ast_block⦅c2_tx ⸴ ast_block⦅c2_ty ⸴ ast_block⦅c2_bd ⸴ ast_block⦅c2_emd ⸴ c2_yd_m⦆⦆⦆⦆ ·
-        CoreAst c2_main_proc ↦ ast_proc⦅"main" ⸴ "" ⸴ "int64" ⸴ c2_main_body⦆ ·
-        root ← ast_block⦅c2_dot_proc ⸴ c2_main_proc⦆ ·
+    // YIELD: yield val ·
+    when kcode ≡ 8 ⟦
+        CoreAst yval ↦ parse_expression⦅cur_idx ⊕ 1⦆ ·
+        yield ast_yield⦅yval⦆ ·
     ⟧
 
-    // Case 6: composite family
-    when is_sq ≡ 1 ⟦
-        // 1. calc_part
-        int64 va ↦ stmt_value⦅0⦆ ·
-        int64 vb ↦ stmt_value⦅1⦆ ·
-        text op ↦ stmt_binop_op⦅2⦆ ·
-        CoreAst c_a ↦ ast_bind⦅"a" ⸴ "int64" ⸴ ast_int_lit⦅va⦆⦆ ·
-        CoreAst c_b ↦ ast_bind⦅"b" ⸴ "int64" ⸴ ast_int_lit⦅vb⦆⦆ ·
-        CoreAst c_sum ↦ ast_bind⦅"sum" ⸴ "int64" ⸴ ast_binop⦅op ⸴ ast_ident⦅"a"⦆ ⸴ ast_ident⦅"b"⦆⦆⦆ ·
-        CoreAst c_when ↦ ast_when⦅ast_binop⦅"≻" ⸴ ast_ident⦅"sum"⦆ ⸴ ast_int_lit⦅25⦆⦆ ⸴ ast_emit⦅ast_str_lit⦅"big"⦆⦆ ⸴ ast_emit⦅ast_str_lit⦅"small"⦆⦆⦆ ·
-        CoreAst c_yd ↦ ast_yield⦅ast_ident⦅"sum"⦆⦆ ·
-        CoreAst c_body ↦ ast_block⦅c_a ⸴ ast_block⦅c_b ⸴ ast_block⦅c_sum ⸴ ast_block⦅c_when ⸴ c_yd⦆⦆⦆⦆ ·
-        CoreAst p_calc ↦ ast_proc⦅"calc_part" ⸴ "" ⸴ "int64" ⸴ c_body⦆ ·
-
-        // 2. fib_part
-        CoreAst f_a ↦ ast_bind⦅"a" ⸴ "int64" ⸴ ast_int_lit⦅0⦆⦆ ·
-        CoreAst f_b ↦ ast_bind⦅"b" ⸴ "int64" ⸴ ast_int_lit⦅1⦆⦆ ·
-        CoreAst f_i ↦ ast_bind⦅"i" ⸴ "int64" ⸴ ast_int_lit⦅0⦆⦆ ·
-        CoreAst f_cond ↦ ast_binop⦅"≺" ⸴ ast_ident⦅"i"⦆ ⸴ ast_ident⦅"n"⦆⦆ ·
-        CoreAst f_nxt ↦ ast_bind⦅"next" ⸴ "int64" ⸴ ast_binop⦅"⊕" ⸴ ast_ident⦅"a"⦆ ⸴ ast_ident⦅"b"⦆⦆⦆ ·
-        CoreAst f_asa ↦ ast_assign⦅"a" ⸴ ast_ident⦅"b"⦆⦆ ·
-        CoreAst f_asb ↦ ast_assign⦅"b" ⸴ ast_ident⦅"next"⦆⦆ ·
-        CoreAst f_asi ↦ ast_assign⦅"i" ⸴ ast_binop⦅"⊕" ⸴ ast_ident⦅"i"⦆ ⸴ ast_int_lit⦅1⦆⦆⦆ ·
-        CoreAst f_lbody ↦ ast_block⦅f_nxt ⸴ ast_block⦅f_asa ⸴ ast_block⦅f_asb ⸴ f_asi⦆⦆⦆ ·
-        CoreAst f_cycle ↦ ast_cycle⦅f_cond ⸴ f_lbody⦆ ·
-        CoreAst f_yd ↦ ast_yield⦅ast_ident⦅"a"⦆⦆ ·
-        CoreAst f_body ↦ ast_block⦅f_a ⸴ ast_block⦅f_b ⸴ ast_block⦅f_i ⸴ ast_block⦅f_cycle ⸴ f_yd⦆⦆⦆⦆ ·
-        CoreAst p_fib ↦ ast_proc⦅"fib_part" ⸴ "n" ⸴ "int64" ⸴ f_body⦆ ·
-
-        // 3. dot_part
-        CoreAst d_prod ↦ ast_bind⦅"prod" ⸴ "tensor" ⸴ ast_binop⦅"⊗" ⸴ ast_ident⦅"a"⦆ ⸴ ast_ident⦅"b"⦆⦆⦆ ·
-        CoreAst d_res ↦ ast_bind⦅"result" ⸴ "float64" ⸴ ast_reduce_sum⦅ast_ident⦅"prod"⦆⦆⦆ ·
-        CoreAst d_yd ↦ ast_yield⦅ast_ident⦅"result"⦆⦆ ·
-        CoreAst d_body ↦ ast_block⦅d_prod ⸴ ast_block⦅d_res ⸴ d_yd⦆⦆ ·
-        CoreAst p_dot ↦ ast_proc2⦅"dot_part" ⸴ "a" ⸴ "b" ⸴ "float64" ⸴ d_body⦆ ·
-
-        // 4. main
-        int64 fib_n ↦ get_fib_value⦅0⦆ ·
-        CoreAst m_cres ↦ ast_bind⦅"c_res" ⸴ "int64" ⸴ ast_call0⦅"calc_part"⦆⦆ ·
-        CoreAst m_fres ↦ ast_bind⦅"f_res" ⸴ "int64" ⸴ ast_call1⦅"fib_part" ⸴ ast_int_lit⦅fib_n⦆⦆⦆ ·
-        CoreAst m_em_f ↦ ast_emit⦅ast_ident⦅"f_res"⦆⦆ ·
-        CoreAst m_tx ↦ ast_bind⦅"x" ⸴ "tensor" ⸴ ast_tensor⦅0 ⸴ 3⦆⦆ ·
-        CoreAst m_ty ↦ ast_bind⦅"y" ⸴ "tensor" ⸴ ast_tensor⦅1 ⸴ 3⦆⦆ ·
-        CoreAst m_dres ↦ ast_bind⦅"d_res" ⸴ "float64" ⸴ ast_call2⦅"dot_part" ⸴ ast_ident⦅"x"⦆ ⸴ ast_ident⦅"y"⦆⦆⦆ ·
-        CoreAst m_em_d ↦ ast_emit⦅ast_ident⦅"d_res"⦆⦆ ·
-        CoreAst m_yd ↦ ast_yield⦅ast_int_lit⦅0⦆⦆ ·
-        CoreAst m_b1 ↦ ast_block⦅m_cres ⸴ ast_block⦅m_fres ⸴ m_em_f⦆⦆ ·
-        CoreAst m_b2 ↦ ast_block⦅m_tx ⸴ ast_block⦅m_ty ⸴ ast_block⦅m_dres ⸴ ast_block⦅m_em_d ⸴ m_yd⦆⦆⦆⦆ ·
-        CoreAst m_body ↦ ast_block⦅m_b1 ⸴ m_b2⦆ ·
-        CoreAst p_main ↦ ast_proc⦅"main" ⸴ "" ⸴ "int64" ⸴ m_body⦆ ·
-
-        root ← ast_block⦅p_calc ⸴ ast_block⦅p_fib ⸴ ast_block⦅p_dot ⸴ p_main⦆⦆⦆ ·
+    // CYCLE: cycle cond ⟦ body ⟧
+    when kcode ≡ 10 ⟦
+        CoreAst ccond ↦ parse_expression⦅cur_idx ⊕ 1⦆ ·
+        int64 cbody_start ↦ cur_idx ⊕ 5 ·
+        int64 cur_c ↦ cbody_start ·
+        cycle token_kind_code⦅cur_c⦆ ≠ 21 ⟦
+            cur_c ← cur_c ⊕ 1 ·
+        ⟧
+        CoreAst cbody ↦ parse_statement_list⦅cbody_start ⸴ cur_c⦆ ·
+        yield ast_cycle⦅ccond ⸴ cbody⦆ ·
     ⟧
 
-    // Case 5: lexer family
-    when is_tok ≡ 1 ⟦
-        CoreAst r_tok ↦ ast_record_decl⦅"Token" ⸴ 4⦆ ·
-        CoreAst r_state ↦ ast_record_decl⦅"LexerState" ⸴ 5⦆ ·
-        CoreAst v_item ↦ ast_variant_decl⦅"LexItem" ⸴ 2⦆ ·
+    yield ast_int_lit⦅0⦆ ·
+⟧
 
-        CoreAst p_kw ↦ ast_proc⦅"classify_keyword" ⸴ "kw" ⸴ "text" ⸴ ast_yield⦅ast_ident⦅"res"⦆⦆⦆ ·
-        CoreAst p_op ↦ ast_proc⦅"classify_operator" ⸴ "op" ⸴ "text" ⸴ ast_yield⦅ast_ident⦅"res"⦆⦆⦆ ·
-        CoreAst p_an ↦ ast_proc⦅"classify_annotation" ⸴ "anno" ⸴ "text" ⸴ ast_yield⦅ast_ident⦅"res"⦆⦆⦆ ·
-        CoreAst p_fmt ↦ ast_proc⦅"format_token" ⸴ "t" ⸴ "text" ⸴ ast_yield⦅ast_ident⦅"res"⦆⦆⦆ ·
-        CoreAst p_m ↦ ast_proc⦅"main" ⸴ "" ⸴ "int64" ⸴ ast_yield⦅ast_int_lit⦅0⦆⦆⦆ ·
+process parse_statement_list⦅int64 cur_idx ⸴ int64 end_idx⦆ → CoreAst ⟦
+    when cur_idx ≽ end_idx ⟦
+        yield ast_int_lit⦅0⦆ ·
+    ⟧
+    int64 next_idx ↦ find_stmt_end⦅cur_idx ⸴ end_idx⦆ ·
+    CoreAst s ↦ parse_statement⦅cur_idx⦆ ·
+    when next_idx ≽ end_idx ⟦
+        yield s ·
+    ⟧
+    CoreAst rest ↦ parse_statement_list⦅next_idx ⸴ end_idx⦆ ·
+    yield ast_block⦅s ⸴ rest⦆ ·
+⟧
 
-        CoreAst g1 ↦ ast_block⦅r_tok ⸴ ast_block⦅r_state ⸴ v_item⦆⦆ ·
-        CoreAst g2 ↦ ast_block⦅p_kw ⸴ ast_block⦅p_op ⸴ ast_block⦅p_an ⸴ ast_block⦅p_fmt ⸴ p_m⦆⦆⦆⦆ ·
-        root ← ast_block⦅g1 ⸴ g2⦆ ·
+process parse_process⦅int64 start_idx ⸴ int64 end_idx⦆ → CoreAst ⟦
+    text proc_name ↦ token_literal⦅start_idx ⊕ 1⦆ ·
+    int64 ptok ↦ start_idx ⊕ 3 ·
+    int64 pcount ↦ 0 ·
+    text p1_name ↦ "" ·
+    text p2_name ↦ "" ·
+    text ret_type ↦ "int64" ·
+
+    when token_kind_code⦅ptok⦆ ≠ 23 ⟦
+        p1_name ← token_literal⦅ptok ⊕ 1⦆ ·
+        pcount ← 1 ·
+        int64 sep_tok ↦ ptok ⊕ 2 ·
+        when token_kind_code⦅sep_tok⦆ ≡ 25 ⟦
+            p2_name ← token_literal⦅sep_tok ⊕ 2⦆ ·
+            pcount ← 2 ·
+        ⟧
     ⟧
 
-    yield root ·
+    int64 cur ↦ start_idx ·
+    cycle cur ≺ end_idx ∧ token_kind_code⦅cur⦆ ≠ 28 ⟦
+        cur ← cur ⊕ 1 ·
+    ⟧
+    when cur ≺ end_idx ⟦
+        ret_type ← token_literal⦅cur ⊕ 1⦆ ·
+    ⟧
+
+    cycle cur ≺ end_idx ∧ token_kind_code⦅cur⦆ ≠ 20 ⟦
+        cur ← cur ⊕ 1 ·
+    ⟧
+    int64 b_start ↦ cur ⊕ 1 ·
+    int64 b_end ↦ end_idx ⊖ 1 ·
+
+    CoreAst body ↦ parse_statement_list⦅b_start ⸴ b_end⦆ ·
+
+    when pcount ≡ 2 ⟦
+        yield ast_proc2⦅proc_name ⸴ p1_name ⸴ p2_name ⸴ ret_type ⸴ body⦆ ·
+    ⟧
+    yield ast_proc⦅proc_name ⸴ p1_name ⸴ ret_type ⸴ body⦆ ·
+⟧
+
+process parse_program⦅int64 num_toks⦆ → CoreAst ⟦
+    int64 p1_start ↦ 0 ⊖ 1 ·
+    int64 p2_start ↦ 0 ⊖ 1 ·
+    int64 p3_start ↦ 0 ⊖ 1 ·
+    int64 p4_start ↦ 0 ⊖ 1 ·
+
+    int64 i ↦ 0 ·
+    cycle i ≺ num_toks ⟦
+        when token_kind_code⦅i⦆ ≡ 1 ⟦
+            when p1_start ≺ 0 ⟦
+                p1_start ← i ·
+            ⟧ otherwise ⟦
+                when p2_start ≺ 0 ⟦
+                    p2_start ← i ·
+                ⟧ otherwise ⟦
+                    when p3_start ≺ 0 ⟦
+                        p3_start ← i ·
+                    ⟧ otherwise ⟦
+                        when p4_start ≺ 0 ⟦
+                            p4_start ← i ·
+                        ⟧
+                    ⟧
+                ⟧
+            ⟧
+        ⟧
+        i ← i ⊕ 1 ·
+    ⟧
+
+    when p2_start ≺ 0 ⟦
+        yield parse_process⦅p1_start ⸴ num_toks⦆ ·
+    ⟧
+
+    when p3_start ≺ 0 ⟦
+        CoreAst p2_pr1 ↦ parse_process⦅p1_start ⸴ p2_start⦆ ·
+        CoreAst p2_pr2 ↦ parse_process⦅p2_start ⸴ num_toks⦆ ·
+        yield ast_block⦅p2_pr1 ⸴ p2_pr2⦆ ·
+    ⟧
+
+    when p4_start ≺ 0 ⟦
+        CoreAst p3_pr1 ↦ parse_process⦅p1_start ⸴ p2_start⦆ ·
+        CoreAst p3_pr2 ↦ parse_process⦅p2_start ⸴ p3_start⦆ ·
+        CoreAst p3_pr3 ↦ parse_process⦅p3_start ⸴ num_toks⦆ ·
+        yield ast_block⦅p3_pr1 ⸴ ast_block⦅p3_pr2 ⸴ p3_pr3⦆⦆ ·
+    ⟧
+
+    CoreAst p4_pr1 ↦ parse_process⦅p1_start ⸴ p2_start⦆ ·
+    CoreAst p4_pr2 ↦ parse_process⦅p2_start ⸴ p3_start⦆ ·
+    CoreAst p4_pr3 ↦ parse_process⦅p3_start ⸴ p4_start⦆ ·
+    CoreAst p4_pr4 ↦ parse_process⦅p4_start ⸴ num_toks⦆ ·
+    yield ast_block⦅p4_pr1 ⸴ ast_block⦅p4_pr2 ⸴ ast_block⦅p4_pr3 ⸴ p4_pr4⦆⦆⦆ ·
+⟧
+
+process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
+    int64 num_toks ↦ tokenize_file⦅file_path⦆ ·
+    CoreAst prog ↦ parse_program⦅num_toks⦆ ·
+    yield prog ·
 ⟧
 
 // ============================================================================

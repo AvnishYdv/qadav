@@ -83,10 +83,63 @@ process classify_annotation⦅text anno⦆ → text ⟦
     yield res ·
 ⟧
 
+// Punctuation and delimiter classifier
+process classify_delimiter⦅text delim⦆ → text ⟦
+    text res ↦ "UNKNOWN" ·
+    when delim ≡ "⟦" ⟦ res ← "BLOCK_OPEN" · ⟧
+    when delim ≡ "⟧" ⟦ res ← "BLOCK_CLOSE" · ⟧
+    when delim ≡ "⦅" ⟦ res ← "GROUP_OPEN" · ⟧
+    when delim ≡ "⦆" ⟦ res ← "GROUP_CLOSE" · ⟧
+    when delim ≡ "·" ⟦ res ← "STMT_END" · ⟧
+    when delim ≡ "⸴" ⟦ res ← "SEP" · ⟧
+    when delim ≡ "⟨" ⟦ res ← "TYPE_OPEN" · ⟧
+    when delim ≡ "⟩" ⟦ res ← "TYPE_CLOSE" · ⟧
+    when delim ≡ "⟬" ⟦ res ← "TENSOR_OPEN" · ⟧
+    when delim ≡ "⟭" ⟦ res ← "TENSOR_CLOSE" · ⟧
+    yield res ·
+⟧
+
+process is_whitespace_char⦅text ch⦆ → logic ⟦
+    logic res ↦ deny ·
+    when ch ≡ " " ⟦ res ← affirm · ⟧
+    when ch ≡ "\t" ⟦ res ← affirm · ⟧
+    when ch ≡ "\r" ⟦ res ← affirm · ⟧
+    when ch ≡ "\n" ⟦ res ← affirm · ⟧
+    yield res ·
+⟧
+
+process is_digit_char⦅text ch⦆ → logic ⟦
+    logic res ↦ deny ·
+    when ch ≡ "0" ⟦ res ← affirm · ⟧
+    when ch ≡ "1" ⟦ res ← affirm · ⟧
+    when ch ≡ "2" ⟦ res ← affirm · ⟧
+    when ch ≡ "3" ⟦ res ← affirm · ⟧
+    when ch ≡ "4" ⟦ res ← affirm · ⟧
+    when ch ≡ "5" ⟦ res ← affirm · ⟧
+    when ch ≡ "6" ⟦ res ← affirm · ⟧
+    when ch ≡ "7" ⟦ res ← affirm · ⟧
+    when ch ≡ "8" ⟦ res ← affirm · ⟧
+    when ch ≡ "9" ⟦ res ← affirm · ⟧
+    yield res ·
+⟧
+
 process format_token⦅Token t⦆ → text ⟦
     emit t.kind ·
     emit t.literal ·
     yield t.kind ·
+⟧
+
+process lex_file⦅text file_path⦆ → int64 ⟦
+    int64 tok_cnt ↦ tokenize_file⦅file_path⦆ ·
+    int64 cur_idx ↦ 0 ·
+    cycle cur_idx ≺ tok_cnt ⟦
+        text t_kind ↦ token_kind⦅cur_idx⦆ ·
+        text t_lit ↦ token_literal⦅cur_idx⦆ ·
+        int64 t_line ↦ token_line⦅cur_idx⦆ ·
+        int64 t_col ↦ token_col⦅cur_idx⦆ ·
+        cur_idx ← cur_idx ⊕ 1 ·
+    ⟧
+    yield tok_cnt ·
 ⟧
 
 process main⦅⦆ → int64 ⟦
@@ -116,6 +169,7 @@ process main⦅⦆ → int64 ⟦
     text anno_type ↦ classify_annotation⦅"@gpu"⦆ ·
     emit anno_type ·
 
+    int64 file_tokens ↦ lex_file⦅"examples/hello.ydv"⦆ ·
     emit "selfhost_lexer: 250 keywords + operators verified" ·
     yield 0 ·
 ⟧

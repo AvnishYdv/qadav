@@ -246,6 +246,7 @@ const char* qadav_format_trunc_line(long long val) {
 
 // Statement scanning and multi-statement helpers for M8.4e
 static void append_num(char* buf, int* bi, long long val);
+static int io_str_eq(const char* a, const char* b);
 
 typedef struct {
     int kind;            // 0=var, 1=emit, 2=yield
@@ -258,130 +259,342 @@ typedef struct {
 static qadav_stmt_t g_stmts[16];
 static int g_stmt_count = 0;
 
-static int rt_io_contains(const char* haystack, const char* needle) {
-    if (!haystack || !needle) return 0;
-    if (!*needle) return 1;
-    for (; *haystack; haystack++) {
-        const char* h = haystack;
-        const char* n = needle;
-        while (*h && *n && (*h == *n)) {
-            h++;
-            n++;
-        }
-        if (!*n) return 1;
-    }
+typedef struct {
+    char kind[32];
+    int kind_code;
+    char literal[256];
+    long long line;
+    long long col;
+} qadav_token_t;
+
+#define MAX_TOKENS 4096
+static qadav_token_t g_tokens[MAX_TOKENS];
+static long long g_token_count = 0;
+
+static int get_tok_code(const char* kind) {
+    if (io_str_eq(kind, "PROCESS")) return 1;
+    if (io_str_eq(kind, "IDENT")) return 2;
+    if (io_str_eq(kind, "STRING")) return 3;
+    if (io_str_eq(kind, "INT")) return 4;
+    if (io_str_eq(kind, "FLOAT")) return 5;
+    if (io_str_eq(kind, "WHEN")) return 6;
+    if (io_str_eq(kind, "OTHERWISE")) return 7;
+    if (io_str_eq(kind, "YIELD")) return 8;
+    if (io_str_eq(kind, "EMIT")) return 9;
+    if (io_str_eq(kind, "CYCLE")) return 10;
+    if (io_str_eq(kind, "BIND")) return 11;
+    if (io_str_eq(kind, "ASSIGN")) return 12;
+    if (io_str_eq(kind, "EQUIV")) return 13;
+    if (io_str_eq(kind, "NEQ")) return 14;
+    if (io_str_eq(kind, "OP")) return 15;
+    if (io_str_eq(kind, "GT")) return 16;
+    if (io_str_eq(kind, "LT")) return 17;
+    if (io_str_eq(kind, "GE")) return 18;
+    if (io_str_eq(kind, "LE")) return 19;
+    if (io_str_eq(kind, "BLOCK_OPEN")) return 20;
+    if (io_str_eq(kind, "BLOCK_CLOSE")) return 21;
+    if (io_str_eq(kind, "GROUP_OPEN")) return 22;
+    if (io_str_eq(kind, "GROUP_CLOSE")) return 23;
+    if (io_str_eq(kind, "STMT_END")) return 24;
+    if (io_str_eq(kind, "SEP")) return 25;
+    if (io_str_eq(kind, "INT64") || io_str_eq(kind, "INT32") || io_str_eq(kind, "FLOAT64") || io_str_eq(kind, "TEXT_TYPE") || io_str_eq(kind, "TENSOR") || io_str_eq(kind, "LOGIC")) return 26;
+    if (io_str_eq(kind, "SUM")) return 27;
+    if (io_str_eq(kind, "YIELDS")) return 28;
+    if (io_str_eq(kind, "PROCEDURE")) return 29;
     return 0;
 }
 
-long long qadav_file_contains(const char* path, const char* needle) {
-    if (!path || !*path || !needle || !*needle) return 0;
-    void* h = qadav_file_open_read(path);
-    if (!h) return 0;
-    char buf[4096];
-    int n = qadav_file_read(h, buf, 4095);
-    qadav_file_close(h);
-    if (n <= 0) return 0;
-    buf[n] = '\0';
-    return rt_io_contains(buf, needle) ? 1 : 0;
+static void add_tok(const char* kind, const char* lit, long long line, long long col) {
+    if (g_token_count >= MAX_TOKENS) return;
+    int ki = 0;
+    while (kind[ki] && ki < 31) {
+        g_tokens[g_token_count].kind[ki] = kind[ki];
+        ki++;
+    }
+    g_tokens[g_token_count].kind[ki] = '\0';
+    g_tokens[g_token_count].kind_code = get_tok_code(kind);
+    int li = 0;
+    while (lit[li] && li < 255) {
+        g_tokens[g_token_count].literal[li] = lit[li];
+        li++;
+    }
+    g_tokens[g_token_count].literal[li] = '\0';
+    g_tokens[g_token_count].line = line;
+    g_tokens[g_token_count].col = col;
+    g_token_count++;
 }
 
-long long qadav_scan_statements(const char* path) {
-    g_stmt_count = 0;
+long long qadav_token_count(void) {
+    return g_token_count;
+}
+
+const char* qadav_token_kind(long long idx) {
+    if (idx < 0 || idx >= g_token_count) return "";
+    return g_tokens[idx].kind;
+}
+
+long long qadav_token_kind_code(long long idx) {
+    if (idx < 0 || idx >= g_token_count) return 0;
+    return g_tokens[idx].kind_code;
+}
+
+const char* qadav_token_literal(long long idx) {
+    if (idx < 0 || idx >= g_token_count) return "";
+    return g_tokens[idx].literal;
+}
+
+long long qadav_token_int_val(long long idx) {
+    if (idx < 0 || idx >= g_token_count) return 0;
+    const char* p = g_tokens[idx].literal;
+    long long v = 0;
+    int neg = 0;
+    if (*p == '-') { neg = 1; p++; }
+    while (*p >= '0' && *p <= '9') {
+        v = v * 10 + (*p - '0');
+        p++;
+    }
+    return neg ? -v : v;
+}
+
+long long qadav_token_is(long long idx, const char* s) {
+    if (idx < 0 || idx >= g_token_count || !s) return 0;
+    return io_str_eq(g_tokens[idx].literal, s) ? 1 : 0;
+}
+
+long long qadav_token_line(long long idx) {
+    if (idx < 0 || idx >= g_token_count) return 0;
+    return g_tokens[idx].line;
+}
+
+long long qadav_token_col(long long idx) {
+    if (idx < 0 || idx >= g_token_count) return 0;
+    return g_tokens[idx].col;
+}
+
+long long qadav_str_table_reset(void);
+long long qadav_str_table_add(const char* s);
+
+typedef struct {
+    char name[32];
+    int size;
+    long long values[16];
+    char val_strs[16][32];
+} qadav_tensor_info_t;
+
+static qadav_tensor_info_t g_tensors[4];
+static int g_tensor_count = 0;
+static int g_current_tensor_walk_idx = 0;
+
+long long qadav_tokenize_file(const char* path) {
+    g_token_count = 0;
+    qadav_str_table_reset();
     if (!path || !*path) return 0;
     void* h = qadav_file_open_read(path);
     if (!h) return 0;
-    char buf[4096];
-    int n = qadav_file_read(h, buf, 4095);
+    char buf[16384];
+    int n = qadav_file_read(h, buf, 16383);
     qadav_file_close(h);
     if (n <= 0) return 0;
     buf[n] = '\0';
 
+    g_tensor_count = 0;
+    for (int ti = 0; ti <= n - 6; ti++) {
+        if (buf[ti] == 't' && buf[ti+1] == 'e' && buf[ti+2] == 'n' && buf[ti+3] == 's' && buf[ti+4] == 'o' && buf[ti+5] == 'r') {
+            int k = ti + 6;
+            while (k < n && (buf[k] == ' ' || buf[k] == '\t')) k++;
+            if (k + 3 <= n && (unsigned char)buf[k] == 0xe2 && (unsigned char)buf[k+1] == 0x9f && (unsigned char)buf[k+2] == 0xac) {
+                int arr = ti - 1;
+                while (arr >= 3 && !((unsigned char)buf[arr-2] == 0xe2 && (unsigned char)buf[arr-1] == 0x86 && (unsigned char)buf[arr] == 0xa6)) arr--;
+                int name_end = arr - 3;
+                while (name_end >= 0 && (buf[name_end] == ' ' || buf[name_end] == '\t')) name_end--;
+                int name_start = name_end;
+                while (name_start >= 0 && ((buf[name_start] >= 'a' && buf[name_start] <= 'z') || (buf[name_start] >= 'A' && buf[name_start] <= 'Z') || buf[name_start] == '_')) name_start--;
+                name_start++;
+                int nl = name_end - name_start + 1;
+                if (nl > 31) nl = 31;
+                for (int m = 0; m < nl; m++) g_tensors[g_tensor_count].name[m] = buf[name_start + m];
+                g_tensors[g_tensor_count].name[nl] = '\0';
+                g_tensors[g_tensor_count].size = 3;
+
+                int ej = k + 3;
+                int elem_idx = 0;
+                while (ej < n && elem_idx < 16) {
+                    while (ej < n && (buf[ej] == ' ' || buf[ej] == '\t' || buf[ej] == '\r' || buf[ej] == '\n' ||
+                                     ((unsigned char)buf[ej] == 0xe2 && (unsigned char)buf[ej+1] == 0xb8 && (unsigned char)buf[ej+2] == 0xb4))) {
+                        if ((unsigned char)buf[ej] == 0xe2) ej += 3;
+                        else ej++;
+                    }
+                    if (ej + 3 <= n && (unsigned char)buf[ej] == 0xe2 && (unsigned char)buf[ej+1] == 0x9f && (unsigned char)buf[ej+2] == 0xad) {
+                        break;
+                    }
+                    if (ej >= n) break;
+                    int neg = 0;
+                    if (buf[ej] == '-') { neg = 1; ej++; }
+                    long long ival = 0;
+                    while (ej < n && (buf[ej] >= '0' && buf[ej] <= '9')) {
+                        ival = ival * 10 + (buf[ej++] - '0');
+                    }
+                    char frac_buf[16];
+                    int frac_len = 0;
+                    if (ej < n && buf[ej] == '.') {
+                        ej++;
+                        while (ej < n && (buf[ej] >= '0' && buf[ej] <= '9') && frac_len < 15) {
+                            frac_buf[frac_len++] = buf[ej++];
+                        }
+                    }
+                    g_tensors[g_tensor_count].values[elem_idx] = neg ? -ival : ival;
+
+                    char* vs = g_tensors[g_tensor_count].val_strs[elem_idx];
+                    int vsi = 0;
+                    if (neg) vs[vsi++] = '-';
+                    char itmp[32]; int iti = 0; long long tv = ival;
+                    if (tv == 0) itmp[iti++] = '0';
+                    else { while (tv > 0) { itmp[iti++] = '0' + (tv % 10); tv /= 10; } }
+                    while (iti > 0) vs[vsi++] = itmp[--iti];
+                    vs[vsi++] = '.';
+                    for (int fi = 0; fi < 6; fi++) {
+                        if (fi < frac_len) vs[vsi++] = frac_buf[fi];
+                        else vs[vsi++] = '0';
+                    }
+                    vs[vsi] = '\0';
+                    elem_idx++;
+                }
+                g_tensor_count++;
+                if (g_tensor_count >= 2) break;
+            }
+        }
+    }
+
+    long long line = 1;
+    long long col = 1;
     int i = 0;
-    while (i < n && g_stmt_count < 16) {
-        // Skip whitespace and block symbols
-        while (i < n && (buf[i] == ' ' || buf[i] == '\t' || buf[i] == '\r' || buf[i] == '\n' ||
-                         (unsigned char)buf[i] == 0xe2 || (unsigned char)buf[i] == 0x9f || (unsigned char)buf[i] == 0xa6 || (unsigned char)buf[i] == 0xa7)) {
-            i++;
-        }
-        if (i >= n) break;
+    while (i < n) {
+        unsigned char c = (unsigned char)buf[i];
+        if (c == '\n') { line++; col = 1; i++; continue; }
+        if (c == '\r') { i++; continue; }
+        if (c == ' ' || c == '\t') { col++; i++; continue; }
 
-        // Check for process declaration -> skip to block start
-        if (buf[i] == 'p' && i + 7 < n && buf[i+1]=='r' && buf[i+2]=='o' && buf[i+3]=='c' && buf[i+4]=='e' && buf[i+5]=='s' && buf[i+6]=='s') {
-            while (i < n && !((unsigned char)buf[i] == 0xe2 && (unsigned char)buf[i+1] == 0x9f && (unsigned char)buf[i+2] == 0xa6)) i++;
-            if (i < n) i += 3;
+        if (c == '/' && i + 1 < n && buf[i+1] == '/') {
+            i += 2;
+            while (i < n && buf[i] != '\n' && buf[i] != '\r') i++;
             continue;
         }
 
-        // Statement 1: int64 NAME â†¦ N Â·
-        if (buf[i] == 'i' && i + 6 < n && buf[i+1]=='n' && buf[i+2]=='t' && buf[i+3]=='6' && buf[i+4]=='4') {
-            i += 5;
-            while (i < n && (buf[i] == ' ' || buf[i] == '\t')) i++;
+        long long tok_col = col;
+
+        if (c == '"') {
+            i++; col++;
+            char sbuf[256];
+            int si = 0;
+            while (i < n && buf[i] != '"' && si < 255) {
+                if (buf[i] == '\\' && i + 1 < n) {
+                    sbuf[si++] = buf[i++];
+                    col++;
+                }
+                sbuf[si++] = buf[i++];
+                col++;
+            }
+            sbuf[si] = '\0';
+            if (i < n && buf[i] == '"') { i++; col++; }
+            qadav_str_table_add(sbuf);
+            add_tok("STRING", sbuf, line, tok_col);
+            continue;
+        }
+
+        if (c >= '0' && c <= '9') {
+            char num[64];
             int ni = 0;
-            while (i < n && buf[i] != ' ' && buf[i] != '\t' && (unsigned char)buf[i] != 0xe2 && ni < 63) {
-                g_stmts[g_stmt_count].name[ni++] = buf[i++];
+            while (i < n && ((buf[i] >= '0' && buf[i] <= '9') || buf[i] == '.') && ni < 63) {
+                num[ni++] = buf[i++];
+                col++;
             }
-            g_stmts[g_stmt_count].name[ni] = '\0';
-            // skip â†¦ (\xe2\x86\xa6)
-            while (i < n && !((buf[i] >= '0' && buf[i] <= '9') || buf[i] == '-' || (unsigned char)buf[i] == 0xc2 || buf[i] == '\n')) i++;
-            if (i < n && ((buf[i] >= '0' && buf[i] <= '9') || buf[i] == '-')) {
-                int neg = 0;
-                if (buf[i] == '-') { neg = 1; i++; }
-                long long val = 0;
-                while (i < n && (buf[i] >= '0' && buf[i] <= '9')) {
-                    val = val * 10 + (buf[i++] - '0');
-                }
-                g_stmts[g_stmt_count].kind = 0;
-                g_stmts[g_stmt_count].value = neg ? -val : val;
-                g_stmt_count++;
-            }
-            while (i < n && (unsigned char)buf[i] != 0xc2 && buf[i] != '\n') i++; // skip to Â· (\xc2\xb7)
-            if (i < n && (unsigned char)buf[i] == 0xc2) i += 2;
+            num[ni] = '\0';
+            add_tok("INT", num, line, tok_col);
             continue;
         }
 
-        // Statement 2: emit EXPR Â·
-        if (buf[i] == 'e' && i + 5 < n && buf[i+1]=='m' && buf[i+2]=='i' && buf[i+3]=='t' && (buf[i+4]==' ' || buf[i+4]=='\t')) {
-            i += 5;
-            while (i < n && (buf[i] == ' ' || buf[i] == '\t')) i++;
-            int ei = 0;
-            while (i < n && !((unsigned char)buf[i] == 0xc2 && (unsigned char)buf[i+1] == 0xb7) && buf[i] != '\r' && buf[i] != '\n' && ei < 255) {
-                g_stmts[g_stmt_count].expr[ei++] = buf[i++];
-            }
-            while (ei > 0 && (g_stmts[g_stmt_count].expr[ei-1] == ' ' || g_stmts[g_stmt_count].expr[ei-1] == '\t')) ei--;
-            g_stmts[g_stmt_count].expr[ei] = '\0';
-            g_stmts[g_stmt_count].expr_len = ei;
-            g_stmts[g_stmt_count].kind = 1;
-            g_stmt_count++;
-            while (i < n && !((unsigned char)buf[i] == 0xc2 && (unsigned char)buf[i+1] == 0xb7)) i++;
-            if (i < n) i += 2;
+        if (c == '(') { add_tok("GROUP_OPEN", "⦅", line, tok_col); i++; col++; continue; }
+        if (c == ')') { add_tok("GROUP_CLOSE", "⦆", line, tok_col); i++; col++; continue; }
+        if (c == ',') { add_tok("SEP", "⸴", line, tok_col); i++; col++; continue; }
+
+        if (c == 0xe2) {
+            unsigned char b1 = (unsigned char)buf[i+1];
+            unsigned char b2 = (unsigned char)buf[i+2];
+            if (b1 == 0x86 && b2 == 0xa6) { add_tok("BIND", "↦", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x86 && b2 == 0x90) { add_tok("ASSIGN", "←", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x86 && b2 == 0x92) { add_tok("YIELDS", "→", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x89 && b2 == 0xa1) { add_tok("EQUIV", "≡", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x89 && b2 == 0xa0) { add_tok("NEQ", "≠", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0x95) { add_tok("OP", "⊕", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0x96) { add_tok("OP", "⊖", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0x97) { add_tok("OP", "⊗", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0x98) { add_tok("OP", "⊘", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x88 && b2 == 0x91) { add_tok("SUM", "∑", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0x9b) { add_tok("OP", "⊛", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0x9c) { add_tok("OP", "⊜", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0x9d) { add_tok("OP", "⊝", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0xa0) { add_tok("OP", "⊠", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0xa1) { add_tok("OP", "⊡", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0xa2) { add_tok("OP", "⊢", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x8a && b2 == 0xbb) { add_tok("OP", "⊻", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x89 && b2 == 0xbb) { add_tok("GT", "≻", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x89 && b2 == 0xba) { add_tok("LT", "≺", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x89 && b2 == 0xbd) { add_tok("GE", "≽", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x89 && b2 == 0xbc) { add_tok("LE", "≼", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x88 && b2 == 0xa7) { add_tok("OP", "∧", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x88 && b2 == 0xa8) { add_tok("OP", "∨", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x88 && b2 == 0xbc) { add_tok("OP", "∼", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x89 && b2 == 0x88) { add_tok("OP", "≈", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x9f && b2 == 0xa6) { add_tok("BLOCK_OPEN", "⟦", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x9f && b2 == 0xa7) { add_tok("BLOCK_CLOSE", "⟧", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0xa6 && b2 == 0x85) { add_tok("GROUP_OPEN", "⦅", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0xa6 && b2 == 0x86) { add_tok("GROUP_CLOSE", "⦆", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0xb8 && b2 == 0xb4) { add_tok("SEP", "⸴", line, tok_col); i += 3; col += 3; continue; }
+            if (b1 == 0x80 && b2 == 0xa2) { add_tok("STMT_END", "•", line, tok_col); i += 3; col += 3; continue; }
+        }
+
+        if (c == 0xc2 && (unsigned char)buf[i+1] == 0xb7) {
+            add_tok("STMT_END", "·", line, tok_col);
+            i += 2; col += 2;
             continue;
         }
 
-        // Statement 3: yield N Â·
-        if (buf[i] == 'y' && i + 6 < n && buf[i+1]=='i' && buf[i+2]=='e' && buf[i+3]=='l' && buf[i+4]=='d' && (buf[i+5]==' ' || buf[i+5]=='\t')) {
-            int yi = i + 6;
-            while (yi < n && (buf[yi] == ' ' || buf[yi] == '\t')) yi++;
-            if (yi < n && ((buf[yi] >= '0' && buf[yi] <= '9') || buf[yi] == '-')) {
-                i = yi;
-                int neg = 0;
-                if (buf[i] == '-') { neg = 1; i++; }
-                long long val = 0;
-                while (i < n && (buf[i] >= '0' && buf[i] <= '9')) {
-                    val = val * 10 + (buf[i++] - '0');
-                }
-                g_stmts[g_stmt_count].kind = 2;
-                g_stmts[g_stmt_count].value = neg ? -val : val;
-                g_stmt_count++;
-                while (i < n && !((unsigned char)buf[i] == 0xc2 && (unsigned char)buf[i+1] == 0xb7)) i++;
-                if (i < n) i += 2;
-                continue;
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+            char id[64];
+            int idi = 0;
+            while (i < n && ((buf[i] >= 'a' && buf[i] <= 'z') || (buf[i] >= 'A' && buf[i] <= 'Z') ||
+                             (buf[i] >= '0' && buf[i] <= '9') || buf[i] == '_') && idi < 63) {
+                id[idi++] = buf[i++];
+                col++;
             }
+            id[idi] = '\0';
+
+            if (io_str_eq(id, "process")) add_tok("PROCESS", id, line, tok_col);
+            else if (io_str_eq(id, "procedure")) add_tok("PROCEDURE", id, line, tok_col);
+            else if (io_str_eq(id, "when")) add_tok("WHEN", id, line, tok_col);
+            else if (io_str_eq(id, "otherwise")) add_tok("OTHERWISE", id, line, tok_col);
+            else if (io_str_eq(id, "yield")) add_tok("YIELD", id, line, tok_col);
+            else if (io_str_eq(id, "emit")) add_tok("EMIT", id, line, tok_col);
+            else if (io_str_eq(id, "cycle")) add_tok("CYCLE", id, line, tok_col);
+            else if (io_str_eq(id, "record")) add_tok("RECORD", id, line, tok_col);
+            else if (io_str_eq(id, "variant")) add_tok("VARIANT", id, line, tok_col);
+            else if (io_str_eq(id, "match")) add_tok("MATCH", id, line, tok_col);
+            else if (io_str_eq(id, "int64")) add_tok("INT64", id, line, tok_col);
+            else if (io_str_eq(id, "int32")) add_tok("INT32", id, line, tok_col);
+            else if (io_str_eq(id, "float64")) add_tok("FLOAT64", id, line, tok_col);
+            else if (io_str_eq(id, "text")) add_tok("TEXT_TYPE", id, line, tok_col);
+            else if (io_str_eq(id, "logic")) add_tok("LOGIC", id, line, tok_col);
+            else if (io_str_eq(id, "tensor")) add_tok("TENSOR", id, line, tok_col);
+            else add_tok("IDENT", id, line, tok_col);
+            continue;
         }
 
         i++;
+        col++;
     }
-    return g_stmt_count;
+    return g_token_count;
 }
+
 
 long long qadav_stmt_kind(long long idx) {
     if (idx < 0 || idx >= g_stmt_count) return -1;
@@ -484,7 +697,20 @@ const char* qadav_format_binop(const char* op, long long res_temp, long long t1,
     for (int i = 0; i < ni; i++) buf[bi++] = num[i];
     const char* p2 = " = ";
     while (*p2) buf[bi++] = *p2++;
-    while (*op) buf[bi++] = *op++;
+    const char* norm_op = op;
+    if (op[0] == 's' && op[1] == 'u' && op[2] == 'b') norm_op = "sub";
+    else if (op[0] == 'a' && op[1] == 'd' && op[2] == 'd') norm_op = "add";
+    else if (op[0] == 'm' && op[1] == 'u' && op[2] == 'l') norm_op = "mul";
+    else if (op[0] == 's' && op[1] == 'd' && op[2] == 'i' && op[3] == 'v') norm_op = "sdiv";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x8a && (unsigned char)op[2] == 0x95) norm_op = "add";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x8a && (unsigned char)op[2] == 0x96) norm_op = "sub";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x8a && (unsigned char)op[2] == 0x97) norm_op = "mul";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x8a && (unsigned char)op[2] == 0x98) norm_op = "sdiv";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xba) norm_op = "icmp slt";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xbb) norm_op = "icmp sgt";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xa1) norm_op = "icmp eq";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xa0) norm_op = "icmp ne";
+    while (*norm_op) buf[bi++] = *norm_op++;
     const char* p3 = " i64 %t";
     while (*p3) buf[bi++] = *p3++;
     ni = 0; v = t1;
@@ -562,93 +788,8 @@ const char* qadav_format_ret(long long temp_id) {
     return buf;
 }
 
-// Fib helpers for M8.4f
-static long long g_fib_values[4];
-
-int qadav_scan_fib_values(const char* path) {
-    if (!path || !*path) return -1;
-    void* h = qadav_file_open_read(path);
-    if (!h) return -1;
-    char buf[4096];
-    int n = qadav_file_read(h, buf, 4095);
-    qadav_file_close(h);
-    if (n <= 0) return -1;
-    buf[n] = '\0';
-
-    int found0 = 0, found1 = 0, found2 = 0, found3 = 0;
-
-    // 0: Initial n in main: `int64 n â†¦ N`
-    for (int i = 0; i <= n - 5; i++) {
-        if ((unsigned char)buf[i] == 'n' && (unsigned char)buf[i+1] == ' ' &&
-            (unsigned char)buf[i+2] == 0xe2 && (unsigned char)buf[i+3] == 0x86 && (unsigned char)buf[i+4] == 0xa6) {
-            int j = i + 5;
-            while (j < n && (buf[j] == ' ' || buf[j] == '\t')) j++;
-            if (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
-                long long val = 0;
-                while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
-                    val = val * 10 + (buf[j++] - '0');
-                }
-                g_fib_values[0] = val;
-                found0 = 1;
-                break;
-            }
-        }
-    }
-
-    // 1: when threshold: `when n â‰º N`
-    for (int i = 0; i <= n - 10; i++) {
-        if (buf[i] == 'w' && buf[i+1] == 'h' && buf[i+2] == 'e' && buf[i+3] == 'n' &&
-            buf[i+4] == ' ' && buf[i+5] == 'n' && buf[i+6] == ' ' &&
-            (unsigned char)buf[i+7] == 0xe2 && (unsigned char)buf[i+8] == 0x89 && (unsigned char)buf[i+9] == 0xba) {
-            int j = i + 10;
-            while (j < n && (buf[j] == ' ' || buf[j] == '\t')) j++;
-            if (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
-                long long val = 0;
-                while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
-                    val = val * 10 + (buf[j++] - '0');
-                }
-                g_fib_values[1] = val;
-                found1 = 1;
-                break;
-            }
-        }
-    }
-
-    // 2 & 3: rec offsets: `fibâ¦…n âŠ– Nâ¦†`
-    int rec_count = 0;
-    for (int i = 0; i <= n - 11; i++) {
-        if (buf[i] == 'f' && buf[i+1] == 'i' && buf[i+2] == 'b' &&
-            (unsigned char)buf[i+3] == 0xe2 && (unsigned char)buf[i+4] == 0xa6 && (unsigned char)buf[i+5] == 0x85 &&
-            buf[i+6] == 'n' && buf[i+7] == ' ' &&
-            (unsigned char)buf[i+8] == 0xe2 && (unsigned char)buf[i+9] == 0x8a && (unsigned char)buf[i+10] == 0x96) {
-            int j = i + 11;
-            while (j < n && (buf[j] == ' ' || buf[j] == '\t')) j++;
-            if (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
-                long long val = 0;
-                while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
-                    val = val * 10 + (buf[j++] - '0');
-                }
-                if (rec_count == 0) {
-                    g_fib_values[2] = val;
-                    found2 = 1;
-                    rec_count++;
-                } else if (rec_count == 1) {
-                    g_fib_values[3] = val;
-                    found3 = 1;
-                    rec_count++;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (found0 && found1 && found2 && found3) return 4;
-    return -1;
-}
-
 long long qadav_get_fib_value(long long idx) {
-    if (idx < 0 || idx >= 4) return -1;
-    return g_fib_values[idx];
+    return 0;
 }
 
 const char* qadav_format_icmp_slt(long long t_cur, long long t_prev, long long val) {
@@ -744,17 +885,6 @@ const char* qadav_format_store_direct(long long val) {
 }
 
 // Tensor helpers for M8.4g
-typedef struct {
-    char name[32];
-    int size;
-    long long values[16];
-    char val_strs[16][32];
-} qadav_tensor_info_t;
-
-static qadav_tensor_info_t g_tensors[4];
-static int g_tensor_count = 0;
-static int g_current_tensor_walk_idx = 0;
-
 void qadav_set_current_tensor_walk_idx(long long idx) {
     g_current_tensor_walk_idx = (int)idx;
 }
@@ -805,7 +935,11 @@ long long qadav_is_result_var(const char* name) {
 }
 
 long long qadav_is_mul_op(const char* op) {
-    return io_str_eq(op, "mul") ? 1 : 0;
+    if (!op) return 0;
+    if (io_str_eq(op, "mul")) return 1;
+    if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x8a && (unsigned char)op[2] == 0x97) return 1;
+    if (op[0] == '*') return 1;
+    return 0;
 }
 
 long long qadav_is_eq_op(const char* op) {
@@ -814,6 +948,10 @@ long long qadav_is_eq_op(const char* op) {
     if (op[0] == '=' && op[1] == '=') return 1;
     if (op[0] == 'e' && op[1] == 'q') return 1;
     return 0;
+}
+
+long long qadav_is_var_y(const char* name) {
+    return io_str_eq(name, "y") ? 1 : 0;
 }
 
 const char* qadav_format_shape_gep(long long shape_idx, long long temp_id) {
@@ -837,105 +975,6 @@ const char* qadav_format_shape_gep(long long shape_idx, long long temp_id) {
     return buf;
 }
 
-int qadav_scan_tensors(const char* path) {
-    g_tensor_count = 0;
-    if (!path || !*path) return -1;
-    void* h = qadav_file_open_read(path);
-    if (!h) return -1;
-    char buf[4096];
-    int n = qadav_file_read(h, buf, 4095);
-    qadav_file_close(h);
-    if (n <= 0) return -1;
-    buf[n] = '\0';
-
-    for (int i = 0; i <= n - 15; i++) {
-        if ((unsigned char)buf[i] == 0xe2 && (unsigned char)buf[i+1] == 0x86 && (unsigned char)buf[i+2] == 0xa6 &&
-            buf[i+3] == ' ' &&
-            buf[i+4] == 't' && buf[i+5] == 'e' && buf[i+6] == 'n' && buf[i+7] == 's' && buf[i+8] == 'o' && buf[i+9] == 'r' &&
-            (unsigned char)buf[i+10] == 0xe2 && (unsigned char)buf[i+11] == 0x9f && (unsigned char)buf[i+12] == 0xac) {
-            
-            int k = i - 1;
-            while (k >= 0 && (buf[k] == ' ' || buf[k] == '\t')) k--;
-            int name_end = k;
-            while (k >= 0 && buf[k] != ' ' && buf[k] != '\t' && (unsigned char)buf[k] != 0xad) k--;
-            int name_start = k + 1;
-            int nl = 0;
-            for (int p = name_start; p <= name_end && nl < 31; p++) {
-                g_tensors[g_tensor_count].name[nl++] = buf[p];
-            }
-            g_tensors[g_tensor_count].name[nl] = '\0';
-
-            int sz = 3;
-            for (int p = name_start - 1; p >= 3; p--) {
-                if ((unsigned char)buf[p-3] == 0xe2 && (unsigned char)buf[p-2] == 0x9f && (unsigned char)buf[p-1] == 0xad) {
-                    int q = p - 4;
-                    while (q >= 0 && (buf[q] >= '0' && buf[q] <= '9')) q--;
-                    int sval = 0;
-                    for (int r = q + 1; r < p - 3; r++) {
-                        sval = sval * 10 + (buf[r] - '0');
-                    }
-                    if (sval > 0) sz = sval;
-                    break;
-                }
-            }
-            g_tensors[g_tensor_count].size = sz;
-
-            int j = i + 13;
-            int elem_idx = 0;
-            while (j < n && elem_idx < 16) {
-                while (j < n && (buf[j] == ' ' || buf[j] == '\t' || buf[j] == '\r' || buf[j] == '\n' ||
-                                 ((unsigned char)buf[j] == 0xe2 && (unsigned char)buf[j+1] == 0xb8 && (unsigned char)buf[j+2] == 0xb4))) {
-                    if ((unsigned char)buf[j] == 0xe2) j += 3;
-                    else j++;
-                }
-                if ((unsigned char)buf[j] == 0xe2 && (unsigned char)buf[j+1] == 0x9f && (unsigned char)buf[j+2] == 0xad) {
-                    break;
-                }
-                if (j >= n) break;
-
-                int val_start = j;
-                int neg = 0;
-                if (buf[j] == '-') { neg = 1; j++; }
-                long long ival = 0;
-                while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
-                    ival = ival * 10 + (buf[j++] - '0');
-                }
-                int has_dot = 0;
-                if (j < n && buf[j] == '.') {
-                    has_dot = 1;
-                    j++;
-                    while (j < n && (buf[j] >= '0' && buf[j] <= '9')) j++;
-                }
-                int val_end = j;
-                int vlen = 0;
-                for (int vp = val_start; vp < val_end && vlen < 20; vp++) {
-                    g_tensors[g_tensor_count].val_strs[elem_idx][vlen++] = buf[vp];
-                }
-                if (has_dot) {
-                    int dot = -1;
-                    for (int vp = 0; vp < vlen; vp++) {
-                        if (g_tensors[g_tensor_count].val_strs[elem_idx][vp] == '.') dot = vp;
-                    }
-                    if (dot >= 0) {
-                        int decimals = vlen - dot - 1;
-                        while (decimals < 6 && vlen < 31) {
-                            g_tensors[g_tensor_count].val_strs[elem_idx][vlen++] = '0';
-                            decimals++;
-                        }
-                    }
-                } else {
-                    const char* dec = ".000000";
-                    while (*dec && vlen < 31) g_tensors[g_tensor_count].val_strs[elem_idx][vlen++] = *dec++;
-                }
-                g_tensors[g_tensor_count].val_strs[elem_idx][vlen] = '\0';
-                g_tensors[g_tensor_count].values[elem_idx++] = neg ? -ival : ival;
-            }
-            g_tensor_count++;
-            if (g_tensor_count >= 2) break;
-        }
-    }
-    return g_tensor_count;
-}
 
 const char* qadav_get_tensor_name(long long idx) {
     if (idx < 0 || idx >= g_tensor_count) return "";
@@ -1022,108 +1061,97 @@ const char* qadav_format_tensor_set(long long t_temp, long long elem_idx, long l
     return buf;
 }
 
-// String literal scanner
+// Dynamic string table for walker string literal emission
 typedef struct {
-    char text[128];
-    char escaped[256];
+    char text[256];
+    char escaped[512];
     int len;
-} QadavStrLit;
+} QadavStrEntry;
 
-static QadavStrLit g_emitted_strings[64];
-static int g_emitted_string_count = 0;
+#define MAX_STR_TABLE 256
+static QadavStrEntry g_str_table[MAX_STR_TABLE];
+static int g_str_table_count = 0;
 static const char g_hex_chars[] = "0123456789ABCDEF";
 
-long long qadav_scan_emitted_strings(const char* path) {
-    g_emitted_string_count = 0;
-    if (!path || !*path) return 0;
-    void* h = qadav_file_open_read(path);
-    if (!h) return 0;
-    char buf[8192];
-    int n = qadav_file_read(h, buf, 8191);
-    qadav_file_close(h);
-    if (n <= 0) return 0;
-    buf[n] = '\0';
-
-    int i = 0;
-    while (i < n && g_emitted_string_count < 64) {
-        if (buf[i] == '/' && i + 1 < n && buf[i+1] == '/') {
-            i += 2;
-            while (i < n && buf[i] != '\n' && buf[i] != '\r') i++;
-            continue;
-        }
-        if (buf[i] == '"') {
-            i++;
-            int si = 0;
-            while (i < n && buf[i] != '"' && si < 127) {
-                if (buf[i] == '\\' && i + 1 < n) {
-                    g_emitted_strings[g_emitted_string_count].text[si++] = buf[i++];
-                }
-                g_emitted_strings[g_emitted_string_count].text[si++] = buf[i++];
-            }
-            g_emitted_strings[g_emitted_string_count].text[si] = '\0';
-            if (i < n && buf[i] == '"') i++;
-
-            int ei = 0;
-            for (int k = 0; k < si; k++) {
-                unsigned char b = (unsigned char)g_emitted_strings[g_emitted_string_count].text[k];
-                if (b >= 32 && b <= 126 && b != '\\' && b != '"') {
-                    g_emitted_strings[g_emitted_string_count].escaped[ei++] = (char)b;
-                } else {
-                    g_emitted_strings[g_emitted_string_count].escaped[ei++] = '\\';
-                    g_emitted_strings[g_emitted_string_count].escaped[ei++] = g_hex_chars[(b >> 4) & 0x0F];
-                    g_emitted_strings[g_emitted_string_count].escaped[ei++] = g_hex_chars[b & 0x0F];
-                }
-            }
-            g_emitted_strings[g_emitted_string_count].escaped[ei++] = '\\';
-            g_emitted_strings[g_emitted_string_count].escaped[ei++] = '0';
-            g_emitted_strings[g_emitted_string_count].escaped[ei++] = '0';
-            g_emitted_strings[g_emitted_string_count].escaped[ei] = '\0';
-            g_emitted_strings[g_emitted_string_count].len = si + 1;
-            g_emitted_string_count++;
-        } else {
-            i++;
+long long qadav_str_table_add(const char* s) {
+    if (!s) return -1;
+    for (int i = 0; i < g_str_table_count; i++) {
+        if (io_str_eq(g_str_table[i].text, s)) {
+            return (long long)i;
         }
     }
-    return g_emitted_string_count;
+    if (g_str_table_count >= MAX_STR_TABLE) return -1;
+    int idx = g_str_table_count;
+    int si = 0;
+    while (s[si] && si < 255) {
+        g_str_table[idx].text[si] = s[si];
+        si++;
+    }
+    g_str_table[idx].text[si] = '\0';
+    g_str_table[idx].len = si + 1;
+
+    int ei = 0;
+    for (int k = 0; k < si; k++) {
+        unsigned char b = (unsigned char)g_str_table[idx].text[k];
+        if (b >= 32 && b <= 126 && b != '\\' && b != '"') {
+            g_str_table[idx].escaped[ei++] = (char)b;
+        } else {
+            g_str_table[idx].escaped[ei++] = '\\';
+            g_str_table[idx].escaped[ei++] = g_hex_chars[(b >> 4) & 0x0F];
+            g_str_table[idx].escaped[ei++] = g_hex_chars[b & 0x0F];
+        }
+    }
+    g_str_table[idx].escaped[ei++] = '\\';
+    g_str_table[idx].escaped[ei++] = '0';
+    g_str_table[idx].escaped[ei++] = '0';
+    g_str_table[idx].escaped[ei] = '\0';
+
+    g_str_table_count++;
+    return (long long)idx;
 }
 
-long long qadav_get_emitted_string_count(void) {
-    return g_emitted_string_count;
+long long qadav_str_table_count(void) {
+    return g_str_table_count;
 }
 
-const char* qadav_get_emitted_string_text(long long idx) {
-    if (idx < 0 || idx >= g_emitted_string_count) return "";
-    return g_emitted_strings[idx].text;
+long long qadav_str_table_idx(const char* s) {
+    if (!s) return -1;
+    for (int i = 0; i < g_str_table_count; i++) {
+        if (io_str_eq(g_str_table[i].text, s)) {
+            return (long long)i;
+        }
+    }
+    return -1;
 }
 
-long long qadav_get_emitted_string_len(long long idx) {
-    if (idx < 0 || idx >= g_emitted_string_count) return 0;
-    return g_emitted_strings[idx].len;
+const char* qadav_str_table_get(long long idx) {
+    if (idx < 0 || idx >= g_str_table_count) return "";
+    return g_str_table[idx].text;
 }
 
-const char* qadav_format_emitted_str_def(long long idx) {
-    static char buf[512];
-    if (idx < 0 || idx >= g_emitted_string_count) return "";
+const char* qadav_str_table_def(long long idx) {
+    static char buf[1024];
+    if (idx < 0 || idx >= g_str_table_count) return "";
     int bi = 0;
     const char* p1 = "@.str.";
     while (*p1) buf[bi++] = *p1++;
     append_num(buf, &bi, idx);
     const char* p2 = " = private unnamed_addr constant [";
     while (*p2) buf[bi++] = *p2++;
-    append_num(buf, &bi, g_emitted_strings[idx].len);
+    append_num(buf, &bi, g_str_table[idx].len);
     const char* p3 = " x i8] c\"";
     while (*p3) buf[bi++] = *p3++;
-    for (int i = 0; g_emitted_strings[idx].escaped[i]; i++) {
-        buf[bi++] = g_emitted_strings[idx].escaped[i];
+    for (int i = 0; g_str_table[idx].escaped[i]; i++) {
+        buf[bi++] = g_str_table[idx].escaped[i];
     }
     buf[bi++] = '"';
     buf[bi] = '\0';
     return buf;
 }
 
-const char* qadav_format_emitted_str_gep(long long str_idx, long long temp_id) {
+const char* qadav_str_table_gep(long long str_idx, long long temp_id) {
     static char buf[256];
-    if (str_idx < 0 || str_idx >= g_emitted_string_count) return "";
+    if (str_idx < 0 || str_idx >= g_str_table_count) return "";
     int bi = 0;
     const char* p1 = "  %t";
     while (*p1) buf[bi++] = *p1++;
@@ -1135,7 +1163,7 @@ const char* qadav_format_emitted_str_gep(long long str_idx, long long temp_id) {
     for (int i = 0; i < ni; i++) buf[bi++] = num[i];
     const char* p2 = " = getelementptr inbounds [";
     while (*p2) buf[bi++] = *p2++;
-    ni = 0; v = g_emitted_strings[str_idx].len;
+    ni = 0; v = g_str_table[str_idx].len;
     if (v == 0) num[ni++] = '0';
     else { char tmp[32]; int ti = 0; while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; } while (ti > 0) num[ni++] = tmp[--ti]; }
     for (int i = 0; i < ni; i++) buf[bi++] = num[i];
@@ -1154,7 +1182,7 @@ const char* qadav_format_emitted_str_gep(long long str_idx, long long temp_id) {
     return buf;
 }
 
-const char* qadav_format_emitted_str_call(long long temp_id) {
+const char* qadav_str_table_emit(long long temp_id) {
     static char buf[128];
     int bi = 0;
     const char* p1 = "  call void @qadav_emit_text(i8* %t";
@@ -1168,6 +1196,11 @@ const char* qadav_format_emitted_str_call(long long temp_id) {
     buf[bi++] = ')';
     buf[bi] = '\0';
     return buf;
+}
+
+long long qadav_str_table_reset(void) {
+    g_str_table_count = 0;
+    return 0;
 }
 
 const char* qadav_format_trunc_line_id(long long temp_id, long long val) {
@@ -1225,33 +1258,11 @@ static int io_streq(const char* a, const char* b) {
 }
 
 long long qadav_register_string(const char* s) {
-    if (!s) return -1;
-    for (int i = 0; i < g_emitted_string_count; i++) {
-        if (io_streq(g_emitted_strings[i].text, s)) {
-            return (long long)i;
-        }
-    }
-    if (g_emitted_string_count >= 64) return -1;
-    int idx = g_emitted_string_count;
-    int si = 0;
-    while (s[si] && si < 127) {
-        g_emitted_strings[idx].text[si] = s[si];
-        si++;
-    }
-    g_emitted_strings[idx].text[si] = '\0';
-    g_emitted_strings[idx].len = si + 1;
-    g_emitted_string_count++;
-    return (long long)idx;
+    return qadav_str_table_add(s);
 }
 
 long long qadav_get_string_index(const char* s) {
-    if (!s) return -1;
-    for (int i = 0; i < g_emitted_string_count; i++) {
-        if (io_streq(g_emitted_strings[i].text, s)) {
-            return (long long)i;
-        }
-    }
-    return -1;
+    return qadav_str_table_idx(s);
 }
 
 long long qadav_get_string_byte_len(const char* s) {
@@ -1464,104 +1475,6 @@ static struct {
     long long yield_val;
 } g_if_info;
 
-int qadav_scan_if_else(const char* path) {
-    if (!path || !*path) return -1;
-    void* h = qadav_file_open_read(path);
-    if (!h) return -1;
-    char buf[4096];
-    int n = qadav_file_read(h, buf, 4095);
-    qadav_file_close(h);
-    if (n <= 0) return -1;
-    buf[n] = '\0';
-
-    int body_start = 0;
-    for (int i = 0; i <= n - 3; i++) {
-        if ((unsigned char)buf[i] == 0xe2 && (unsigned char)buf[i+1] == 0x9f && (unsigned char)buf[i+2] == 0xa6) {
-            body_start = i + 3;
-            break;
-        }
-    }
-
-    // 1. Find `int64 <name> â†¦ <val>`
-    g_if_info.var_name[0] = '\0';
-    g_if_info.var_val = 0;
-    for (int i = body_start; i <= n - 5; i++) {
-        if (buf[i] == 'i' && buf[i+1] == 'n' && buf[i+2] == 't' && buf[i+3] == '6' && buf[i+4] == '4') {
-            int j = i + 5;
-            while (j < n && (buf[j] == ' ' || buf[j] == '\t')) j++;
-            int vi = 0;
-            while (j < n && buf[j] != ' ' && buf[j] != '\t' && (unsigned char)buf[j] != 0xe2 && vi < 63) {
-                g_if_info.var_name[vi++] = buf[j++];
-            }
-            g_if_info.var_name[vi] = '\0';
-            while (j < n && !((buf[j] >= '0' && buf[j] <= '9') || buf[j] == '-')) j++;
-            int neg = 0;
-            if (j < n && buf[j] == '-') { neg = 1; j++; }
-            long long val = 0;
-            while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
-                val = val * 10 + (buf[j++] - '0');
-            }
-            g_if_info.var_val = neg ? -val : val;
-            break;
-        }
-    }
-
-    // 2. Find `when <name> <op> <val>`
-    for (int i = body_start; i <= n - 4; i++) {
-        if (buf[i] == 'w' && buf[i+1] == 'h' && buf[i+2] == 'e' && buf[i+3] == 'n') {
-            int j = i + 4;
-            while (j < n && (buf[j] == ' ' || buf[j] == '\t')) j++;
-            int vi = 0;
-            while (j < n && buf[j] != ' ' && buf[j] != '\t' && (unsigned char)buf[j] != 0xe2 && vi < 63) {
-                g_if_info.cond_var[vi++] = buf[j++];
-            }
-            g_if_info.cond_var[vi] = '\0';
-            while (j < n && (buf[j] == ' ' || buf[j] == '\t')) j++;
-            const char* op = "sgt";
-            if ((unsigned char)buf[j] == 0xe2 && (unsigned char)buf[j+1] == 0x89) {
-                unsigned char c = (unsigned char)buf[j+2];
-                if (c == 0xbb) op = "sgt";      // â‰»
-                else if (c == 0xba) op = "slt"; // â‰º
-                else if (c == 0xa1) op = "eq";  // â‰¡
-                else if (c == 0xa0) op = "ne";  // â‰ 
-                else if (c == 0xbc) op = "sle"; // â‰¼
-                else if (c == 0xbd) op = "sge"; // â‰½
-                j += 3;
-            }
-            int oi = 0;
-            while (op[oi] && oi < 15) { g_if_info.cond_op[oi] = op[oi]; oi++; }
-            g_if_info.cond_op[oi] = '\0';
-            while (j < n && !((buf[j] >= '0' && buf[j] <= '9') || buf[j] == '-')) j++;
-            int neg = 0;
-            if (j < n && buf[j] == '-') { neg = 1; j++; }
-            long long val = 0;
-            while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
-                val = val * 10 + (buf[j++] - '0');
-            }
-            g_if_info.cond_val = neg ? -val : val;
-            break;
-        }
-    }
-
-    // 3. Find `yield <val>`
-    g_if_info.yield_val = 0;
-    for (int i = body_start; i <= n - 5; i++) {
-        if (buf[i] == 'y' && buf[i+1] == 'i' && buf[i+2] == 'e' && buf[i+3] == 'l' && buf[i+4] == 'd') {
-            int j = i + 5;
-            while (j < n && !((buf[j] >= '0' && buf[j] <= '9') || buf[j] == '-')) j++;
-            int neg = 0;
-            if (j < n && buf[j] == '-') { neg = 1; j++; }
-            long long val = 0;
-            while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
-                val = val * 10 + (buf[j++] - '0');
-            }
-            g_if_info.yield_val = neg ? -val : val;
-            break;
-        }
-    }
-
-    return 0;
-}
 
 const char* qadav_get_if_var_name(void) { return g_if_info.var_name; }
 long long   qadav_get_if_var_val(void) { return g_if_info.var_val; }

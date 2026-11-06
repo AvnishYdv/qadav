@@ -72,14 +72,6 @@ func New() *Checker {
 	})
 
 	_ = global.Define(&Symbol{
-		Name: "file_contains",
-		Type: &types.Type{
-			Kind:    types.KindProcess,
-			Params:  []*types.Type{types.Text, types.Text},
-			Results: []*types.Type{types.Int64},
-		},
-	})
-	_ = global.Define(&Symbol{
 		Name: "format_icmp_eq_ptr",
 		Type: &types.Type{
 			Kind:    types.KindProcess,
@@ -304,7 +296,7 @@ func New() *Checker {
 		},
 	})
 	_ = global.Define(&Symbol{
-		Name: "scan_emitted_strings",
+		Name: "tokenize_file",
 		Type: &types.Type{
 			Kind:    types.KindProcess,
 			Params:  []*types.Type{types.Text},
@@ -312,14 +304,14 @@ func New() *Checker {
 		},
 	})
 	_ = global.Define(&Symbol{
-		Name: "get_emitted_string_count",
+		Name: "token_count",
 		Type: &types.Type{
 			Kind:    types.KindProcess,
 			Results: []*types.Type{types.Int64},
 		},
 	})
 	_ = global.Define(&Symbol{
-		Name: "get_emitted_string_text",
+		Name: "token_kind",
 		Type: &types.Type{
 			Kind:    types.KindProcess,
 			Params:  []*types.Type{types.Int64},
@@ -327,7 +319,7 @@ func New() *Checker {
 		},
 	})
 	_ = global.Define(&Symbol{
-		Name: "get_emitted_string_len",
+		Name: "token_kind_code",
 		Type: &types.Type{
 			Kind:    types.KindProcess,
 			Params:  []*types.Type{types.Int64},
@@ -335,7 +327,7 @@ func New() *Checker {
 		},
 	})
 	_ = global.Define(&Symbol{
-		Name: "format_emitted_str_def",
+		Name: "token_literal",
 		Type: &types.Type{
 			Kind:    types.KindProcess,
 			Params:  []*types.Type{types.Int64},
@@ -343,7 +335,70 @@ func New() *Checker {
 		},
 	})
 	_ = global.Define(&Symbol{
-		Name: "format_emitted_str_gep",
+		Name: "token_int_val",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "token_is",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64, types.Text},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "token_line",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "token_col",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "str_table_add",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Text},
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "str_table_count",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Results: []*types.Type{types.Int64},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "str_table_get",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "str_table_def",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Params:  []*types.Type{types.Int64},
+			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "str_table_gep",
 		Type: &types.Type{
 			Kind:    types.KindProcess,
 			Params:  []*types.Type{types.Int64, types.Int64},
@@ -351,11 +406,18 @@ func New() *Checker {
 		},
 	})
 	_ = global.Define(&Symbol{
-		Name: "format_emitted_str_call",
+		Name: "str_table_emit",
 		Type: &types.Type{
 			Kind:    types.KindProcess,
 			Params:  []*types.Type{types.Int64},
 			Results: []*types.Type{types.Text},
+		},
+	})
+	_ = global.Define(&Symbol{
+		Name: "str_table_reset",
+		Type: &types.Type{
+			Kind:    types.KindProcess,
+			Results: []*types.Type{types.Int64},
 		},
 	})
 	_ = global.Define(&Symbol{
@@ -682,6 +744,7 @@ func New() *Checker {
 		"is_result_var", "qadav_is_result_var",
 		"is_mul_op", "qadav_is_mul_op",
 		"is_eq_op", "qadav_is_eq_op",
+		"is_var_y", "qadav_is_var_y",
 	} {
 		_ = global.Define(&Symbol{
 			Name: fnName,

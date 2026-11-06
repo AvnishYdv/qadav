@@ -1,0 +1,31 @@
+// examples/lexer_keyword_extract_v2.ydv
+// Killer variant of classify_keyword with modified token types.
+
+process classify_keyword⦅text kw⦆ → text ⟦
+    text res ↦ "IDENT_V2" ·
+    when kw ≡ "process" ⟦ res ← "KW_PROCESS" · ⟧
+    when kw ≡ "procedure" ⟦ res ← "KW_PROCEDURE" · ⟧
+    when kw ≡ "record" ⟦ res ← "KW_RECORD" · ⟧
+    when kw ≡ "variant" ⟦ res ← "KW_VARIANT" · ⟧
+    when kw ≡ "match" ⟦ res ← "KW_MATCH" · ⟧
+    when kw ≡ "when" ⟦ res ← "KW_WHEN" · ⟧
+    when kw ≡ "otherwise" ⟦ res ← "KW_OTHERWISE" · ⟧
+    when kw ≡ "yield" ⟦ res ← "KW_YIELD" · ⟧
+    when kw ≡ "emit" ⟦ res ← "KW_EMIT" · ⟧
+    when kw ≡ "observe" ⟦ res ← "KW_OBSERVE" · ⟧
+    when kw ≡ "qubit" ⟦ res ← "KW_QUBIT" · ⟧
+    when kw ≡ "entangle" ⟦ res ← "KW_ENTANGLE" · ⟧
+    when kw ≡ "superpose" ⟦ res ← "KW_SUPERPOSE" · ⟧
+    when kw ≡ "collapse" ⟦ res ← "KW_COLLAPSE" · ⟧
+    when kw ≡ "int64" ⟦ res ← "KW_INT64" · ⟧
+    when kw ≡ "int32" ⟦ res ← "KW_INT32" · ⟧
+    when kw ≡ "float64" ⟦ res ← "KW_FLOAT64" · ⟧
+    when kw ≡ "text" ⟦ res ← "KW_TEXT" · ⟧
+    when kw ≡ "logic" ⟦ res ← "KW_LOGIC" · ⟧
+    when kw ≡ "network" ⟦ res ← "KW_NETWORK" · ⟧
+    when kw ≡ "learn" ⟦ res ← "KW_LEARN" · ⟧
+    when kw ≡ "rsca_attest" ⟦ res ← "KW_RSCA_ATTEST" · ⟧
+    when kw ≡ "rsca_verify" ⟦ res ← "KW_RSCA_VERIFY" · ⟧
+    yield res ·
+⟧
+
