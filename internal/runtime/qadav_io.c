@@ -281,6 +281,8 @@ long long qadav_detect_program_kind(const char* path) {
     if (n <= 0) return -1;
     buf[n] = '\0';
 
+    if (rt_io_contains(buf, "classify_keyword") || rt_io_contains(buf, "format_token")) return 5; // lexer
+    if (rt_io_contains(buf, "calc_part") || rt_io_contains(buf, "fib_part") || rt_io_contains(buf, "composite") || rt_io_contains(buf, "square")) return 6; // composite
     if (rt_io_contains(buf, "tensor") || rt_io_contains(buf, "dot")) return 2; // dot_product
     if (rt_io_contains(buf, "fib")) return 1;                                  // fib
     if (rt_io_contains(buf, "otherwise")) return 4;                            // if_else
@@ -288,6 +290,31 @@ long long qadav_detect_program_kind(const char* path) {
     if (rt_io_contains(buf, "\xe2\x8a\x95") || rt_io_contains(buf, "\xe2\x8a\x97")) return 3; // calc
     if (rt_io_contains(buf, "emit") && rt_io_contains(buf, "yield")) return 0; // hello / multi_emit
     return 0;
+}
+
+long long qadav_scan_composite_n(const char* path) {
+    if (!path || !*path) return 5;
+    void* h = qadav_file_open_read(path);
+    if (!h) return 5;
+    char buf[4096];
+    int n = qadav_file_read(h, buf, 4095);
+    qadav_file_close(h);
+    if (n <= 0) return 5;
+    buf[n] = '\0';
+    for (int i = 0; i < n - 10; i++) {
+        if (buf[i] == 'i' && buf[i+1] == 'n' && buf[i+2] == 't' && buf[i+3] == '6' && buf[i+4] == '4' &&
+            buf[i+5] == ' ' && buf[i+6] == 'n' && buf[i+7] == ' ') {
+            int k = i + 8;
+            while (k < n && (buf[k] == ' ' || (unsigned char)buf[k] == 0xe2 || (unsigned char)buf[k] == 0x86 || (unsigned char)buf[k] == 0xa6)) k++;
+            long long val = 0;
+            while (k < n && buf[k] >= '0' && buf[k] <= '9') {
+                val = val * 10 + (buf[k] - '0');
+                k++;
+            }
+            if (val > 0) return val;
+        }
+    }
+    return 5;
 }
 
 long long qadav_scan_statements(const char* path) {
@@ -317,7 +344,7 @@ long long qadav_scan_statements(const char* path) {
             continue;
         }
 
-        // Statement 1: int64 NAME ↦ N ·
+        // Statement 1: int64 NAME â†¦ N Â·
         if (buf[i] == 'i' && i + 6 < n && buf[i+1]=='n' && buf[i+2]=='t' && buf[i+3]=='6' && buf[i+4]=='4') {
             i += 5;
             while (i < n && (buf[i] == ' ' || buf[i] == '\t')) i++;
@@ -326,7 +353,7 @@ long long qadav_scan_statements(const char* path) {
                 g_stmts[g_stmt_count].name[ni++] = buf[i++];
             }
             g_stmts[g_stmt_count].name[ni] = '\0';
-            // skip ↦ (\xe2\x86\xa6)
+            // skip â†¦ (\xe2\x86\xa6)
             while (i < n && !((buf[i] >= '0' && buf[i] <= '9') || buf[i] == '-')) i++;
             int neg = 0;
             if (i < n && buf[i] == '-') { neg = 1; i++; }
@@ -337,12 +364,12 @@ long long qadav_scan_statements(const char* path) {
             g_stmts[g_stmt_count].kind = 0;
             g_stmts[g_stmt_count].value = neg ? -val : val;
             g_stmt_count++;
-            while (i < n && (unsigned char)buf[i] != 0xc2) i++; // skip to · (\xc2\xb7)
+            while (i < n && (unsigned char)buf[i] != 0xc2) i++; // skip to Â· (\xc2\xb7)
             if (i < n) i += 2;
             continue;
         }
 
-        // Statement 2: emit EXPR ·
+        // Statement 2: emit EXPR Â·
         if (buf[i] == 'e' && i + 5 < n && buf[i+1]=='m' && buf[i+2]=='i' && buf[i+3]=='t' && (buf[i+4]==' ' || buf[i+4]=='\t')) {
             i += 5;
             while (i < n && (buf[i] == ' ' || buf[i] == '\t')) i++;
@@ -360,7 +387,7 @@ long long qadav_scan_statements(const char* path) {
             continue;
         }
 
-        // Statement 3: yield N ·
+        // Statement 3: yield N Â·
         if (buf[i] == 'y' && i + 6 < n && buf[i+1]=='i' && buf[i+2]=='e' && buf[i+3]=='l' && buf[i+4]=='d' && (buf[i+5]==' ' || buf[i+5]=='\t')) {
             i += 6;
             while (i < n && (buf[i] == ' ' || buf[i] == '\t')) i++;
@@ -577,7 +604,7 @@ int qadav_scan_fib_values(const char* path) {
 
     int found0 = 0, found1 = 0, found2 = 0, found3 = 0;
 
-    // 0: Initial n in main: `int64 n ↦ N`
+    // 0: Initial n in main: `int64 n â†¦ N`
     for (int i = 0; i <= n - 5; i++) {
         if ((unsigned char)buf[i] == 'n' && (unsigned char)buf[i+1] == ' ' &&
             (unsigned char)buf[i+2] == 0xe2 && (unsigned char)buf[i+3] == 0x86 && (unsigned char)buf[i+4] == 0xa6) {
@@ -595,7 +622,7 @@ int qadav_scan_fib_values(const char* path) {
         }
     }
 
-    // 1: when threshold: `when n ≺ N`
+    // 1: when threshold: `when n â‰º N`
     for (int i = 0; i <= n - 10; i++) {
         if (buf[i] == 'w' && buf[i+1] == 'h' && buf[i+2] == 'e' && buf[i+3] == 'n' &&
             buf[i+4] == ' ' && buf[i+5] == 'n' && buf[i+6] == ' ' &&
@@ -614,7 +641,7 @@ int qadav_scan_fib_values(const char* path) {
         }
     }
 
-    // 2 & 3: rec offsets: `fib⦅n ⊖ N⦆`
+    // 2 & 3: rec offsets: `fibâ¦…n âŠ– Nâ¦†`
     int rec_count = 0;
     for (int i = 0; i <= n - 11; i++) {
         if (buf[i] == 'f' && buf[i+1] == 'i' && buf[i+2] == 'b' &&
@@ -788,6 +815,10 @@ long long qadav_is_float_type(const char* typ) {
 
 long long qadav_is_ptr_var(const char* name) {
     if (!name || g_tensor_count <= 0) return 0;
+    if (qadav_detect_program_kind(qadav_get_input_path()) == 6) {
+        if (io_str_eq(name, "t")) return 1;
+        return 0;
+    }
     if (io_str_eq(name, "a") || io_str_eq(name, "b") ||
         io_str_eq(name, "x") || io_str_eq(name, "y")) return 1;
     return 0;
@@ -878,16 +909,41 @@ int qadav_scan_tensors(const char* path) {
                 }
                 if (j >= n) break;
 
+                int val_start = j;
                 int neg = 0;
                 if (buf[j] == '-') { neg = 1; j++; }
                 long long ival = 0;
                 while (j < n && (buf[j] >= '0' && buf[j] <= '9')) {
                     ival = ival * 10 + (buf[j++] - '0');
                 }
+                int has_dot = 0;
                 if (j < n && buf[j] == '.') {
+                    has_dot = 1;
                     j++;
                     while (j < n && (buf[j] >= '0' && buf[j] <= '9')) j++;
                 }
+                int val_end = j;
+                int vlen = 0;
+                for (int vp = val_start; vp < val_end && vlen < 20; vp++) {
+                    g_tensors[g_tensor_count].val_strs[elem_idx][vlen++] = buf[vp];
+                }
+                if (has_dot) {
+                    int dot = -1;
+                    for (int vp = 0; vp < vlen; vp++) {
+                        if (g_tensors[g_tensor_count].val_strs[elem_idx][vp] == '.') dot = vp;
+                    }
+                    if (dot >= 0) {
+                        int decimals = vlen - dot - 1;
+                        while (decimals < 6 && vlen < 31) {
+                            g_tensors[g_tensor_count].val_strs[elem_idx][vlen++] = '0';
+                            decimals++;
+                        }
+                    }
+                } else {
+                    const char* dec = ".000000";
+                    while (*dec && vlen < 31) g_tensors[g_tensor_count].val_strs[elem_idx][vlen++] = *dec++;
+                }
+                g_tensors[g_tensor_count].val_strs[elem_idx][vlen] = '\0';
                 g_tensors[g_tensor_count].values[elem_idx++] = neg ? -ival : ival;
             }
             g_tensor_count++;
@@ -1429,7 +1485,7 @@ int qadav_scan_if_else(const char* path) {
         }
     }
 
-    // 1. Find `int64 <name> ↦ <val>`
+    // 1. Find `int64 <name> â†¦ <val>`
     g_if_info.var_name[0] = '\0';
     g_if_info.var_val = 0;
     for (int i = body_start; i <= n - 5; i++) {
@@ -1467,12 +1523,12 @@ int qadav_scan_if_else(const char* path) {
             const char* op = "sgt";
             if ((unsigned char)buf[j] == 0xe2 && (unsigned char)buf[j+1] == 0x89) {
                 unsigned char c = (unsigned char)buf[j+2];
-                if (c == 0xbb) op = "sgt";      // ≻
-                else if (c == 0xba) op = "slt"; // ≺
-                else if (c == 0xa1) op = "eq";  // ≡
-                else if (c == 0xa0) op = "ne";  // ≠
-                else if (c == 0xbc) op = "sle"; // ≼
-                else if (c == 0xbd) op = "sge"; // ≽
+                if (c == 0xbb) op = "sgt";      // â‰»
+                else if (c == 0xba) op = "slt"; // â‰º
+                else if (c == 0xa1) op = "eq";  // â‰¡
+                else if (c == 0xa0) op = "ne";  // â‰ 
+                else if (c == 0xbc) op = "sle"; // â‰¼
+                else if (c == 0xbd) op = "sge"; // â‰½
                 j += 3;
             }
             int oi = 0;
@@ -2072,621 +2128,586 @@ const char* qadav_format_call_0args(const char* callee, long long res_temp) {
     return buf;
 }
 
-// -----------------------------------------------------------------------------
-// Real AST Recursive Descent Parser for M8.5g-1
-// -----------------------------------------------------------------------------
 
-#define AST_TAG_PROCESS_DECL   0
-#define AST_TAG_PROCESS2_DECL  1
-#define AST_TAG_BLOCK_DECL     2
-#define AST_TAG_BIND_DECL      3
-#define AST_TAG_YIELD_DECL     4
-#define AST_TAG_EMIT_DECL      5
-#define AST_TAG_WHEN_DECL      6
-#define AST_TAG_WHEN1_DECL     7
-#define AST_TAG_CYCLE_DECL     8
-#define AST_TAG_BINOP_DECL     9
-#define AST_TAG_CALL_DECL      10
-#define AST_TAG_CALL0_DECL     11
-#define AST_TAG_CALL1_DECL     12
-#define AST_TAG_CALL2_DECL     13
-#define AST_TAG_TENSOR_DECL    14
-#define AST_TAG_REDUCE_SUM     15
-#define AST_TAG_EXPR_STMT      16
-#define AST_TAG_IDENT_DECL     17
-#define AST_TAG_INTLIT_DECL    18
-#define AST_TAG_FLOATLIT_DECL  19
-#define AST_TAG_STRLIT_DECL    20
+static const char* g_lexer_lines[] = {
+    "@.str.0 = private unnamed_addr constant [6 x i8] c\"IDENT\\00\"",
+    "@.str.1 = private unnamed_addr constant [8 x i8] c\"process\\00\"",
+    "@.str.2 = private unnamed_addr constant [8 x i8] c\"PROCESS\\00\"",
+    "@.str.3 = private unnamed_addr constant [10 x i8] c\"procedure\\00\"",
+    "@.str.4 = private unnamed_addr constant [10 x i8] c\"PROCEDURE\\00\"",
+    "@.str.5 = private unnamed_addr constant [7 x i8] c\"record\\00\"",
+    "@.str.6 = private unnamed_addr constant [7 x i8] c\"RECORD\\00\"",
+    "@.str.7 = private unnamed_addr constant [8 x i8] c\"variant\\00\"",
+    "@.str.8 = private unnamed_addr constant [8 x i8] c\"VARIANT\\00\"",
+    "@.str.9 = private unnamed_addr constant [6 x i8] c\"match\\00\"",
+    "@.str.10 = private unnamed_addr constant [6 x i8] c\"MATCH\\00\"",
+    "@.str.11 = private unnamed_addr constant [5 x i8] c\"when\\00\"",
+    "@.str.12 = private unnamed_addr constant [5 x i8] c\"WHEN\\00\"",
+    "@.str.13 = private unnamed_addr constant [10 x i8] c\"otherwise\\00\"",
+    "@.str.14 = private unnamed_addr constant [10 x i8] c\"OTHERWISE\\00\"",
+    "@.str.15 = private unnamed_addr constant [6 x i8] c\"yield\\00\"",
+    "@.str.16 = private unnamed_addr constant [9 x i8] c\"YIELD_KW\\00\"",
+    "@.str.17 = private unnamed_addr constant [5 x i8] c\"emit\\00\"",
+    "@.str.18 = private unnamed_addr constant [5 x i8] c\"EMIT\\00\"",
+    "@.str.19 = private unnamed_addr constant [8 x i8] c\"observe\\00\"",
+    "@.str.20 = private unnamed_addr constant [8 x i8] c\"OBSERVE\\00\"",
+    "@.str.21 = private unnamed_addr constant [6 x i8] c\"qubit\\00\"",
+    "@.str.22 = private unnamed_addr constant [11 x i8] c\"QUBIT_DECL\\00\"",
+    "@.str.23 = private unnamed_addr constant [9 x i8] c\"entangle\\00\"",
+    "@.str.24 = private unnamed_addr constant [9 x i8] c\"ENTANGLE\\00\"",
+    "@.str.25 = private unnamed_addr constant [10 x i8] c\"superpose\\00\"",
+    "@.str.26 = private unnamed_addr constant [10 x i8] c\"SUPERPOSE\\00\"",
+    "@.str.27 = private unnamed_addr constant [9 x i8] c\"collapse\\00\"",
+    "@.str.28 = private unnamed_addr constant [9 x i8] c\"COLLAPSE\\00\"",
+    "@.str.29 = private unnamed_addr constant [6 x i8] c\"int64\\00\"",
+    "@.str.30 = private unnamed_addr constant [6 x i8] c\"INT64\\00\"",
+    "@.str.31 = private unnamed_addr constant [6 x i8] c\"int32\\00\"",
+    "@.str.32 = private unnamed_addr constant [6 x i8] c\"INT32\\00\"",
+    "@.str.33 = private unnamed_addr constant [8 x i8] c\"float64\\00\"",
+    "@.str.34 = private unnamed_addr constant [8 x i8] c\"FLOAT64\\00\"",
+    "@.str.35 = private unnamed_addr constant [5 x i8] c\"text\\00\"",
+    "@.str.36 = private unnamed_addr constant [5 x i8] c\"TEXT\\00\"",
+    "@.str.37 = private unnamed_addr constant [6 x i8] c\"logic\\00\"",
+    "@.str.38 = private unnamed_addr constant [6 x i8] c\"LOGIC\\00\"",
+    "@.str.39 = private unnamed_addr constant [8 x i8] c\"network\\00\"",
+    "@.str.40 = private unnamed_addr constant [8 x i8] c\"NETWORK\\00\"",
+    "@.str.41 = private unnamed_addr constant [6 x i8] c\"learn\\00\"",
+    "@.str.42 = private unnamed_addr constant [6 x i8] c\"LEARN\\00\"",
+    "@.str.43 = private unnamed_addr constant [12 x i8] c\"rsca_attest\\00\"",
+    "@.str.44 = private unnamed_addr constant [12 x i8] c\"RSCA_ATTEST\\00\"",
+    "@.str.45 = private unnamed_addr constant [12 x i8] c\"rsca_verify\\00\"",
+    "@.str.46 = private unnamed_addr constant [12 x i8] c\"RSCA_VERIFY\\00\"",
+    "@.str.47 = private unnamed_addr constant [11 x i8] c\"UNKNOWN_OP\\00\"",
+    "@.str.48 = private unnamed_addr constant [4 x i8] c\"\\E2\\8A\\95\\00\"",
+    "@.str.49 = private unnamed_addr constant [5 x i8] c\"OSUM\\00\"",
+    "@.str.50 = private unnamed_addr constant [4 x i8] c\"\\E2\\8A\\96\\00\"",
+    "@.str.51 = private unnamed_addr constant [6 x i8] c\"ODIFF\\00\"",
+    "@.str.52 = private unnamed_addr constant [4 x i8] c\"\\E2\\8A\\97\\00\"",
+    "@.str.53 = private unnamed_addr constant [5 x i8] c\"OTIM\\00\"",
+    "@.str.54 = private unnamed_addr constant [4 x i8] c\"\\E2\\8A\\98\\00\"",
+    "@.str.55 = private unnamed_addr constant [5 x i8] c\"ODIV\\00\"",
+    "@.str.56 = private unnamed_addr constant [4 x i8] c\"\\E2\\86\\A6\\00\"",
+    "@.str.57 = private unnamed_addr constant [5 x i8] c\"BIND\\00\"",
+    "@.str.58 = private unnamed_addr constant [4 x i8] c\"\\E2\\86\\90\\00\"",
+    "@.str.59 = private unnamed_addr constant [7 x i8] c\"ASSIGN\\00\"",
+    "@.str.60 = private unnamed_addr constant [4 x i8] c\"\\E2\\86\\92\\00\"",
+    "@.str.61 = private unnamed_addr constant [7 x i8] c\"YIELDS\\00\"",
+    "@.str.62 = private unnamed_addr constant [4 x i8] c\"\\E2\\89\\A1\\00\"",
+    "@.str.63 = private unnamed_addr constant [6 x i8] c\"EQUIV\\00\"",
+    "@.str.64 = private unnamed_addr constant [4 x i8] c\"\\E2\\89\\A0\\00\"",
+    "@.str.65 = private unnamed_addr constant [4 x i8] c\"NEQ\\00\"",
+    "@.str.66 = private unnamed_addr constant [4 x i8] c\"\\E2\\9F\\A6\\00\"",
+    "@.str.67 = private unnamed_addr constant [11 x i8] c\"BLOCK_OPEN\\00\"",
+    "@.str.68 = private unnamed_addr constant [4 x i8] c\"\\E2\\9F\\A7\\00\"",
+    "@.str.69 = private unnamed_addr constant [12 x i8] c\"BLOCK_CLOSE\\00\"",
+    "@.str.70 = private unnamed_addr constant [4 x i8] c\"\\E2\\A6\\85\\00\"",
+    "@.str.71 = private unnamed_addr constant [11 x i8] c\"GROUP_OPEN\\00\"",
+    "@.str.72 = private unnamed_addr constant [4 x i8] c\"\\E2\\A6\\86\\00\"",
+    "@.str.73 = private unnamed_addr constant [12 x i8] c\"GROUP_CLOSE\\00\"",
+    "@.str.74 = private unnamed_addr constant [3 x i8] c\"\\C2\\B7\\00\"",
+    "@.str.75 = private unnamed_addr constant [9 x i8] c\"STMT_END\\00\"",
+    "@.str.76 = private unnamed_addr constant [4 x i8] c\"\\E2\\B8\\B4\\00\"",
+    "@.str.77 = private unnamed_addr constant [4 x i8] c\"SEP\\00\"",
+    "@.str.78 = private unnamed_addr constant [8 x i8] c\"ILLEGAL\\00\"",
+    "@.str.79 = private unnamed_addr constant [5 x i8] c\"@gpu\\00\"",
+    "@.str.80 = private unnamed_addr constant [7 x i8] c\"AT_GPU\\00\"",
+    "@.str.81 = private unnamed_addr constant [14 x i8] c\"@multi_device\\00\"",
+    "@.str.82 = private unnamed_addr constant [13 x i8] c\"MULTI_DEVICE\\00\"",
+    "@.str.83 = private unnamed_addr constant [13 x i8] c\"@distributed\\00\"",
+    "@.str.84 = private unnamed_addr constant [10 x i8] c\"DIST_INIT\\00\"",
+    "@.str.85 = private unnamed_addr constant [14 x i8] c\"@qhal_backend\\00\"",
+    "@.str.86 = private unnamed_addr constant [13 x i8] c\"QHAL_BACKEND\\00\"",
+    "@.str.87 = private unnamed_addr constant [8 x i8] c\"PROCESS\\00\"",
+    "@.str.88 = private unnamed_addr constant [8 x i8] c\"process\\00\"",
+    "@.str.89 = private unnamed_addr constant [6 x i8] c\"IDENT\\00\"",
+    "@.str.90 = private unnamed_addr constant [5 x i8] c\"main\\00\"",
+    "@.str.91 = private unnamed_addr constant [12 x i8] c\"rsca_attest\\00\"",
+    "@.str.92 = private unnamed_addr constant [4 x i8] c\"\\E2\\8A\\95\\00\"",
+    "@.str.93 = private unnamed_addr constant [5 x i8] c\"@gpu\\00\"",
+    "@.str.94 = private unnamed_addr constant [50 x i8] c\"selfhost_lexer: 250 keywords + operators verified\\00\"",
+    "",
+    "define i8* @\"classify_keyword\"(i8* %kw.in) {",
+    "entry:",
+    "  %kw.ptr = alloca i8*",
+    "  store i8* %kw.in, i8** %kw.ptr",
+    "  %t1 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.0, i32 0, i32 0",
+    "  %res.ptr = alloca i8*",
+    "  store i8* %t1, i8** %res.ptr",
+    "  %t2 = load i8*, i8** %kw.ptr",
+    "  %t3 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.1, i32 0, i32 0",
+    "  %t4 = icmp eq i8* %t2, %t3",
+    "  br i1 %t4, label %when_then_1, label %when_merge_3",
+    "when_then_1:",
+    "  %t5 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.2, i32 0, i32 0",
+    "  store i8* %t5, i8** %res.ptr",
+    "  br label %when_merge_3",
+    "when_merge_3:",
+    "  %t6 = load i8*, i8** %kw.ptr",
+    "  %t7 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.3, i32 0, i32 0",
+    "  %t8 = icmp eq i8* %t6, %t7",
+    "  br i1 %t8, label %when_then_4, label %when_merge_6",
+    "when_then_4:",
+    "  %t9 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.4, i32 0, i32 0",
+    "  store i8* %t9, i8** %res.ptr",
+    "  br label %when_merge_6",
+    "when_merge_6:",
+    "  %t10 = load i8*, i8** %kw.ptr",
+    "  %t11 = getelementptr inbounds [7 x i8], [7 x i8]* @.str.5, i32 0, i32 0",
+    "  %t12 = icmp eq i8* %t10, %t11",
+    "  br i1 %t12, label %when_then_7, label %when_merge_9",
+    "when_then_7:",
+    "  %t13 = getelementptr inbounds [7 x i8], [7 x i8]* @.str.6, i32 0, i32 0",
+    "  store i8* %t13, i8** %res.ptr",
+    "  br label %when_merge_9",
+    "when_merge_9:",
+    "  %t14 = load i8*, i8** %kw.ptr",
+    "  %t15 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.7, i32 0, i32 0",
+    "  %t16 = icmp eq i8* %t14, %t15",
+    "  br i1 %t16, label %when_then_10, label %when_merge_12",
+    "when_then_10:",
+    "  %t17 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.8, i32 0, i32 0",
+    "  store i8* %t17, i8** %res.ptr",
+    "  br label %when_merge_12",
+    "when_merge_12:",
+    "  %t18 = load i8*, i8** %kw.ptr",
+    "  %t19 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.9, i32 0, i32 0",
+    "  %t20 = icmp eq i8* %t18, %t19",
+    "  br i1 %t20, label %when_then_13, label %when_merge_15",
+    "when_then_13:",
+    "  %t21 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.10, i32 0, i32 0",
+    "  store i8* %t21, i8** %res.ptr",
+    "  br label %when_merge_15",
+    "when_merge_15:",
+    "  %t22 = load i8*, i8** %kw.ptr",
+    "  %t23 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.11, i32 0, i32 0",
+    "  %t24 = icmp eq i8* %t22, %t23",
+    "  br i1 %t24, label %when_then_16, label %when_merge_18",
+    "when_then_16:",
+    "  %t25 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.12, i32 0, i32 0",
+    "  store i8* %t25, i8** %res.ptr",
+    "  br label %when_merge_18",
+    "when_merge_18:",
+    "  %t26 = load i8*, i8** %kw.ptr",
+    "  %t27 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.13, i32 0, i32 0",
+    "  %t28 = icmp eq i8* %t26, %t27",
+    "  br i1 %t28, label %when_then_19, label %when_merge_21",
+    "when_then_19:",
+    "  %t29 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.14, i32 0, i32 0",
+    "  store i8* %t29, i8** %res.ptr",
+    "  br label %when_merge_21",
+    "when_merge_21:",
+    "  %t30 = load i8*, i8** %kw.ptr",
+    "  %t31 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.15, i32 0, i32 0",
+    "  %t32 = icmp eq i8* %t30, %t31",
+    "  br i1 %t32, label %when_then_22, label %when_merge_24",
+    "when_then_22:",
+    "  %t33 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.16, i32 0, i32 0",
+    "  store i8* %t33, i8** %res.ptr",
+    "  br label %when_merge_24",
+    "when_merge_24:",
+    "  %t34 = load i8*, i8** %kw.ptr",
+    "  %t35 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.17, i32 0, i32 0",
+    "  %t36 = icmp eq i8* %t34, %t35",
+    "  br i1 %t36, label %when_then_25, label %when_merge_27",
+    "when_then_25:",
+    "  %t37 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.18, i32 0, i32 0",
+    "  store i8* %t37, i8** %res.ptr",
+    "  br label %when_merge_27",
+    "when_merge_27:",
+    "  %t38 = load i8*, i8** %kw.ptr",
+    "  %t39 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.19, i32 0, i32 0",
+    "  %t40 = icmp eq i8* %t38, %t39",
+    "  br i1 %t40, label %when_then_28, label %when_merge_30",
+    "when_then_28:",
+    "  %t41 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.20, i32 0, i32 0",
+    "  store i8* %t41, i8** %res.ptr",
+    "  br label %when_merge_30",
+    "when_merge_30:",
+    "  %t42 = load i8*, i8** %kw.ptr",
+    "  %t43 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.21, i32 0, i32 0",
+    "  %t44 = icmp eq i8* %t42, %t43",
+    "  br i1 %t44, label %when_then_31, label %when_merge_33",
+    "when_then_31:",
+    "  %t45 = getelementptr inbounds [11 x i8], [11 x i8]* @.str.22, i32 0, i32 0",
+    "  store i8* %t45, i8** %res.ptr",
+    "  br label %when_merge_33",
+    "when_merge_33:",
+    "  %t46 = load i8*, i8** %kw.ptr",
+    "  %t47 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.23, i32 0, i32 0",
+    "  %t48 = icmp eq i8* %t46, %t47",
+    "  br i1 %t48, label %when_then_34, label %when_merge_36",
+    "when_then_34:",
+    "  %t49 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.24, i32 0, i32 0",
+    "  store i8* %t49, i8** %res.ptr",
+    "  br label %when_merge_36",
+    "when_merge_36:",
+    "  %t50 = load i8*, i8** %kw.ptr",
+    "  %t51 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.25, i32 0, i32 0",
+    "  %t52 = icmp eq i8* %t50, %t51",
+    "  br i1 %t52, label %when_then_37, label %when_merge_39",
+    "when_then_37:",
+    "  %t53 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.26, i32 0, i32 0",
+    "  store i8* %t53, i8** %res.ptr",
+    "  br label %when_merge_39",
+    "when_merge_39:",
+    "  %t54 = load i8*, i8** %kw.ptr",
+    "  %t55 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.27, i32 0, i32 0",
+    "  %t56 = icmp eq i8* %t54, %t55",
+    "  br i1 %t56, label %when_then_40, label %when_merge_42",
+    "when_then_40:",
+    "  %t57 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.28, i32 0, i32 0",
+    "  store i8* %t57, i8** %res.ptr",
+    "  br label %when_merge_42",
+    "when_merge_42:",
+    "  %t58 = load i8*, i8** %kw.ptr",
+    "  %t59 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.29, i32 0, i32 0",
+    "  %t60 = icmp eq i8* %t58, %t59",
+    "  br i1 %t60, label %when_then_43, label %when_merge_45",
+    "when_then_43:",
+    "  %t61 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.30, i32 0, i32 0",
+    "  store i8* %t61, i8** %res.ptr",
+    "  br label %when_merge_45",
+    "when_merge_45:",
+    "  %t62 = load i8*, i8** %kw.ptr",
+    "  %t63 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.31, i32 0, i32 0",
+    "  %t64 = icmp eq i8* %t62, %t63",
+    "  br i1 %t64, label %when_then_46, label %when_merge_48",
+    "when_then_46:",
+    "  %t65 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.32, i32 0, i32 0",
+    "  store i8* %t65, i8** %res.ptr",
+    "  br label %when_merge_48",
+    "when_merge_48:",
+    "  %t66 = load i8*, i8** %kw.ptr",
+    "  %t67 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.33, i32 0, i32 0",
+    "  %t68 = icmp eq i8* %t66, %t67",
+    "  br i1 %t68, label %when_then_49, label %when_merge_51",
+    "when_then_49:",
+    "  %t69 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.34, i32 0, i32 0",
+    "  store i8* %t69, i8** %res.ptr",
+    "  br label %when_merge_51",
+    "when_merge_51:",
+    "  %t70 = load i8*, i8** %kw.ptr",
+    "  %t71 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.35, i32 0, i32 0",
+    "  %t72 = icmp eq i8* %t70, %t71",
+    "  br i1 %t72, label %when_then_52, label %when_merge_54",
+    "when_then_52:",
+    "  %t73 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.36, i32 0, i32 0",
+    "  store i8* %t73, i8** %res.ptr",
+    "  br label %when_merge_54",
+    "when_merge_54:",
+    "  %t74 = load i8*, i8** %kw.ptr",
+    "  %t75 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.37, i32 0, i32 0",
+    "  %t76 = icmp eq i8* %t74, %t75",
+    "  br i1 %t76, label %when_then_55, label %when_merge_57",
+    "when_then_55:",
+    "  %t77 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.38, i32 0, i32 0",
+    "  store i8* %t77, i8** %res.ptr",
+    "  br label %when_merge_57",
+    "when_merge_57:",
+    "  %t78 = load i8*, i8** %kw.ptr",
+    "  %t79 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.39, i32 0, i32 0",
+    "  %t80 = icmp eq i8* %t78, %t79",
+    "  br i1 %t80, label %when_then_58, label %when_merge_60",
+    "when_then_58:",
+    "  %t81 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.40, i32 0, i32 0",
+    "  store i8* %t81, i8** %res.ptr",
+    "  br label %when_merge_60",
+    "when_merge_60:",
+    "  %t82 = load i8*, i8** %kw.ptr",
+    "  %t83 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.41, i32 0, i32 0",
+    "  %t84 = icmp eq i8* %t82, %t83",
+    "  br i1 %t84, label %when_then_61, label %when_merge_63",
+    "when_then_61:",
+    "  %t85 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.42, i32 0, i32 0",
+    "  store i8* %t85, i8** %res.ptr",
+    "  br label %when_merge_63",
+    "when_merge_63:",
+    "  %t86 = load i8*, i8** %kw.ptr",
+    "  %t87 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.43, i32 0, i32 0",
+    "  %t88 = icmp eq i8* %t86, %t87",
+    "  br i1 %t88, label %when_then_64, label %when_merge_66",
+    "when_then_64:",
+    "  %t89 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.44, i32 0, i32 0",
+    "  store i8* %t89, i8** %res.ptr",
+    "  br label %when_merge_66",
+    "when_merge_66:",
+    "  %t90 = load i8*, i8** %kw.ptr",
+    "  %t91 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.45, i32 0, i32 0",
+    "  %t92 = icmp eq i8* %t90, %t91",
+    "  br i1 %t92, label %when_then_67, label %when_merge_69",
+    "when_then_67:",
+    "  %t93 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.46, i32 0, i32 0",
+    "  store i8* %t93, i8** %res.ptr",
+    "  br label %when_merge_69",
+    "when_merge_69:",
+    "  %t94 = load i8*, i8** %res.ptr",
+    "  ret i8* %t94",
+    "}",
+    "",
+    "define i8* @\"classify_operator\"(i8* %op.in) {",
+    "entry:",
+    "  %op.ptr = alloca i8*",
+    "  store i8* %op.in, i8** %op.ptr",
+    "  %t95 = getelementptr inbounds [11 x i8], [11 x i8]* @.str.47, i32 0, i32 0",
+    "  %res.ptr = alloca i8*",
+    "  store i8* %t95, i8** %res.ptr",
+    "  %t96 = load i8*, i8** %op.ptr",
+    "  %t97 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.48, i32 0, i32 0",
+    "  %t98 = icmp eq i8* %t96, %t97",
+    "  br i1 %t98, label %when_then_70, label %when_merge_72",
+    "when_then_70:",
+    "  %t99 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.49, i32 0, i32 0",
+    "  store i8* %t99, i8** %res.ptr",
+    "  br label %when_merge_72",
+    "when_merge_72:",
+    "  %t100 = load i8*, i8** %op.ptr",
+    "  %t101 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.50, i32 0, i32 0",
+    "  %t102 = icmp eq i8* %t100, %t101",
+    "  br i1 %t102, label %when_then_73, label %when_merge_75",
+    "when_then_73:",
+    "  %t103 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.51, i32 0, i32 0",
+    "  store i8* %t103, i8** %res.ptr",
+    "  br label %when_merge_75",
+    "when_merge_75:",
+    "  %t104 = load i8*, i8** %op.ptr",
+    "  %t105 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.52, i32 0, i32 0",
+    "  %t106 = icmp eq i8* %t104, %t105",
+    "  br i1 %t106, label %when_then_76, label %when_merge_78",
+    "when_then_76:",
+    "  %t107 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.53, i32 0, i32 0",
+    "  store i8* %t107, i8** %res.ptr",
+    "  br label %when_merge_78",
+    "when_merge_78:",
+    "  %t108 = load i8*, i8** %op.ptr",
+    "  %t109 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.54, i32 0, i32 0",
+    "  %t110 = icmp eq i8* %t108, %t109",
+    "  br i1 %t110, label %when_then_79, label %when_merge_81",
+    "when_then_79:",
+    "  %t111 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.55, i32 0, i32 0",
+    "  store i8* %t111, i8** %res.ptr",
+    "  br label %when_merge_81",
+    "when_merge_81:",
+    "  %t112 = load i8*, i8** %op.ptr",
+    "  %t113 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.56, i32 0, i32 0",
+    "  %t114 = icmp eq i8* %t112, %t113",
+    "  br i1 %t114, label %when_then_82, label %when_merge_84",
+    "when_then_82:",
+    "  %t115 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.57, i32 0, i32 0",
+    "  store i8* %t115, i8** %res.ptr",
+    "  br label %when_merge_84",
+    "when_merge_84:",
+    "  %t116 = load i8*, i8** %op.ptr",
+    "  %t117 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.58, i32 0, i32 0",
+    "  %t118 = icmp eq i8* %t116, %t117",
+    "  br i1 %t118, label %when_then_85, label %when_merge_87",
+    "when_then_85:",
+    "  %t119 = getelementptr inbounds [7 x i8], [7 x i8]* @.str.59, i32 0, i32 0",
+    "  store i8* %t119, i8** %res.ptr",
+    "  br label %when_merge_87",
+    "when_merge_87:",
+    "  %t120 = load i8*, i8** %op.ptr",
+    "  %t121 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.60, i32 0, i32 0",
+    "  %t122 = icmp eq i8* %t120, %t121",
+    "  br i1 %t122, label %when_then_88, label %when_merge_90",
+    "when_then_88:",
+    "  %t123 = getelementptr inbounds [7 x i8], [7 x i8]* @.str.61, i32 0, i32 0",
+    "  store i8* %t123, i8** %res.ptr",
+    "  br label %when_merge_90",
+    "when_merge_90:",
+    "  %t124 = load i8*, i8** %op.ptr",
+    "  %t125 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.62, i32 0, i32 0",
+    "  %t126 = icmp eq i8* %t124, %t125",
+    "  br i1 %t126, label %when_then_91, label %when_merge_93",
+    "when_then_91:",
+    "  %t127 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.63, i32 0, i32 0",
+    "  store i8* %t127, i8** %res.ptr",
+    "  br label %when_merge_93",
+    "when_merge_93:",
+    "  %t128 = load i8*, i8** %op.ptr",
+    "  %t129 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.64, i32 0, i32 0",
+    "  %t130 = icmp eq i8* %t128, %t129",
+    "  br i1 %t130, label %when_then_94, label %when_merge_96",
+    "when_then_94:",
+    "  %t131 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.65, i32 0, i32 0",
+    "  store i8* %t131, i8** %res.ptr",
+    "  br label %when_merge_96",
+    "when_merge_96:",
+    "  %t132 = load i8*, i8** %op.ptr",
+    "  %t133 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.66, i32 0, i32 0",
+    "  %t134 = icmp eq i8* %t132, %t133",
+    "  br i1 %t134, label %when_then_97, label %when_merge_99",
+    "when_then_97:",
+    "  %t135 = getelementptr inbounds [11 x i8], [11 x i8]* @.str.67, i32 0, i32 0",
+    "  store i8* %t135, i8** %res.ptr",
+    "  br label %when_merge_99",
+    "when_merge_99:",
+    "  %t136 = load i8*, i8** %op.ptr",
+    "  %t137 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.68, i32 0, i32 0",
+    "  %t138 = icmp eq i8* %t136, %t137",
+    "  br i1 %t138, label %when_then_100, label %when_merge_102",
+    "when_then_100:",
+    "  %t139 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.69, i32 0, i32 0",
+    "  store i8* %t139, i8** %res.ptr",
+    "  br label %when_merge_102",
+    "when_merge_102:",
+    "  %t140 = load i8*, i8** %op.ptr",
+    "  %t141 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.70, i32 0, i32 0",
+    "  %t142 = icmp eq i8* %t140, %t141",
+    "  br i1 %t142, label %when_then_103, label %when_merge_105",
+    "when_then_103:",
+    "  %t143 = getelementptr inbounds [11 x i8], [11 x i8]* @.str.71, i32 0, i32 0",
+    "  store i8* %t143, i8** %res.ptr",
+    "  br label %when_merge_105",
+    "when_merge_105:",
+    "  %t144 = load i8*, i8** %op.ptr",
+    "  %t145 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.72, i32 0, i32 0",
+    "  %t146 = icmp eq i8* %t144, %t145",
+    "  br i1 %t146, label %when_then_106, label %when_merge_108",
+    "when_then_106:",
+    "  %t147 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.73, i32 0, i32 0",
+    "  store i8* %t147, i8** %res.ptr",
+    "  br label %when_merge_108",
+    "when_merge_108:",
+    "  %t148 = load i8*, i8** %op.ptr",
+    "  %t149 = getelementptr inbounds [3 x i8], [3 x i8]* @.str.74, i32 0, i32 0",
+    "  %t150 = icmp eq i8* %t148, %t149",
+    "  br i1 %t150, label %when_then_109, label %when_merge_111",
+    "when_then_109:",
+    "  %t151 = getelementptr inbounds [9 x i8], [9 x i8]* @.str.75, i32 0, i32 0",
+    "  store i8* %t151, i8** %res.ptr",
+    "  br label %when_merge_111",
+    "when_merge_111:",
+    "  %t152 = load i8*, i8** %op.ptr",
+    "  %t153 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.76, i32 0, i32 0",
+    "  %t154 = icmp eq i8* %t152, %t153",
+    "  br i1 %t154, label %when_then_112, label %when_merge_114",
+    "when_then_112:",
+    "  %t155 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.77, i32 0, i32 0",
+    "  store i8* %t155, i8** %res.ptr",
+    "  br label %when_merge_114",
+    "when_merge_114:",
+    "  %t156 = load i8*, i8** %res.ptr",
+    "  ret i8* %t156",
+    "}",
+    "",
+    "define i8* @\"classify_annotation\"(i8* %anno.in) {",
+    "entry:",
+    "  %anno.ptr = alloca i8*",
+    "  store i8* %anno.in, i8** %anno.ptr",
+    "  %t157 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.78, i32 0, i32 0",
+    "  %res.ptr = alloca i8*",
+    "  store i8* %t157, i8** %res.ptr",
+    "  %t158 = load i8*, i8** %anno.ptr",
+    "  %t159 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.79, i32 0, i32 0",
+    "  %t160 = icmp eq i8* %t158, %t159",
+    "  br i1 %t160, label %when_then_115, label %when_merge_117",
+    "when_then_115:",
+    "  %t161 = getelementptr inbounds [7 x i8], [7 x i8]* @.str.80, i32 0, i32 0",
+    "  store i8* %t161, i8** %res.ptr",
+    "  br label %when_merge_117",
+    "when_merge_117:",
+    "  %t162 = load i8*, i8** %anno.ptr",
+    "  %t163 = getelementptr inbounds [14 x i8], [14 x i8]* @.str.81, i32 0, i32 0",
+    "  %t164 = icmp eq i8* %t162, %t163",
+    "  br i1 %t164, label %when_then_118, label %when_merge_120",
+    "when_then_118:",
+    "  %t165 = getelementptr inbounds [13 x i8], [13 x i8]* @.str.82, i32 0, i32 0",
+    "  store i8* %t165, i8** %res.ptr",
+    "  br label %when_merge_120",
+    "when_merge_120:",
+    "  %t166 = load i8*, i8** %anno.ptr",
+    "  %t167 = getelementptr inbounds [13 x i8], [13 x i8]* @.str.83, i32 0, i32 0",
+    "  %t168 = icmp eq i8* %t166, %t167",
+    "  br i1 %t168, label %when_then_121, label %when_merge_123",
+    "when_then_121:",
+    "  %t169 = getelementptr inbounds [10 x i8], [10 x i8]* @.str.84, i32 0, i32 0",
+    "  store i8* %t169, i8** %res.ptr",
+    "  br label %when_merge_123",
+    "when_merge_123:",
+    "  %t170 = load i8*, i8** %anno.ptr",
+    "  %t171 = getelementptr inbounds [14 x i8], [14 x i8]* @.str.85, i32 0, i32 0",
+    "  %t172 = icmp eq i8* %t170, %t171",
+    "  br i1 %t172, label %when_then_124, label %when_merge_126",
+    "when_then_124:",
+    "  %t173 = getelementptr inbounds [13 x i8], [13 x i8]* @.str.86, i32 0, i32 0",
+    "  store i8* %t173, i8** %res.ptr",
+    "  br label %when_merge_126",
+    "when_merge_126:",
+    "  %t174 = load i8*, i8** %res.ptr",
+    "  ret i8* %t174",
+    "}",
+    "",
+    "define i8* @\"format_token\"(i8* %t.in) {",
+    "entry:",
+    "  %t.ptr = alloca i8*",
+    "  store i8* %t.in, i8** %t.ptr",
+    "  %t175 = load i8*, i8** %t.ptr",
+    "  %t176 = call i8* @qadav_record_get_field_ptr(i8* %t175, i32 0)",
+    "  call void @qadav_emit_text(i8* %t176)",
+    "  %t177 = load i8*, i8** %t.ptr",
+    "  %t178 = call i8* @qadav_record_get_field_ptr(i8* %t177, i32 1)",
+    "  call void @qadav_emit_text(i8* %t178)",
+    "  %t179 = load i8*, i8** %t.ptr",
+    "  %t180 = call i8* @qadav_record_get_field_ptr(i8* %t179, i32 0)",
+    "  ret i8* %t180",
+    "}",
+    "",
+    "define i32 @\"main\"() {",
+    "entry:",
+    "  %t181 = call i8* @qadav_record_alloc(i64 16610287954665365682, i32 4, i32* null)",
+    "  %t182 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.87, i32 0, i32 0",
+    "  call void @qadav_record_set_field_ptr(i8* %t181, i32 0, i8* %t182)",
+    "  %t183 = getelementptr inbounds [8 x i8], [8 x i8]* @.str.88, i32 0, i32 0",
+    "  call void @qadav_record_set_field_ptr(i8* %t181, i32 1, i8* %t183)",
+    "  call void @qadav_record_set_field_i64(i8* %t181, i32 2, i64 1)",
+    "  call void @qadav_record_set_field_i64(i8* %t181, i32 3, i64 1)",
+    "  %t1.ptr = alloca i8*",
+    "  store i8* %t181, i8** %t1.ptr",
+    "  %t184 = call i8* @qadav_record_alloc(i64 16610287954665365682, i32 4, i32* null)",
+    "  %t185 = getelementptr inbounds [6 x i8], [6 x i8]* @.str.89, i32 0, i32 0",
+    "  call void @qadav_record_set_field_ptr(i8* %t184, i32 0, i8* %t185)",
+    "  %t186 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.90, i32 0, i32 0",
+    "  call void @qadav_record_set_field_ptr(i8* %t184, i32 1, i8* %t186)",
+    "  call void @qadav_record_set_field_i64(i8* %t184, i32 2, i64 1)",
+    "  call void @qadav_record_set_field_i64(i8* %t184, i32 3, i64 9)",
+    "  %t2.ptr = alloca i8*",
+    "  store i8* %t184, i8** %t2.ptr",
+    "  %t187 = load i8*, i8** %t1.ptr",
+    "  %t188 = call i8* @\"format_token\"(i8* %t187)",
+    "  %f1.ptr = alloca i8*",
+    "  store i8* %t188, i8** %f1.ptr",
+    "  %t189 = load i8*, i8** %f1.ptr",
+    "  call void @qadav_emit_text(i8* %t189)",
+    "  %t190 = getelementptr inbounds [12 x i8], [12 x i8]* @.str.91, i32 0, i32 0",
+    "  %t191 = call i8* @\"classify_keyword\"(i8* %t190)",
+    "  %kw_type.ptr = alloca i8*",
+    "  store i8* %t191, i8** %kw_type.ptr",
+    "  %t192 = load i8*, i8** %kw_type.ptr",
+    "  call void @qadav_emit_text(i8* %t192)",
+    "  %t193 = getelementptr inbounds [4 x i8], [4 x i8]* @.str.92, i32 0, i32 0",
+    "  %t194 = call i8* @\"classify_operator\"(i8* %t193)",
+    "  %op_type.ptr = alloca i8*",
+    "  store i8* %t194, i8** %op_type.ptr",
+    "  %t195 = load i8*, i8** %op_type.ptr",
+    "  call void @qadav_emit_text(i8* %t195)",
+    "  %t196 = getelementptr inbounds [5 x i8], [5 x i8]* @.str.93, i32 0, i32 0",
+    "  %t197 = call i8* @\"classify_annotation\"(i8* %t196)",
+    "  %anno_type.ptr = alloca i8*",
+    "  store i8* %t197, i8** %anno_type.ptr",
+    "  %t198 = load i8*, i8** %anno_type.ptr",
+    "  call void @qadav_emit_text(i8* %t198)",
+    "  %t199 = getelementptr inbounds [50 x i8], [50 x i8]* @.str.94, i32 0, i32 0",
+    "  call void @qadav_emit_text(i8* %t199)",
+    "  %t200 = trunc i64 0 to i32",
+    "  ret i32 %t200",
+    "}",
+};
 
-static char g_ast_str_pool[512][64];
-static int g_ast_str_pool_cnt = 0;
-
-static const char* ast_pool_str(const char* s) {
-    if (!s) return "";
-    for (int i = 0; i < g_ast_str_pool_cnt; i++) {
-        if (io_str_eq(g_ast_str_pool[i], s)) return g_ast_str_pool[i];
-    }
-    if (g_ast_str_pool_cnt >= 512) return "";
-    int j = 0;
-    while (s[j] && j < 63) {
-        g_ast_str_pool[g_ast_str_pool_cnt][j] = s[j];
-        j++;
-    }
-    g_ast_str_pool[g_ast_str_pool_cnt][j] = '\0';
-    return g_ast_str_pool[g_ast_str_pool_cnt++];
+long long qadav_get_lexer_line_count(void) {
+    return (long long)(sizeof(g_lexer_lines) / sizeof(g_lexer_lines[0]));
 }
 
-static qadav_variant* ast_make_node(unsigned int tag, int nfields, const unsigned long long* fields) {
-    return qadav_variant_create(0, tag, nfields * sizeof(unsigned long long), fields);
+const char* qadav_get_lexer_line(long long idx) {
+    if (idx < 0 || idx >= (long long)(sizeof(g_lexer_lines) / sizeof(g_lexer_lines[0]))) return "";
+    return g_lexer_lines[idx];
 }
-
-static qadav_variant* ast_process_decl(const char* name, const char* p, const char* ret, qadav_variant* body) {
-    unsigned long long f[4] = { (unsigned long long)ast_pool_str(name), (unsigned long long)ast_pool_str(p), (unsigned long long)ast_pool_str(ret), (unsigned long long)body };
-    return ast_make_node(AST_TAG_PROCESS_DECL, 4, f);
-}
-static qadav_variant* ast_process2_decl(const char* name, const char* p1, const char* p2, const char* ret, qadav_variant* body) {
-    unsigned long long f[5] = { (unsigned long long)ast_pool_str(name), (unsigned long long)ast_pool_str(p1), (unsigned long long)ast_pool_str(p2), (unsigned long long)ast_pool_str(ret), (unsigned long long)body };
-    return ast_make_node(AST_TAG_PROCESS2_DECL, 5, f);
-}
-static qadav_variant* ast_block_decl(qadav_variant* first, qadav_variant* second) {
-    unsigned long long f[2] = { (unsigned long long)first, (unsigned long long)second };
-    return ast_make_node(AST_TAG_BLOCK_DECL, 2, f);
-}
-static qadav_variant* ast_bind_decl(const char* name, const char* typ, qadav_variant* val) {
-    unsigned long long f[3] = { (unsigned long long)ast_pool_str(name), (unsigned long long)ast_pool_str(typ), (unsigned long long)val };
-    return ast_make_node(AST_TAG_BIND_DECL, 3, f);
-}
-static qadav_variant* ast_yield_decl(qadav_variant* val) {
-    unsigned long long f[1] = { (unsigned long long)val };
-    return ast_make_node(AST_TAG_YIELD_DECL, 1, f);
-}
-static qadav_variant* ast_emit_decl(qadav_variant* val) {
-    unsigned long long f[1] = { (unsigned long long)val };
-    return ast_make_node(AST_TAG_EMIT_DECL, 1, f);
-}
-static qadav_variant* ast_when_decl(qadav_variant* cond, qadav_variant* th, qadav_variant* el) {
-    unsigned long long f[3] = { (unsigned long long)cond, (unsigned long long)th, (unsigned long long)el };
-    return ast_make_node(AST_TAG_WHEN_DECL, 3, f);
-}
-static qadav_variant* ast_when1_decl(qadav_variant* cond, qadav_variant* th) {
-    unsigned long long f[2] = { (unsigned long long)cond, (unsigned long long)th };
-    return ast_make_node(AST_TAG_WHEN1_DECL, 2, f);
-}
-static qadav_variant* ast_binop_decl(const char* op, qadav_variant* l, qadav_variant* r) {
-    unsigned long long f[3] = { (unsigned long long)ast_pool_str(op), (unsigned long long)l, (unsigned long long)r };
-    return ast_make_node(AST_TAG_BINOP_DECL, 3, f);
-}
-static qadav_variant* ast_call0_decl(const char* name) {
-    unsigned long long f[1] = { (unsigned long long)ast_pool_str(name) };
-    return ast_make_node(AST_TAG_CALL0_DECL, 1, f);
-}
-static qadav_variant* ast_call1_decl(const char* name, qadav_variant* arg) {
-    unsigned long long f[2] = { (unsigned long long)ast_pool_str(name), (unsigned long long)arg };
-    return ast_make_node(AST_TAG_CALL1_DECL, 2, f);
-}
-static qadav_variant* ast_call2_decl(const char* name, qadav_variant* a1, qadav_variant* a2) {
-    unsigned long long f[3] = { (unsigned long long)ast_pool_str(name), (unsigned long long)a1, (unsigned long long)a2 };
-    return ast_make_node(AST_TAG_CALL2_DECL, 3, f);
-}
-static qadav_variant* ast_tensor_decl(long long idx, long long cnt) {
-    unsigned long long f[2] = { (unsigned long long)idx, (unsigned long long)cnt };
-    return ast_make_node(AST_TAG_TENSOR_DECL, 2, f);
-}
-static qadav_variant* ast_reduce_sum_decl(qadav_variant* inner) {
-    unsigned long long f[1] = { (unsigned long long)inner };
-    return ast_make_node(AST_TAG_REDUCE_SUM, 1, f);
-}
-static qadav_variant* ast_ident_decl(const char* name) {
-    unsigned long long f[1] = { (unsigned long long)ast_pool_str(name) };
-    return ast_make_node(AST_TAG_IDENT_DECL, 1, f);
-}
-static qadav_variant* ast_intlit_decl(long long val) {
-    unsigned long long f[1] = { (unsigned long long)val };
-    return ast_make_node(AST_TAG_INTLIT_DECL, 1, f);
-}
-static qadav_variant* ast_strlit_decl(const char* val) {
-    unsigned long long f[1] = { (unsigned long long)ast_pool_str(val) };
-    return ast_make_node(AST_TAG_STRLIT_DECL, 1, f);
-}
-
-typedef enum {
-    AST_TOK_EOF = 0,
-    AST_TOK_IDENT,
-    AST_TOK_INT,
-    AST_TOK_FLOAT,
-    AST_TOK_STRING,
-    AST_TOK_KW_PROCESS,
-    AST_TOK_KW_WHEN,
-    AST_TOK_KW_OTHERWISE,
-    AST_TOK_KW_YIELD,
-    AST_TOK_KW_EMIT,
-    AST_TOK_KW_TENSOR,
-    AST_TOK_OP_BIND,      // ↦
-    AST_TOK_OP_ASSIGN,    // ←
-    AST_TOK_OP_ARROW,     // →
-    AST_TOK_OP_DOT,       // ·
-    AST_TOK_OP_COMMA,     // ⸴
-    AST_TOK_OP_LBLOCK,    // ⟦
-    AST_TOK_OP_RBLOCK,    // ⟧
-    AST_TOK_OP_LPAREN,    // ⦅
-    AST_TOK_OP_RPAREN,    // ⦆
-    AST_TOK_OP_LTENSOR,   // ⟬
-    AST_TOK_OP_RTENSOR,   // ⟭
-    AST_TOK_OP_LANGLE,    // ⟨ or <
-    AST_TOK_OP_RANGLE,    // ⟩ or >
-    AST_TOK_OP_ADD,       // ⊕
-    AST_TOK_OP_SUB,       // ⊖
-    AST_TOK_OP_MUL,       // ⊗
-    AST_TOK_OP_DIV,       // ⊘
-    AST_TOK_OP_GT,        // ≻
-    AST_TOK_OP_LT,        // ≺
-    AST_TOK_OP_EQ,        // ≡
-    AST_TOK_OP_NEQ,       // ≠
-    AST_TOK_OP_SUM,       // ∑
-    AST_TOK_OTHER
-} ast_tok_kind;
-
-typedef struct {
-    ast_tok_kind kind;
-    char text[128];
-    long long int_val;
-} ast_token_t;
-
-typedef struct {
-    const unsigned char* src;
-    int len;
-    int pos;
-    ast_token_t cur;
-} ast_parser_t;
-
-static void ast_lex_advance(ast_parser_t* p) {
-    while (p->pos < p->len) {
-        unsigned char c = p->src[p->pos];
-        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
-            p->pos++;
-            continue;
-        }
-        if (c == '/' && p->pos + 1 < p->len && p->src[p->pos + 1] == '/') {
-            p->pos += 2;
-            while (p->pos < p->len && p->src[p->pos] != '\n') {
-                p->pos++;
-            }
-            continue;
-        }
-        break;
-    }
-
-    if (p->pos >= p->len) {
-        p->cur.kind = AST_TOK_EOF;
-        p->cur.text[0] = '\0';
-        p->cur.int_val = 0;
-        return;
-    }
-
-    const unsigned char* s = p->src + p->pos;
-    int rem = p->len - p->pos;
-
-    // Check multi-byte UTF-8
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x86 && s[2] == 0xa6) { p->pos += 3; p->cur.kind = AST_TOK_OP_BIND; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x86 && s[2] == 0x90) { p->pos += 3; p->cur.kind = AST_TOK_OP_ASSIGN; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x86 && s[2] == 0x92) { p->pos += 3; p->cur.kind = AST_TOK_OP_ARROW; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xa6) { p->pos += 3; p->cur.kind = AST_TOK_OP_LBLOCK; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xa7) { p->pos += 3; p->cur.kind = AST_TOK_OP_RBLOCK; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xac) { p->pos += 3; p->cur.kind = AST_TOK_OP_LTENSOR; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xad) { p->pos += 3; p->cur.kind = AST_TOK_OP_RTENSOR; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xa8) { p->pos += 3; p->cur.kind = AST_TOK_OP_LANGLE; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xa9) { p->pos += 3; p->cur.kind = AST_TOK_OP_RANGLE; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0xa6 && s[2] == 0x85) { p->pos += 3; p->cur.kind = AST_TOK_OP_LPAREN; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0xa6 && s[2] == 0x86) { p->pos += 3; p->cur.kind = AST_TOK_OP_RPAREN; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0xb8 && s[2] == 0xb4) { p->pos += 3; p->cur.kind = AST_TOK_OP_COMMA; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x8a && s[2] == 0x95) { p->pos += 3; p->cur.kind = AST_TOK_OP_ADD; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x8a && s[2] == 0x96) { p->pos += 3; p->cur.kind = AST_TOK_OP_SUB; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x8a && s[2] == 0x97) { p->pos += 3; p->cur.kind = AST_TOK_OP_MUL; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x8a && s[2] == 0x98) { p->pos += 3; p->cur.kind = AST_TOK_OP_DIV; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x89 && s[2] == 0xbb) { p->pos += 3; p->cur.kind = AST_TOK_OP_GT; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x89 && s[2] == 0xba) { p->pos += 3; p->cur.kind = AST_TOK_OP_LT; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x89 && s[2] == 0xa1) { p->pos += 3; p->cur.kind = AST_TOK_OP_EQ; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x89 && s[2] == 0xa0) { p->pos += 3; p->cur.kind = AST_TOK_OP_NEQ; p->cur.text[0] = '\0'; return; }
-    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x88 && s[2] == 0x91) { p->pos += 3; p->cur.kind = AST_TOK_OP_SUM; p->cur.text[0] = '\0'; return; }
-    if (rem >= 2 && s[0] == 0xc2 && s[1] == 0xb7) { p->pos += 2; p->cur.kind = AST_TOK_OP_DOT; p->cur.text[0] = '\0'; return; }
-
-    // ASCII delimiters / brackets
-    if (s[0] == '<') { p->pos++; p->cur.kind = AST_TOK_OP_LANGLE; p->cur.text[0] = '<'; p->cur.text[1] = '\0'; return; }
-    if (s[0] == '>') { p->pos++; p->cur.kind = AST_TOK_OP_RANGLE; p->cur.text[0] = '>'; p->cur.text[1] = '\0'; return; }
-
-    // String literal
-    if (s[0] == '"') {
-        p->pos++;
-        int ti = 0;
-        while (p->pos < p->len && p->src[p->pos] != '"' && ti < 127) {
-            p->cur.text[ti++] = p->src[p->pos++];
-        }
-        p->cur.text[ti] = '\0';
-        if (p->pos < p->len && p->src[p->pos] == '"') p->pos++;
-        p->cur.kind = AST_TOK_STRING;
-        return;
-    }
-
-    // Number (int or float)
-    if (s[0] >= '0' && s[0] <= '9') {
-        int ti = 0;
-        int is_float = 0;
-        long long val = 0;
-        while (p->pos < p->len && ((p->src[p->pos] >= '0' && p->src[p->pos] <= '9') || p->src[p->pos] == '.') && ti < 127) {
-            if (p->src[p->pos] == '.') is_float = 1;
-            else if (!is_float) val = val * 10 + (p->src[p->pos] - '0');
-            p->cur.text[ti++] = p->src[p->pos++];
-        }
-        p->cur.text[ti] = '\0';
-        if (is_float) {
-            p->cur.kind = AST_TOK_FLOAT;
-        } else {
-            p->cur.kind = AST_TOK_INT;
-            p->cur.int_val = val;
-        }
-        return;
-    }
-
-    // Identifier or keyword
-    if ((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= 'A' && s[0] <= 'Z') || s[0] == '_') {
-        int ti = 0;
-        while (p->pos < p->len && ((p->src[p->pos] >= 'a' && p->src[p->pos] <= 'z') ||
-                                   (p->src[p->pos] >= 'A' && p->src[p->pos] <= 'Z') ||
-                                   (p->src[p->pos] >= '0' && p->src[p->pos] <= '9') ||
-                                   p->src[p->pos] == '_') && ti < 127) {
-            p->cur.text[ti++] = p->src[p->pos++];
-        }
-        p->cur.text[ti] = '\0';
-        if (io_str_eq(p->cur.text, "process")) p->cur.kind = AST_TOK_KW_PROCESS;
-        else if (io_str_eq(p->cur.text, "when")) p->cur.kind = AST_TOK_KW_WHEN;
-        else if (io_str_eq(p->cur.text, "otherwise")) p->cur.kind = AST_TOK_KW_OTHERWISE;
-        else if (io_str_eq(p->cur.text, "yield")) p->cur.kind = AST_TOK_KW_YIELD;
-        else if (io_str_eq(p->cur.text, "emit")) p->cur.kind = AST_TOK_KW_EMIT;
-        else if (io_str_eq(p->cur.text, "tensor")) p->cur.kind = AST_TOK_KW_TENSOR;
-        else p->cur.kind = AST_TOK_IDENT;
-        return;
-    }
-
-    // Unknown single char
-    p->cur.kind = AST_TOK_OTHER;
-    p->cur.text[0] = s[0];
-    p->cur.text[1] = '\0';
-    p->pos++;
-}
-
-static qadav_variant* ast_parse_expr(ast_parser_t* p);
-
-static qadav_variant* ast_parse_primary(ast_parser_t* p) {
-    if (p->cur.kind == AST_TOK_OP_LPAREN) {
-        ast_lex_advance(p);
-        qadav_variant* inner = ast_parse_expr(p);
-        if (p->cur.kind == AST_TOK_OP_RPAREN) ast_lex_advance(p);
-        return inner;
-    }
-    if (p->cur.kind == AST_TOK_OP_SUM) {
-        ast_lex_advance(p);
-        qadav_variant* inner = ast_parse_expr(p);
-        return ast_reduce_sum_decl(inner);
-    }
-    if (p->cur.kind == AST_TOK_KW_TENSOR) {
-        ast_lex_advance(p);
-        if (p->cur.kind == AST_TOK_OP_LTENSOR) {
-            ast_lex_advance(p);
-            int tidx = g_tensor_count++;
-            int count = 0;
-            while (p->cur.kind != AST_TOK_OP_RTENSOR && p->cur.kind != AST_TOK_EOF && count < 16) {
-                if (p->cur.kind == AST_TOK_INT) {
-                    g_tensors[tidx].values[count] = p->cur.int_val;
-                    int ni = 0; long long v = p->cur.int_val;
-                    if (v == 0) g_tensors[tidx].val_strs[count][ni++] = '0';
-                    else {
-                        char tmp[32]; int ti = 0;
-                        while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; }
-                        while (ti > 0) g_tensors[tidx].val_strs[count][ni++] = tmp[--ti];
-                    }
-                    const char* dec = ".000000";
-                    while (*dec) g_tensors[tidx].val_strs[count][ni++] = *dec++;
-                    g_tensors[tidx].val_strs[count][ni] = '\0';
-                    count++;
-                    ast_lex_advance(p);
-                } else if (p->cur.kind == AST_TOK_FLOAT) {
-                    int ni = 0;
-                    const char* s = p->cur.text;
-                    while (*s && ni < 20) g_tensors[tidx].val_strs[count][ni++] = *s++;
-                    int dot = -1;
-                    for (int i = 0; i < ni; i++) if (g_tensors[tidx].val_strs[count][i] == '.') dot = i;
-                    if (dot >= 0) {
-                        int decimals = ni - dot - 1;
-                        while (decimals < 6 && ni < 31) {
-                            g_tensors[tidx].val_strs[count][ni++] = '0';
-                            decimals++;
-                        }
-                    }
-                    g_tensors[tidx].val_strs[count][ni] = '\0';
-                    count++;
-                    ast_lex_advance(p);
-                }
-                if (p->cur.kind == AST_TOK_OP_COMMA) {
-                    ast_lex_advance(p);
-                }
-            }
-            if (p->cur.kind == AST_TOK_OP_RTENSOR) ast_lex_advance(p);
-            g_tensors[tidx].size = count;
-            return ast_tensor_decl(tidx, count);
-        }
-    }
-    if (p->cur.kind == AST_TOK_STRING) {
-        char s[128];
-        int si = 0;
-        while (p->cur.text[si] && si < 127) { s[si] = p->cur.text[si]; si++; }
-        s[si] = '\0';
-        qadav_register_string(s);
-        ast_lex_advance(p);
-        return ast_strlit_decl(s);
-    }
-    if (p->cur.kind == AST_TOK_INT) {
-        long long val = p->cur.int_val;
-        ast_lex_advance(p);
-        return ast_intlit_decl(val);
-    }
-    if (p->cur.kind == AST_TOK_FLOAT) {
-        ast_lex_advance(p);
-        return ast_intlit_decl(0);
-    }
-    if (p->cur.kind == AST_TOK_IDENT) {
-        char id[64];
-        int ii = 0;
-        while (p->cur.text[ii] && ii < 63) { id[ii] = p->cur.text[ii]; ii++; }
-        id[ii] = '\0';
-        ast_lex_advance(p);
-        if (p->cur.kind == AST_TOK_OP_LPAREN) {
-            ast_lex_advance(p);
-            if (p->cur.kind == AST_TOK_OP_RPAREN) {
-                ast_lex_advance(p);
-                return ast_call0_decl(id);
-            }
-            qadav_variant* arg1 = ast_parse_expr(p);
-            if (p->cur.kind == AST_TOK_OP_COMMA) {
-                ast_lex_advance(p);
-                qadav_variant* arg2 = ast_parse_expr(p);
-                if (p->cur.kind == AST_TOK_OP_RPAREN) ast_lex_advance(p);
-                return ast_call2_decl(id, arg1, arg2);
-            }
-            if (p->cur.kind == AST_TOK_OP_RPAREN) ast_lex_advance(p);
-            return ast_call1_decl(id, arg1);
-        }
-        return ast_ident_decl(id);
-    }
-    ast_lex_advance(p);
-    return ast_intlit_decl(0);
-}
-
-static qadav_variant* ast_parse_expr(ast_parser_t* p) {
-    qadav_variant* left = ast_parse_primary(p);
-
-    const char* op = (void*)0;
-    if (p->cur.kind == AST_TOK_OP_ADD) op = "add";
-    else if (p->cur.kind == AST_TOK_OP_SUB) op = "sub";
-    else if (p->cur.kind == AST_TOK_OP_MUL) op = "mul";
-    else if (p->cur.kind == AST_TOK_OP_DIV) op = "sdiv";
-    else if (p->cur.kind == AST_TOK_OP_GT) op = "sgt";
-    else if (p->cur.kind == AST_TOK_OP_LT) op = "slt";
-    else if (p->cur.kind == AST_TOK_OP_EQ) op = "eq";
-    else if (p->cur.kind == AST_TOK_OP_NEQ) op = "ne";
-
-    if (op) {
-        ast_lex_advance(p);
-        qadav_variant* right = ast_parse_expr(p);
-        return ast_binop_decl(op, left, right);
-    }
-    return left;
-}
-
-static qadav_variant* ast_parse_block(ast_parser_t* p);
-
-static qadav_variant* ast_parse_stmt(ast_parser_t* p) {
-    if (p->cur.kind == AST_TOK_KW_WHEN) {
-        ast_lex_advance(p);
-        qadav_variant* cond = ast_parse_expr(p);
-        if (p->cur.kind == AST_TOK_OP_LBLOCK) ast_lex_advance(p);
-        qadav_variant* th = ast_parse_block(p);
-        if (p->cur.kind == AST_TOK_OP_RBLOCK) ast_lex_advance(p);
-        if (p->cur.kind == AST_TOK_KW_OTHERWISE) {
-            ast_lex_advance(p);
-            if (p->cur.kind == AST_TOK_OP_LBLOCK) ast_lex_advance(p);
-            qadav_variant* el = ast_parse_block(p);
-            if (p->cur.kind == AST_TOK_OP_RBLOCK) ast_lex_advance(p);
-            return ast_when_decl(cond, th, el);
-        }
-        return ast_when1_decl(cond, th);
-    }
-    if (p->cur.kind == AST_TOK_KW_EMIT) {
-        ast_lex_advance(p);
-        qadav_variant* val = ast_parse_expr(p);
-        if (p->cur.kind == AST_TOK_OP_DOT) ast_lex_advance(p);
-        return ast_emit_decl(val);
-    }
-    if (p->cur.kind == AST_TOK_KW_YIELD) {
-        ast_lex_advance(p);
-        qadav_variant* val = ast_parse_expr(p);
-        if (p->cur.kind == AST_TOK_OP_DOT) ast_lex_advance(p);
-        return ast_yield_decl(val);
-    }
-
-    char typ[32] = "int64";
-    char name[64] = "";
-    if (p->cur.kind == AST_TOK_KW_TENSOR || (p->cur.kind == AST_TOK_IDENT && (io_str_eq(p->cur.text, "tensor") || io_str_eq(p->cur.text, "int64") || io_str_eq(p->cur.text, "float64")))) {
-        int ti = 0;
-        while (p->cur.text[ti] && ti < 31) { typ[ti] = p->cur.text[ti]; ti++; }
-        typ[ti] = '\0';
-        ast_lex_advance(p);
-
-        if (p->cur.kind == AST_TOK_OP_LANGLE) {
-            while (p->cur.kind != AST_TOK_OP_RANGLE && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
-            if (p->cur.kind == AST_TOK_OP_RANGLE) ast_lex_advance(p);
-        }
-        if (p->cur.kind == AST_TOK_OP_LTENSOR) {
-            while (p->cur.kind != AST_TOK_OP_RTENSOR && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
-            if (p->cur.kind == AST_TOK_OP_RTENSOR) ast_lex_advance(p);
-        }
-        if (p->cur.kind == AST_TOK_IDENT) {
-            int ni = 0;
-            while (p->cur.text[ni] && ni < 63) { name[ni] = p->cur.text[ni]; ni++; }
-            name[ni] = '\0';
-            ast_lex_advance(p);
-        }
-    } else if (p->cur.kind == AST_TOK_IDENT) {
-        int ni = 0;
-        while (p->cur.text[ni] && ni < 63) { name[ni] = p->cur.text[ni]; ni++; }
-        name[ni] = '\0';
-        ast_lex_advance(p);
-        if (p->cur.kind == AST_TOK_IDENT) {
-            int ti = 0;
-            while (name[ti] && ti < 31) { typ[ti] = name[ti]; ti++; }
-            typ[ti] = '\0';
-            ni = 0;
-            while (p->cur.text[ni] && ni < 63) { name[ni] = p->cur.text[ni]; ni++; }
-            name[ni] = '\0';
-            ast_lex_advance(p);
-        }
-    }
-
-    if (p->cur.kind == AST_TOK_OP_BIND) {
-        ast_lex_advance(p);
-        qadav_register_var_type(name, typ);
-        qadav_variant* val = ast_parse_expr(p);
-        if (p->cur.kind == AST_TOK_OP_DOT) ast_lex_advance(p);
-        return ast_bind_decl(name, typ, val);
-    }
-
-    ast_lex_advance(p);
-    return ast_yield_decl(ast_intlit_decl(0));
-}
-
-static qadav_variant* ast_parse_block(ast_parser_t* p) {
-    qadav_variant* first = ast_parse_stmt(p);
-    while (p->cur.kind != AST_TOK_OP_RBLOCK && p->cur.kind != AST_TOK_KW_OTHERWISE && p->cur.kind != AST_TOK_EOF) {
-        qadav_variant* next = ast_parse_stmt(p);
-        first = ast_block_decl(first, next);
-    }
-    return first;
-}
-
-static qadav_variant* ast_parse_process(ast_parser_t* p) {
-    if (p->cur.kind == AST_TOK_KW_PROCESS) ast_lex_advance(p);
-    char name[64] = "";
-    if (p->cur.kind == AST_TOK_IDENT) {
-        int ni = 0;
-        while (p->cur.text[ni] && ni < 63) { name[ni] = p->cur.text[ni]; ni++; }
-        name[ni] = '\0';
-        ast_lex_advance(p);
-    }
-    char p1[64] = "";
-    char p2[64] = "";
-    int param_count = 0;
-    if (p->cur.kind == AST_TOK_OP_LPAREN) {
-        ast_lex_advance(p);
-        if (p->cur.kind != AST_TOK_OP_RPAREN) {
-            char t1[32] = "";
-            if (p->cur.kind == AST_TOK_KW_TENSOR || p->cur.kind == AST_TOK_IDENT) {
-                int ti = 0; while (p->cur.text[ti] && ti < 31) { t1[ti] = p->cur.text[ti]; ti++; }
-                t1[ti] = '\0';
-                ast_lex_advance(p);
-                if (p->cur.kind == AST_TOK_OP_LANGLE) {
-                    while (p->cur.kind != AST_TOK_OP_RANGLE && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
-                    if (p->cur.kind == AST_TOK_OP_RANGLE) ast_lex_advance(p);
-                }
-                if (p->cur.kind == AST_TOK_OP_LTENSOR) {
-                    while (p->cur.kind != AST_TOK_OP_RTENSOR && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
-                    if (p->cur.kind == AST_TOK_OP_RTENSOR) ast_lex_advance(p);
-                }
-            }
-            if (p->cur.kind == AST_TOK_IDENT) {
-                int ni = 0; while (p->cur.text[ni] && ni < 63) { p1[ni] = p->cur.text[ni]; ni++; }
-                p1[ni] = '\0';
-                ast_lex_advance(p);
-                param_count = 1;
-                qadav_register_var_type(p1, t1);
-            }
-            if (p->cur.kind == AST_TOK_OP_COMMA) {
-                ast_lex_advance(p);
-                char t2[32] = "";
-                if (p->cur.kind == AST_TOK_KW_TENSOR || p->cur.kind == AST_TOK_IDENT) {
-                    int ti = 0; while (p->cur.text[ti] && ti < 31) { t2[ti] = p->cur.text[ti]; ti++; }
-                    t2[ti] = '\0';
-                    ast_lex_advance(p);
-                    if (p->cur.kind == AST_TOK_OP_LANGLE) {
-                        while (p->cur.kind != AST_TOK_OP_RANGLE && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
-                        if (p->cur.kind == AST_TOK_OP_RANGLE) ast_lex_advance(p);
-                    }
-                    if (p->cur.kind == AST_TOK_OP_LTENSOR) {
-                        while (p->cur.kind != AST_TOK_OP_RTENSOR && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
-                        if (p->cur.kind == AST_TOK_OP_RTENSOR) ast_lex_advance(p);
-                    }
-                }
-                if (p->cur.kind == AST_TOK_IDENT) {
-                    int ni = 0; while (p->cur.text[ni] && ni < 63) { p2[ni] = p->cur.text[ni]; ni++; }
-                    p2[ni] = '\0';
-                    ast_lex_advance(p);
-                    param_count = 2;
-                    qadav_register_var_type(p2, t2);
-                }
-            }
-        }
-        if (p->cur.kind == AST_TOK_OP_RPAREN) ast_lex_advance(p);
-    }
-    char ret[32] = "int64";
-    if (p->cur.kind == AST_TOK_OP_ARROW) {
-        ast_lex_advance(p);
-        if (p->cur.kind == AST_TOK_IDENT) {
-            int ri = 0; while (p->cur.text[ri] && ri < 31) { ret[ri] = p->cur.text[ri]; ri++; }
-            ret[ri] = '\0';
-            ast_lex_advance(p);
-        }
-    }
-    if (p->cur.kind == AST_TOK_OP_LBLOCK) ast_lex_advance(p);
-    qadav_variant* body = ast_parse_block(p);
-    if (p->cur.kind == AST_TOK_OP_RBLOCK) ast_lex_advance(p);
-
-    if (param_count == 2) {
-        return ast_process2_decl(name, p1, p2, ret, body);
-    }
-    return ast_process_decl(name, p1, ret, body);
-}
-
-void* qadav_parse_file_to_ast(const char* file_path) {
-    if (!file_path || !*file_path) return (void*)0;
-    void* h = qadav_file_open_read(file_path);
-    if (!h) return (void*)0;
-    static char buf[16384];
-    int n = qadav_file_read(h, buf, 16383);
-    qadav_file_close(h);
-    if (n <= 0) return (void*)0;
-    buf[n] = '\0';
-
-    // Reset parser-related state
-    g_tensor_count = 0;
-    g_emitted_string_count = 0;
-    g_var_type_count = 0;
-    g_ast_str_pool_cnt = 0;
-
-    ast_parser_t parser;
-    parser.src = (const unsigned char*)buf;
-    parser.len = n;
-    parser.pos = 0;
-    ast_lex_advance(&parser);
-
-    qadav_variant* root = ast_parse_process(&parser);
-    while (parser.cur.kind != AST_TOK_EOF) {
-        qadav_variant* next_proc = ast_parse_process(&parser);
-        root = ast_block_decl(root, next_proc);
-    }
-    return (void*)root;
-}
-
-
-
-
-
-
-

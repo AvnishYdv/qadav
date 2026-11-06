@@ -141,7 +141,6 @@ const char* qadav_format_func_def_dot(const char* name);
 const char* qadav_format_ret_double(long long temp_id);
 const char* qadav_format_ret_i32(long long temp_id);
 const char* qadav_format_emit_float_call(long long reg);
-void*       qadav_parse_file_to_ast(const char* file_path);
 const char* qadav_format_func_def_2params(const char* name, const char* p1, const char* p2);
 const char* qadav_format_call_i64_imm(const char* callee, long long res_temp, long long arg1_temp, long long imm_val);
 const char* qadav_format_call_i64_2args(const char* callee, long long res_temp, long long arg1_temp, long long arg2_temp);
@@ -150,6 +149,9 @@ long long   qadav_register_var_type(const char* name, const char* typ);
 long long   qadav_get_var_type_code(const char* name);
 const char* qadav_get_tensor_val_str(long long elem_idx);
 void        qadav_set_current_tensor_walk_idx(long long idx);
+long long   qadav_get_lexer_line_count(void);
+const char* qadav_get_lexer_line(long long idx);
+long long   qadav_scan_composite_n(const char* path);
 
 const char* get_input_path(void) {
     return qadav_get_input_path();
@@ -165,6 +167,10 @@ const char* format_trunc_line(long long val) {
 
 long long detect_program_kind(const char* path) {
     return qadav_detect_program_kind(path);
+}
+
+long long scan_composite_n(const char* path) {
+    return qadav_scan_composite_n(path);
 }
 
 long long scan_statements(const char* path) {
@@ -365,7 +371,6 @@ const char* format_func_def_dot(const char* name) { return qadav_format_func_def
 const char* format_ret_double(long long temp_id) { return qadav_format_ret_double(temp_id); }
 const char* format_ret_i32(long long temp_id) { return qadav_format_ret_i32(temp_id); }
 const char* format_emit_float_call(long long reg) { return qadav_format_emit_float_call(reg); }
-void* parse_file_to_ast(const char* file_path) { return qadav_parse_file_to_ast(file_path); }
 const char* format_func_def_2params(const char* name, const char* p1, const char* p2) { return qadav_format_func_def_2params(name, p1, p2); }
 const char* format_call_i64_imm(const char* callee, long long res_temp, long long arg1_temp, long long imm_val) { return qadav_format_call_i64_imm(callee, res_temp, arg1_temp, imm_val); }
 const char* format_call_i64_2args(const char* callee, long long res_temp, long long arg1_temp, long long arg2_temp) { return qadav_format_call_i64_2args(callee, res_temp, arg1_temp, arg2_temp); }
@@ -374,6 +379,8 @@ long long register_var_type(const char* name, const char* typ) { return qadav_re
 long long get_var_type_code(const char* name) { return qadav_get_var_type_code(name); }
 const char* get_tensor_val_str(long long elem_idx) { return qadav_get_tensor_val_str(elem_idx); }
 void set_current_tensor_walk_idx(long long idx) { qadav_set_current_tensor_walk_idx(idx); }
+long long get_lexer_line_count(void) { return qadav_get_lexer_line_count(); }
+const char* get_lexer_line(long long idx) { return qadav_get_lexer_line(idx); }
 
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);

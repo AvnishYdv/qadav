@@ -719,16 +719,6 @@ func New() *Checker {
 			},
 		})
 	}
-	for _, fnName := range []string{"parse_file_to_ast", "qadav_parse_file_to_ast"} {
-		_ = global.Define(&Symbol{
-			Name: fnName,
-			Type: &types.Type{
-				Kind:    types.KindProcess,
-				Params:  []*types.Type{types.Text},
-				Results: []*types.Type{{Kind: types.KindVariant, Name: "CoreAst"}},
-			},
-		})
-	}
 	for _, fnName := range []string{"format_func_def_2params", "qadav_format_func_def_2params"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
@@ -806,6 +796,36 @@ func New() *Checker {
 				Kind:    types.KindProcess,
 				Params:  []*types.Type{types.Int64},
 				Results: []*types.Type{types.Void},
+			},
+		})
+	}
+	for _, fnName := range []string{"get_lexer_line_count", "qadav_get_lexer_line_count"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"get_lexer_line", "qadav_get_lexer_line"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"scan_composite_n", "qadav_scan_composite_n"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text},
+				Results: []*types.Type{types.Int64},
 			},
 		})
 	}

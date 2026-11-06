@@ -158,7 +158,11 @@ func (g *Generator) genVariantInitExpr(e *ast.VariantInitExpr) Value {
 			fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_variant_create_ptr(i64 %d, i32 %d, i8* %s)\n", varTemp, typeHash, tag, v.Ref)
 		} else {
 			valRef := v.Ref
-			if v.Type != "i64" {
+			if v.Type == "double" {
+				extTemp := g.nextTemp()
+				fmt.Fprintf(&g.sb, "  %s = bitcast double %s to i64\n", extTemp, v.Ref)
+				valRef = extTemp
+			} else if v.Type != "i64" {
 				extTemp := g.nextTemp()
 				fmt.Fprintf(&g.sb, "  %s = zext %s %s to i64\n", extTemp, v.Type, v.Ref)
 				valRef = extTemp

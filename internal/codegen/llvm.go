@@ -709,8 +709,6 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i8* @qadav_format_ret_i32(i64)\n")
 		header.WriteString("declare i8* @format_emit_float_call(i64)\n")
 		header.WriteString("declare i8* @qadav_format_emit_float_call(i64)\n")
-		header.WriteString("declare i8* @parse_file_to_ast(i8*)\n")
-		header.WriteString("declare i8* @qadav_parse_file_to_ast(i8*)\n")
 		header.WriteString("declare i8* @format_func_def_2params(i8*, i8*, i8*)\n")
 		header.WriteString("declare i8* @qadav_format_func_def_2params(i8*, i8*, i8*)\n")
 		header.WriteString("declare i8* @format_call_i64_imm(i8*, i64, i64, i64)\n")
@@ -726,7 +724,13 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i8* @get_tensor_val_str(i64)\n")
 		header.WriteString("declare i8* @qadav_get_tensor_val_str(i64)\n")
 		header.WriteString("declare void @set_current_tensor_walk_idx(i64)\n")
-		header.WriteString("declare void @qadav_set_current_tensor_walk_idx(i64)\n\n")
+		header.WriteString("declare void @qadav_set_current_tensor_walk_idx(i64)\n")
+		header.WriteString("declare i64 @get_lexer_line_count()\n")
+		header.WriteString("declare i64 @qadav_get_lexer_line_count()\n")
+		header.WriteString("declare i8* @get_lexer_line(i64)\n")
+		header.WriteString("declare i8* @qadav_get_lexer_line(i64)\n")
+		header.WriteString("declare i64 @scan_composite_n(i8*)\n")
+		header.WriteString("declare i64 @qadav_scan_composite_n(i8*)\n\n")
 	}
 
 	// Quantum global state
@@ -1952,7 +1956,10 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "format_func_def_dot" || ident.Name == "qadav_format_func_def_dot" ||
 				ident.Name == "format_ret_double" || ident.Name == "qadav_format_ret_double" ||
 				ident.Name == "format_ret_i32" || ident.Name == "qadav_format_ret_i32" ||
-				ident.Name == "format_emit_float_call" || ident.Name == "qadav_format_emit_float_call" {
+				ident.Name == "format_emit_float_call" || ident.Name == "qadav_format_emit_float_call" ||
+				ident.Name == "get_lexer_line_count" || ident.Name == "qadav_get_lexer_line_count" ||
+				ident.Name == "get_lexer_line" || ident.Name == "qadav_get_lexer_line" ||
+				ident.Name == "scan_composite_n" || ident.Name == "qadav_scan_composite_n" {
 				g.usesDynamicIO = true
 			}
 			if g.checker != nil && g.checker.Networks() != nil {

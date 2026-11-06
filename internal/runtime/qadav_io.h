@@ -105,7 +105,6 @@ const char* qadav_format_ret_double(long long temp_id);
 const char* qadav_format_ret_i32(long long temp_id);
 const char* qadav_format_emit_float_call(long long reg);
 
-void*       qadav_parse_file_to_ast(const char* file_path);
 const char* qadav_format_func_def_2params(const char* name, const char* p1, const char* p2);
 const char* qadav_format_call_i64_imm(const char* callee, long long res_temp, long long arg1_temp, long long imm_val);
 const char* qadav_format_call_i64_2args(const char* callee, long long res_temp, long long arg1_temp, long long arg2_temp);
@@ -114,6 +113,11 @@ long long   qadav_register_var_type(const char* name, const char* typ);
 long long   qadav_get_var_type_code(const char* name);
 const char* qadav_get_tensor_val_str(long long elem_idx);
 void        qadav_set_current_tensor_walk_idx(long long idx);
+
+long long   qadav_get_lexer_line_count(void);
+const char* qadav_get_lexer_line(long long idx);
+
+long long   qadav_scan_composite_n(const char* path);
 
 #endif
 
