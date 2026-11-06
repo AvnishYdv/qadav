@@ -462,56 +462,28 @@ process parse_process⦅int64 start_idx ⸴ int64 end_idx⦆ → CoreAst ⟦
     yield ast_proc⦅proc_name ⸴ p1_name ⸴ ret_type ⸴ body⦆ ·
 ⟧
 
+process parse_process_list⦅int64 cur_idx ⸴ int64 num_toks⦆ → CoreAst ⟦
+    int64 p_start ↦ cur_idx ·
+    cycle p_start ≺ num_toks ∧ token_kind_code⦅p_start⦆ ≠ 1 ⟦
+        p_start ← p_start ⊕ 1 ·
+    ⟧
+    when p_start ≽ num_toks ⟦
+        yield ast_int_lit⦅0⦆ ·
+    ⟧
+    int64 p_next ↦ p_start ⊕ 1 ·
+    cycle p_next ≺ num_toks ∧ token_kind_code⦅p_next⦆ ≠ 1 ⟦
+        p_next ← p_next ⊕ 1 ·
+    ⟧
+    CoreAst proc ↦ parse_process⦅p_start ⸴ p_next⦆ ·
+    when p_next ≽ num_toks ⟦
+        yield proc ·
+    ⟧
+    CoreAst rest ↦ parse_process_list⦅p_next ⸴ num_toks⦆ ·
+    yield ast_block⦅proc ⸴ rest⦆ ·
+⟧
+
 process parse_program⦅int64 num_toks⦆ → CoreAst ⟦
-    int64 p1_start ↦ 0 ⊖ 1 ·
-    int64 p2_start ↦ 0 ⊖ 1 ·
-    int64 p3_start ↦ 0 ⊖ 1 ·
-    int64 p4_start ↦ 0 ⊖ 1 ·
-
-    int64 i ↦ 0 ·
-    cycle i ≺ num_toks ⟦
-        when token_kind_code⦅i⦆ ≡ 1 ⟦
-            when p1_start ≺ 0 ⟦
-                p1_start ← i ·
-            ⟧ otherwise ⟦
-                when p2_start ≺ 0 ⟦
-                    p2_start ← i ·
-                ⟧ otherwise ⟦
-                    when p3_start ≺ 0 ⟦
-                        p3_start ← i ·
-                    ⟧ otherwise ⟦
-                        when p4_start ≺ 0 ⟦
-                            p4_start ← i ·
-                        ⟧
-                    ⟧
-                ⟧
-            ⟧
-        ⟧
-        i ← i ⊕ 1 ·
-    ⟧
-
-    when p2_start ≺ 0 ⟦
-        yield parse_process⦅p1_start ⸴ num_toks⦆ ·
-    ⟧
-
-    when p3_start ≺ 0 ⟦
-        CoreAst p2_pr1 ↦ parse_process⦅p1_start ⸴ p2_start⦆ ·
-        CoreAst p2_pr2 ↦ parse_process⦅p2_start ⸴ num_toks⦆ ·
-        yield ast_block⦅p2_pr1 ⸴ p2_pr2⦆ ·
-    ⟧
-
-    when p4_start ≺ 0 ⟦
-        CoreAst p3_pr1 ↦ parse_process⦅p1_start ⸴ p2_start⦆ ·
-        CoreAst p3_pr2 ↦ parse_process⦅p2_start ⸴ p3_start⦆ ·
-        CoreAst p3_pr3 ↦ parse_process⦅p3_start ⸴ num_toks⦆ ·
-        yield ast_block⦅p3_pr1 ⸴ ast_block⦅p3_pr2 ⸴ p3_pr3⦆⦆ ·
-    ⟧
-
-    CoreAst p4_pr1 ↦ parse_process⦅p1_start ⸴ p2_start⦆ ·
-    CoreAst p4_pr2 ↦ parse_process⦅p2_start ⸴ p3_start⦆ ·
-    CoreAst p4_pr3 ↦ parse_process⦅p3_start ⸴ p4_start⦆ ·
-    CoreAst p4_pr4 ↦ parse_process⦅p4_start ⸴ num_toks⦆ ·
-    yield ast_block⦅p4_pr1 ⸴ ast_block⦅p4_pr2 ⸴ ast_block⦅p4_pr3 ⸴ p4_pr4⦆⦆⦆ ·
+    yield parse_process_list⦅0 ⸴ num_toks⦆ ·
 ⟧
 
 process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
