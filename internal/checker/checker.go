@@ -483,7 +483,7 @@ func New() *Checker {
 			},
 		})
 	}
-	for _, fnName := range []string{"set_proc_is_main", "qadav_set_proc_is_main"} {
+	for _, fnName := range []string{"set_proc_is_main", "qadav_set_proc_is_main", "set_proc_is_dot", "qadav_set_proc_is_dot"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
 			Type: &types.Type{
@@ -493,7 +493,7 @@ func New() *Checker {
 			},
 		})
 	}
-	for _, fnName := range []string{"get_proc_is_main", "qadav_get_proc_is_main"} {
+	for _, fnName := range []string{"get_proc_is_main", "qadav_get_proc_is_main", "get_proc_is_dot", "qadav_get_proc_is_dot"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
 			Type: &types.Type{
@@ -716,6 +716,96 @@ func New() *Checker {
 				Kind:    types.KindProcess,
 				Params:  []*types.Type{types.Int64},
 				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"parse_file_to_ast", "qadav_parse_file_to_ast"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text},
+				Results: []*types.Type{{Kind: types.KindVariant, Name: "CoreAst"}},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_func_def_2params", "qadav_format_func_def_2params"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text, types.Text},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_call_i64_imm", "qadav_format_call_i64_imm"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_call_i64_2args", "qadav_format_call_i64_2args"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_call_0args", "qadav_format_call_0args"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"register_var_type", "qadav_register_var_type"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"get_var_type_code", "qadav_get_var_type_code"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"get_tensor_val_str", "qadav_get_tensor_val_str"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"set_current_tensor_walk_idx", "qadav_set_current_tensor_walk_idx"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{types.Void},
 			},
 		})
 	}

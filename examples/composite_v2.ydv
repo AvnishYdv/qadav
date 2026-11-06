@@ -1,0 +1,24 @@
+process square⦅int64 x⦆ → int64 ⟦
+    yield x ⊗ x ·
+⟧
+
+process add⦅int64 a⸴ int64 b⦆ → int64 ⟦
+    yield a ⊕ b ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    int64 n ↦ 8 ·
+    int64 sq ↦ square⦅n⦆ ·
+    int64 total ↦ add⦅sq⸴ 10⦆ ·
+    when total ≻ 30 ⟦
+        emit "big" ·
+    ⟧ otherwise ⟦
+        emit "small" ·
+    ⟧
+    emit total ·
+    tensor⟨float64⟩⟬3⟭ t ↦ tensor⟬1.5⸴ 2.5⸴ 3.5⟭ ·
+    float64 sum ↦ ∑ t ·
+    emit sum ·
+    yield 0 ·
+⟧
+

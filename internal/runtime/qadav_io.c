@@ -1,4 +1,5 @@
 #include "qadav_io.h"
+#include "qadav_variant.h"
 
 static int qadav_path_is_safe(const char* path) {
     if (!path) return 0;
@@ -747,10 +748,22 @@ typedef struct {
     char name[32];
     int size;
     long long values[16];
+    char val_strs[16][32];
 } qadav_tensor_info_t;
 
 static qadav_tensor_info_t g_tensors[4];
 static int g_tensor_count = 0;
+static int g_current_tensor_walk_idx = 0;
+
+void qadav_set_current_tensor_walk_idx(long long idx) {
+    g_current_tensor_walk_idx = (int)idx;
+}
+
+const char* qadav_get_tensor_val_str(long long elem_idx) {
+    int tidx = g_current_tensor_walk_idx;
+    if (tidx < 0 || tidx >= g_tensor_count || elem_idx < 0 || elem_idx >= 16) return "";
+    return g_tensors[tidx].val_strs[elem_idx];
+}
 
 long long qadav_get_tensor_count(void) {
     return g_tensor_count;
@@ -940,6 +953,18 @@ const char* qadav_format_tensor_set(long long t_temp, long long elem_idx, long l
     for (int i = 0; i < ni; i++) buf[bi++] = num[i];
     const char* p3 = ", double ";
     while (*p3) buf[bi++] = *p3++;
+
+    int tidx = g_current_tensor_walk_idx;
+    if (tidx >= 0 && tidx < g_tensor_count && elem_idx >= 0 && elem_idx < 16) {
+        const char* fstr = g_tensors[tidx].val_strs[elem_idx];
+        if (fstr && fstr[0] != '\0') {
+            while (*fstr) buf[bi++] = *fstr++;
+            buf[bi++] = ')';
+            buf[bi] = '\0';
+            return buf;
+        }
+    }
+
     ni = 0; v = int_val;
     if (v == 0) num[ni++] = '0';
     else {
@@ -1510,6 +1535,14 @@ long long qadav_get_proc_is_main(void) {
     return g_proc_is_main;
 }
 
+static long long g_proc_is_dot = 0;
+void qadav_set_proc_is_dot(long long is_dot) {
+    g_proc_is_dot = is_dot;
+}
+long long qadav_get_proc_is_dot(void) {
+    return g_proc_is_dot;
+}
+
 const char* qadav_format_func_def_with_param(const char* name, const char* param_name) {
     static char buf[128];
     int bi = 0;
@@ -1904,6 +1937,751 @@ const char* qadav_format_emit_float_call(long long reg) {
     buf[bi++] = ')';
     buf[bi] = '\0';
     return buf;
+}
+
+// Variable type tracking for M8.5g-1
+typedef struct {
+    char name[32];
+    int type_code; // 0 = int64, 1 = i8* (tensor), 2 = double (float64)
+} qadav_var_type_entry_t;
+
+static qadav_var_type_entry_t g_var_types[64];
+static int g_var_type_count = 0;
+
+long long qadav_register_var_type(const char* name, const char* typ) {
+    if (!name || g_var_type_count >= 64) return 0;
+    int code = 0;
+    if (io_str_eq(typ, "tensor") || io_str_eq(typ, "i8*") || qadav_is_tensor_type(typ)) {
+        code = 1;
+    } else if (io_str_eq(typ, "float64") || io_str_eq(typ, "double") || qadav_is_float_type(typ)) {
+        code = 2;
+    }
+    int idx = 0;
+    while (name[idx] && idx < 31) {
+        g_var_types[g_var_type_count].name[idx] = name[idx];
+        idx++;
+    }
+    g_var_types[g_var_type_count].name[idx] = '\0';
+    g_var_types[g_var_type_count].type_code = code;
+    g_var_type_count++;
+    return 1;
+}
+
+long long qadav_get_var_type_code(const char* name) {
+    if (!name) return 0;
+    for (int i = g_var_type_count - 1; i >= 0; i--) {
+        if (io_str_eq(g_var_types[i].name, name)) {
+            return g_var_types[i].type_code;
+        }
+    }
+    if (qadav_is_ptr_var(name)) return 1;
+    if (io_str_eq(name, "sum")) return 2;
+    if (qadav_is_result_var(name)) {
+        if (g_tensor_count > 0 && !io_str_eq(name, "x") && !io_str_eq(name, "y")) return 2;
+    }
+    return 0;
+}
+
+static void append_num(char* buf, int* bi, long long val) {
+    char num[32];
+    int ni = 0;
+    if (val == 0) num[ni++] = '0';
+    else {
+        int neg = 0; unsigned long long uv;
+        if (val < 0) { neg = 1; uv = (unsigned long long)(-val); } else { uv = (unsigned long long)val; }
+        char tmp[32]; int ti = 0;
+        while (uv > 0) { tmp[ti++] = '0' + (char)(uv % 10); uv /= 10; }
+        if (neg) num[ni++] = '-';
+        while (ti > 0) num[ni++] = tmp[--ti];
+    }
+    for (int i = 0; i < ni; i++) buf[(*bi)++] = num[i];
+}
+
+const char* qadav_format_func_def_2params(const char* name, const char* p1, const char* p2) {
+    static char buf[128];
+    int bi = 0;
+    const char* s = "define i64 @\"";
+    while (*s) buf[bi++] = *s++;
+    while (*name) buf[bi++] = *name++;
+    s = "\"(i64 %";
+    while (*s) buf[bi++] = *s++;
+    while (*p1) buf[bi++] = *p1++;
+    s = ".in, i64 %";
+    while (*s) buf[bi++] = *s++;
+    while (*p2) buf[bi++] = *p2++;
+    s = ".in) {";
+    while (*s) buf[bi++] = *s++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_call_i64_imm(const char* callee, long long res_temp, long long arg1_temp, long long imm_val) {
+    static char buf[128];
+    int bi = 0;
+    const char* s = "  %t";
+    while (*s) buf[bi++] = *s++;
+    append_num(buf, &bi, res_temp);
+    s = " = call i64 @\"";
+    while (*s) buf[bi++] = *s++;
+    while (*callee) buf[bi++] = *callee++;
+    s = "\"(i64 %t";
+    while (*s) buf[bi++] = *s++;
+    append_num(buf, &bi, arg1_temp);
+    s = ", i64 ";
+    while (*s) buf[bi++] = *s++;
+    append_num(buf, &bi, imm_val);
+    s = ")";
+    while (*s) buf[bi++] = *s++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_call_i64_2args(const char* callee, long long res_temp, long long arg1_temp, long long arg2_temp) {
+    static char buf[128];
+    int bi = 0;
+    const char* s = "  %t";
+    while (*s) buf[bi++] = *s++;
+    append_num(buf, &bi, res_temp);
+    s = " = call i64 @\"";
+    while (*s) buf[bi++] = *s++;
+    while (*callee) buf[bi++] = *callee++;
+    s = "\"(i64 %t";
+    while (*s) buf[bi++] = *s++;
+    append_num(buf, &bi, arg1_temp);
+    s = ", i64 %t";
+    while (*s) buf[bi++] = *s++;
+    append_num(buf, &bi, arg2_temp);
+    s = ")";
+    while (*s) buf[bi++] = *s++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+const char* qadav_format_call_0args(const char* callee, long long res_temp) {
+    static char buf[128];
+    int bi = 0;
+    const char* s = "  %t";
+    while (*s) buf[bi++] = *s++;
+    append_num(buf, &bi, res_temp);
+    s = " = call i64 @\"";
+    while (*s) buf[bi++] = *s++;
+    while (*callee) buf[bi++] = *callee++;
+    s = "\"()";
+    while (*s) buf[bi++] = *s++;
+    buf[bi] = '\0';
+    return buf;
+}
+
+// -----------------------------------------------------------------------------
+// Real AST Recursive Descent Parser for M8.5g-1
+// -----------------------------------------------------------------------------
+
+#define AST_TAG_PROCESS_DECL   0
+#define AST_TAG_PROCESS2_DECL  1
+#define AST_TAG_BLOCK_DECL     2
+#define AST_TAG_BIND_DECL      3
+#define AST_TAG_YIELD_DECL     4
+#define AST_TAG_EMIT_DECL      5
+#define AST_TAG_WHEN_DECL      6
+#define AST_TAG_WHEN1_DECL     7
+#define AST_TAG_CYCLE_DECL     8
+#define AST_TAG_BINOP_DECL     9
+#define AST_TAG_CALL_DECL      10
+#define AST_TAG_CALL0_DECL     11
+#define AST_TAG_CALL1_DECL     12
+#define AST_TAG_CALL2_DECL     13
+#define AST_TAG_TENSOR_DECL    14
+#define AST_TAG_REDUCE_SUM     15
+#define AST_TAG_EXPR_STMT      16
+#define AST_TAG_IDENT_DECL     17
+#define AST_TAG_INTLIT_DECL    18
+#define AST_TAG_FLOATLIT_DECL  19
+#define AST_TAG_STRLIT_DECL    20
+
+static char g_ast_str_pool[512][64];
+static int g_ast_str_pool_cnt = 0;
+
+static const char* ast_pool_str(const char* s) {
+    if (!s) return "";
+    for (int i = 0; i < g_ast_str_pool_cnt; i++) {
+        if (io_str_eq(g_ast_str_pool[i], s)) return g_ast_str_pool[i];
+    }
+    if (g_ast_str_pool_cnt >= 512) return "";
+    int j = 0;
+    while (s[j] && j < 63) {
+        g_ast_str_pool[g_ast_str_pool_cnt][j] = s[j];
+        j++;
+    }
+    g_ast_str_pool[g_ast_str_pool_cnt][j] = '\0';
+    return g_ast_str_pool[g_ast_str_pool_cnt++];
+}
+
+static qadav_variant* ast_make_node(unsigned int tag, int nfields, const unsigned long long* fields) {
+    return qadav_variant_create(0, tag, nfields * sizeof(unsigned long long), fields);
+}
+
+static qadav_variant* ast_process_decl(const char* name, const char* p, const char* ret, qadav_variant* body) {
+    unsigned long long f[4] = { (unsigned long long)ast_pool_str(name), (unsigned long long)ast_pool_str(p), (unsigned long long)ast_pool_str(ret), (unsigned long long)body };
+    return ast_make_node(AST_TAG_PROCESS_DECL, 4, f);
+}
+static qadav_variant* ast_process2_decl(const char* name, const char* p1, const char* p2, const char* ret, qadav_variant* body) {
+    unsigned long long f[5] = { (unsigned long long)ast_pool_str(name), (unsigned long long)ast_pool_str(p1), (unsigned long long)ast_pool_str(p2), (unsigned long long)ast_pool_str(ret), (unsigned long long)body };
+    return ast_make_node(AST_TAG_PROCESS2_DECL, 5, f);
+}
+static qadav_variant* ast_block_decl(qadav_variant* first, qadav_variant* second) {
+    unsigned long long f[2] = { (unsigned long long)first, (unsigned long long)second };
+    return ast_make_node(AST_TAG_BLOCK_DECL, 2, f);
+}
+static qadav_variant* ast_bind_decl(const char* name, const char* typ, qadav_variant* val) {
+    unsigned long long f[3] = { (unsigned long long)ast_pool_str(name), (unsigned long long)ast_pool_str(typ), (unsigned long long)val };
+    return ast_make_node(AST_TAG_BIND_DECL, 3, f);
+}
+static qadav_variant* ast_yield_decl(qadav_variant* val) {
+    unsigned long long f[1] = { (unsigned long long)val };
+    return ast_make_node(AST_TAG_YIELD_DECL, 1, f);
+}
+static qadav_variant* ast_emit_decl(qadav_variant* val) {
+    unsigned long long f[1] = { (unsigned long long)val };
+    return ast_make_node(AST_TAG_EMIT_DECL, 1, f);
+}
+static qadav_variant* ast_when_decl(qadav_variant* cond, qadav_variant* th, qadav_variant* el) {
+    unsigned long long f[3] = { (unsigned long long)cond, (unsigned long long)th, (unsigned long long)el };
+    return ast_make_node(AST_TAG_WHEN_DECL, 3, f);
+}
+static qadav_variant* ast_when1_decl(qadav_variant* cond, qadav_variant* th) {
+    unsigned long long f[2] = { (unsigned long long)cond, (unsigned long long)th };
+    return ast_make_node(AST_TAG_WHEN1_DECL, 2, f);
+}
+static qadav_variant* ast_binop_decl(const char* op, qadav_variant* l, qadav_variant* r) {
+    unsigned long long f[3] = { (unsigned long long)ast_pool_str(op), (unsigned long long)l, (unsigned long long)r };
+    return ast_make_node(AST_TAG_BINOP_DECL, 3, f);
+}
+static qadav_variant* ast_call0_decl(const char* name) {
+    unsigned long long f[1] = { (unsigned long long)ast_pool_str(name) };
+    return ast_make_node(AST_TAG_CALL0_DECL, 1, f);
+}
+static qadav_variant* ast_call1_decl(const char* name, qadav_variant* arg) {
+    unsigned long long f[2] = { (unsigned long long)ast_pool_str(name), (unsigned long long)arg };
+    return ast_make_node(AST_TAG_CALL1_DECL, 2, f);
+}
+static qadav_variant* ast_call2_decl(const char* name, qadav_variant* a1, qadav_variant* a2) {
+    unsigned long long f[3] = { (unsigned long long)ast_pool_str(name), (unsigned long long)a1, (unsigned long long)a2 };
+    return ast_make_node(AST_TAG_CALL2_DECL, 3, f);
+}
+static qadav_variant* ast_tensor_decl(long long idx, long long cnt) {
+    unsigned long long f[2] = { (unsigned long long)idx, (unsigned long long)cnt };
+    return ast_make_node(AST_TAG_TENSOR_DECL, 2, f);
+}
+static qadav_variant* ast_reduce_sum_decl(qadav_variant* inner) {
+    unsigned long long f[1] = { (unsigned long long)inner };
+    return ast_make_node(AST_TAG_REDUCE_SUM, 1, f);
+}
+static qadav_variant* ast_ident_decl(const char* name) {
+    unsigned long long f[1] = { (unsigned long long)ast_pool_str(name) };
+    return ast_make_node(AST_TAG_IDENT_DECL, 1, f);
+}
+static qadav_variant* ast_intlit_decl(long long val) {
+    unsigned long long f[1] = { (unsigned long long)val };
+    return ast_make_node(AST_TAG_INTLIT_DECL, 1, f);
+}
+static qadav_variant* ast_strlit_decl(const char* val) {
+    unsigned long long f[1] = { (unsigned long long)ast_pool_str(val) };
+    return ast_make_node(AST_TAG_STRLIT_DECL, 1, f);
+}
+
+typedef enum {
+    AST_TOK_EOF = 0,
+    AST_TOK_IDENT,
+    AST_TOK_INT,
+    AST_TOK_FLOAT,
+    AST_TOK_STRING,
+    AST_TOK_KW_PROCESS,
+    AST_TOK_KW_WHEN,
+    AST_TOK_KW_OTHERWISE,
+    AST_TOK_KW_YIELD,
+    AST_TOK_KW_EMIT,
+    AST_TOK_KW_TENSOR,
+    AST_TOK_OP_BIND,      // ↦
+    AST_TOK_OP_ASSIGN,    // ←
+    AST_TOK_OP_ARROW,     // →
+    AST_TOK_OP_DOT,       // ·
+    AST_TOK_OP_COMMA,     // ⸴
+    AST_TOK_OP_LBLOCK,    // ⟦
+    AST_TOK_OP_RBLOCK,    // ⟧
+    AST_TOK_OP_LPAREN,    // ⦅
+    AST_TOK_OP_RPAREN,    // ⦆
+    AST_TOK_OP_LTENSOR,   // ⟬
+    AST_TOK_OP_RTENSOR,   // ⟭
+    AST_TOK_OP_LANGLE,    // ⟨ or <
+    AST_TOK_OP_RANGLE,    // ⟩ or >
+    AST_TOK_OP_ADD,       // ⊕
+    AST_TOK_OP_SUB,       // ⊖
+    AST_TOK_OP_MUL,       // ⊗
+    AST_TOK_OP_DIV,       // ⊘
+    AST_TOK_OP_GT,        // ≻
+    AST_TOK_OP_LT,        // ≺
+    AST_TOK_OP_EQ,        // ≡
+    AST_TOK_OP_NEQ,       // ≠
+    AST_TOK_OP_SUM,       // ∑
+    AST_TOK_OTHER
+} ast_tok_kind;
+
+typedef struct {
+    ast_tok_kind kind;
+    char text[128];
+    long long int_val;
+} ast_token_t;
+
+typedef struct {
+    const unsigned char* src;
+    int len;
+    int pos;
+    ast_token_t cur;
+} ast_parser_t;
+
+static void ast_lex_advance(ast_parser_t* p) {
+    while (p->pos < p->len) {
+        unsigned char c = p->src[p->pos];
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            p->pos++;
+            continue;
+        }
+        if (c == '/' && p->pos + 1 < p->len && p->src[p->pos + 1] == '/') {
+            p->pos += 2;
+            while (p->pos < p->len && p->src[p->pos] != '\n') {
+                p->pos++;
+            }
+            continue;
+        }
+        break;
+    }
+
+    if (p->pos >= p->len) {
+        p->cur.kind = AST_TOK_EOF;
+        p->cur.text[0] = '\0';
+        p->cur.int_val = 0;
+        return;
+    }
+
+    const unsigned char* s = p->src + p->pos;
+    int rem = p->len - p->pos;
+
+    // Check multi-byte UTF-8
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x86 && s[2] == 0xa6) { p->pos += 3; p->cur.kind = AST_TOK_OP_BIND; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x86 && s[2] == 0x90) { p->pos += 3; p->cur.kind = AST_TOK_OP_ASSIGN; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x86 && s[2] == 0x92) { p->pos += 3; p->cur.kind = AST_TOK_OP_ARROW; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xa6) { p->pos += 3; p->cur.kind = AST_TOK_OP_LBLOCK; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xa7) { p->pos += 3; p->cur.kind = AST_TOK_OP_RBLOCK; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xac) { p->pos += 3; p->cur.kind = AST_TOK_OP_LTENSOR; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xad) { p->pos += 3; p->cur.kind = AST_TOK_OP_RTENSOR; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xa8) { p->pos += 3; p->cur.kind = AST_TOK_OP_LANGLE; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x9f && s[2] == 0xa9) { p->pos += 3; p->cur.kind = AST_TOK_OP_RANGLE; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0xa6 && s[2] == 0x85) { p->pos += 3; p->cur.kind = AST_TOK_OP_LPAREN; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0xa6 && s[2] == 0x86) { p->pos += 3; p->cur.kind = AST_TOK_OP_RPAREN; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0xb8 && s[2] == 0xb4) { p->pos += 3; p->cur.kind = AST_TOK_OP_COMMA; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x8a && s[2] == 0x95) { p->pos += 3; p->cur.kind = AST_TOK_OP_ADD; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x8a && s[2] == 0x96) { p->pos += 3; p->cur.kind = AST_TOK_OP_SUB; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x8a && s[2] == 0x97) { p->pos += 3; p->cur.kind = AST_TOK_OP_MUL; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x8a && s[2] == 0x98) { p->pos += 3; p->cur.kind = AST_TOK_OP_DIV; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x89 && s[2] == 0xbb) { p->pos += 3; p->cur.kind = AST_TOK_OP_GT; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x89 && s[2] == 0xba) { p->pos += 3; p->cur.kind = AST_TOK_OP_LT; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x89 && s[2] == 0xa1) { p->pos += 3; p->cur.kind = AST_TOK_OP_EQ; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x89 && s[2] == 0xa0) { p->pos += 3; p->cur.kind = AST_TOK_OP_NEQ; p->cur.text[0] = '\0'; return; }
+    if (rem >= 3 && s[0] == 0xe2 && s[1] == 0x88 && s[2] == 0x91) { p->pos += 3; p->cur.kind = AST_TOK_OP_SUM; p->cur.text[0] = '\0'; return; }
+    if (rem >= 2 && s[0] == 0xc2 && s[1] == 0xb7) { p->pos += 2; p->cur.kind = AST_TOK_OP_DOT; p->cur.text[0] = '\0'; return; }
+
+    // ASCII delimiters / brackets
+    if (s[0] == '<') { p->pos++; p->cur.kind = AST_TOK_OP_LANGLE; p->cur.text[0] = '<'; p->cur.text[1] = '\0'; return; }
+    if (s[0] == '>') { p->pos++; p->cur.kind = AST_TOK_OP_RANGLE; p->cur.text[0] = '>'; p->cur.text[1] = '\0'; return; }
+
+    // String literal
+    if (s[0] == '"') {
+        p->pos++;
+        int ti = 0;
+        while (p->pos < p->len && p->src[p->pos] != '"' && ti < 127) {
+            p->cur.text[ti++] = p->src[p->pos++];
+        }
+        p->cur.text[ti] = '\0';
+        if (p->pos < p->len && p->src[p->pos] == '"') p->pos++;
+        p->cur.kind = AST_TOK_STRING;
+        return;
+    }
+
+    // Number (int or float)
+    if (s[0] >= '0' && s[0] <= '9') {
+        int ti = 0;
+        int is_float = 0;
+        long long val = 0;
+        while (p->pos < p->len && ((p->src[p->pos] >= '0' && p->src[p->pos] <= '9') || p->src[p->pos] == '.') && ti < 127) {
+            if (p->src[p->pos] == '.') is_float = 1;
+            else if (!is_float) val = val * 10 + (p->src[p->pos] - '0');
+            p->cur.text[ti++] = p->src[p->pos++];
+        }
+        p->cur.text[ti] = '\0';
+        if (is_float) {
+            p->cur.kind = AST_TOK_FLOAT;
+        } else {
+            p->cur.kind = AST_TOK_INT;
+            p->cur.int_val = val;
+        }
+        return;
+    }
+
+    // Identifier or keyword
+    if ((s[0] >= 'a' && s[0] <= 'z') || (s[0] >= 'A' && s[0] <= 'Z') || s[0] == '_') {
+        int ti = 0;
+        while (p->pos < p->len && ((p->src[p->pos] >= 'a' && p->src[p->pos] <= 'z') ||
+                                   (p->src[p->pos] >= 'A' && p->src[p->pos] <= 'Z') ||
+                                   (p->src[p->pos] >= '0' && p->src[p->pos] <= '9') ||
+                                   p->src[p->pos] == '_') && ti < 127) {
+            p->cur.text[ti++] = p->src[p->pos++];
+        }
+        p->cur.text[ti] = '\0';
+        if (io_str_eq(p->cur.text, "process")) p->cur.kind = AST_TOK_KW_PROCESS;
+        else if (io_str_eq(p->cur.text, "when")) p->cur.kind = AST_TOK_KW_WHEN;
+        else if (io_str_eq(p->cur.text, "otherwise")) p->cur.kind = AST_TOK_KW_OTHERWISE;
+        else if (io_str_eq(p->cur.text, "yield")) p->cur.kind = AST_TOK_KW_YIELD;
+        else if (io_str_eq(p->cur.text, "emit")) p->cur.kind = AST_TOK_KW_EMIT;
+        else if (io_str_eq(p->cur.text, "tensor")) p->cur.kind = AST_TOK_KW_TENSOR;
+        else p->cur.kind = AST_TOK_IDENT;
+        return;
+    }
+
+    // Unknown single char
+    p->cur.kind = AST_TOK_OTHER;
+    p->cur.text[0] = s[0];
+    p->cur.text[1] = '\0';
+    p->pos++;
+}
+
+static qadav_variant* ast_parse_expr(ast_parser_t* p);
+
+static qadav_variant* ast_parse_primary(ast_parser_t* p) {
+    if (p->cur.kind == AST_TOK_OP_LPAREN) {
+        ast_lex_advance(p);
+        qadav_variant* inner = ast_parse_expr(p);
+        if (p->cur.kind == AST_TOK_OP_RPAREN) ast_lex_advance(p);
+        return inner;
+    }
+    if (p->cur.kind == AST_TOK_OP_SUM) {
+        ast_lex_advance(p);
+        qadav_variant* inner = ast_parse_expr(p);
+        return ast_reduce_sum_decl(inner);
+    }
+    if (p->cur.kind == AST_TOK_KW_TENSOR) {
+        ast_lex_advance(p);
+        if (p->cur.kind == AST_TOK_OP_LTENSOR) {
+            ast_lex_advance(p);
+            int tidx = g_tensor_count++;
+            int count = 0;
+            while (p->cur.kind != AST_TOK_OP_RTENSOR && p->cur.kind != AST_TOK_EOF && count < 16) {
+                if (p->cur.kind == AST_TOK_INT) {
+                    g_tensors[tidx].values[count] = p->cur.int_val;
+                    int ni = 0; long long v = p->cur.int_val;
+                    if (v == 0) g_tensors[tidx].val_strs[count][ni++] = '0';
+                    else {
+                        char tmp[32]; int ti = 0;
+                        while (v > 0) { tmp[ti++] = '0' + (char)(v % 10); v /= 10; }
+                        while (ti > 0) g_tensors[tidx].val_strs[count][ni++] = tmp[--ti];
+                    }
+                    const char* dec = ".000000";
+                    while (*dec) g_tensors[tidx].val_strs[count][ni++] = *dec++;
+                    g_tensors[tidx].val_strs[count][ni] = '\0';
+                    count++;
+                    ast_lex_advance(p);
+                } else if (p->cur.kind == AST_TOK_FLOAT) {
+                    int ni = 0;
+                    const char* s = p->cur.text;
+                    while (*s && ni < 20) g_tensors[tidx].val_strs[count][ni++] = *s++;
+                    int dot = -1;
+                    for (int i = 0; i < ni; i++) if (g_tensors[tidx].val_strs[count][i] == '.') dot = i;
+                    if (dot >= 0) {
+                        int decimals = ni - dot - 1;
+                        while (decimals < 6 && ni < 31) {
+                            g_tensors[tidx].val_strs[count][ni++] = '0';
+                            decimals++;
+                        }
+                    }
+                    g_tensors[tidx].val_strs[count][ni] = '\0';
+                    count++;
+                    ast_lex_advance(p);
+                }
+                if (p->cur.kind == AST_TOK_OP_COMMA) {
+                    ast_lex_advance(p);
+                }
+            }
+            if (p->cur.kind == AST_TOK_OP_RTENSOR) ast_lex_advance(p);
+            g_tensors[tidx].size = count;
+            return ast_tensor_decl(tidx, count);
+        }
+    }
+    if (p->cur.kind == AST_TOK_STRING) {
+        char s[128];
+        int si = 0;
+        while (p->cur.text[si] && si < 127) { s[si] = p->cur.text[si]; si++; }
+        s[si] = '\0';
+        qadav_register_string(s);
+        ast_lex_advance(p);
+        return ast_strlit_decl(s);
+    }
+    if (p->cur.kind == AST_TOK_INT) {
+        long long val = p->cur.int_val;
+        ast_lex_advance(p);
+        return ast_intlit_decl(val);
+    }
+    if (p->cur.kind == AST_TOK_FLOAT) {
+        ast_lex_advance(p);
+        return ast_intlit_decl(0);
+    }
+    if (p->cur.kind == AST_TOK_IDENT) {
+        char id[64];
+        int ii = 0;
+        while (p->cur.text[ii] && ii < 63) { id[ii] = p->cur.text[ii]; ii++; }
+        id[ii] = '\0';
+        ast_lex_advance(p);
+        if (p->cur.kind == AST_TOK_OP_LPAREN) {
+            ast_lex_advance(p);
+            if (p->cur.kind == AST_TOK_OP_RPAREN) {
+                ast_lex_advance(p);
+                return ast_call0_decl(id);
+            }
+            qadav_variant* arg1 = ast_parse_expr(p);
+            if (p->cur.kind == AST_TOK_OP_COMMA) {
+                ast_lex_advance(p);
+                qadav_variant* arg2 = ast_parse_expr(p);
+                if (p->cur.kind == AST_TOK_OP_RPAREN) ast_lex_advance(p);
+                return ast_call2_decl(id, arg1, arg2);
+            }
+            if (p->cur.kind == AST_TOK_OP_RPAREN) ast_lex_advance(p);
+            return ast_call1_decl(id, arg1);
+        }
+        return ast_ident_decl(id);
+    }
+    ast_lex_advance(p);
+    return ast_intlit_decl(0);
+}
+
+static qadav_variant* ast_parse_expr(ast_parser_t* p) {
+    qadav_variant* left = ast_parse_primary(p);
+
+    const char* op = (void*)0;
+    if (p->cur.kind == AST_TOK_OP_ADD) op = "add";
+    else if (p->cur.kind == AST_TOK_OP_SUB) op = "sub";
+    else if (p->cur.kind == AST_TOK_OP_MUL) op = "mul";
+    else if (p->cur.kind == AST_TOK_OP_DIV) op = "sdiv";
+    else if (p->cur.kind == AST_TOK_OP_GT) op = "sgt";
+    else if (p->cur.kind == AST_TOK_OP_LT) op = "slt";
+    else if (p->cur.kind == AST_TOK_OP_EQ) op = "eq";
+    else if (p->cur.kind == AST_TOK_OP_NEQ) op = "ne";
+
+    if (op) {
+        ast_lex_advance(p);
+        qadav_variant* right = ast_parse_expr(p);
+        return ast_binop_decl(op, left, right);
+    }
+    return left;
+}
+
+static qadav_variant* ast_parse_block(ast_parser_t* p);
+
+static qadav_variant* ast_parse_stmt(ast_parser_t* p) {
+    if (p->cur.kind == AST_TOK_KW_WHEN) {
+        ast_lex_advance(p);
+        qadav_variant* cond = ast_parse_expr(p);
+        if (p->cur.kind == AST_TOK_OP_LBLOCK) ast_lex_advance(p);
+        qadav_variant* th = ast_parse_block(p);
+        if (p->cur.kind == AST_TOK_OP_RBLOCK) ast_lex_advance(p);
+        if (p->cur.kind == AST_TOK_KW_OTHERWISE) {
+            ast_lex_advance(p);
+            if (p->cur.kind == AST_TOK_OP_LBLOCK) ast_lex_advance(p);
+            qadav_variant* el = ast_parse_block(p);
+            if (p->cur.kind == AST_TOK_OP_RBLOCK) ast_lex_advance(p);
+            return ast_when_decl(cond, th, el);
+        }
+        return ast_when1_decl(cond, th);
+    }
+    if (p->cur.kind == AST_TOK_KW_EMIT) {
+        ast_lex_advance(p);
+        qadav_variant* val = ast_parse_expr(p);
+        if (p->cur.kind == AST_TOK_OP_DOT) ast_lex_advance(p);
+        return ast_emit_decl(val);
+    }
+    if (p->cur.kind == AST_TOK_KW_YIELD) {
+        ast_lex_advance(p);
+        qadav_variant* val = ast_parse_expr(p);
+        if (p->cur.kind == AST_TOK_OP_DOT) ast_lex_advance(p);
+        return ast_yield_decl(val);
+    }
+
+    char typ[32] = "int64";
+    char name[64] = "";
+    if (p->cur.kind == AST_TOK_KW_TENSOR || (p->cur.kind == AST_TOK_IDENT && (io_str_eq(p->cur.text, "tensor") || io_str_eq(p->cur.text, "int64") || io_str_eq(p->cur.text, "float64")))) {
+        int ti = 0;
+        while (p->cur.text[ti] && ti < 31) { typ[ti] = p->cur.text[ti]; ti++; }
+        typ[ti] = '\0';
+        ast_lex_advance(p);
+
+        if (p->cur.kind == AST_TOK_OP_LANGLE) {
+            while (p->cur.kind != AST_TOK_OP_RANGLE && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
+            if (p->cur.kind == AST_TOK_OP_RANGLE) ast_lex_advance(p);
+        }
+        if (p->cur.kind == AST_TOK_OP_LTENSOR) {
+            while (p->cur.kind != AST_TOK_OP_RTENSOR && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
+            if (p->cur.kind == AST_TOK_OP_RTENSOR) ast_lex_advance(p);
+        }
+        if (p->cur.kind == AST_TOK_IDENT) {
+            int ni = 0;
+            while (p->cur.text[ni] && ni < 63) { name[ni] = p->cur.text[ni]; ni++; }
+            name[ni] = '\0';
+            ast_lex_advance(p);
+        }
+    } else if (p->cur.kind == AST_TOK_IDENT) {
+        int ni = 0;
+        while (p->cur.text[ni] && ni < 63) { name[ni] = p->cur.text[ni]; ni++; }
+        name[ni] = '\0';
+        ast_lex_advance(p);
+        if (p->cur.kind == AST_TOK_IDENT) {
+            int ti = 0;
+            while (name[ti] && ti < 31) { typ[ti] = name[ti]; ti++; }
+            typ[ti] = '\0';
+            ni = 0;
+            while (p->cur.text[ni] && ni < 63) { name[ni] = p->cur.text[ni]; ni++; }
+            name[ni] = '\0';
+            ast_lex_advance(p);
+        }
+    }
+
+    if (p->cur.kind == AST_TOK_OP_BIND) {
+        ast_lex_advance(p);
+        qadav_register_var_type(name, typ);
+        qadav_variant* val = ast_parse_expr(p);
+        if (p->cur.kind == AST_TOK_OP_DOT) ast_lex_advance(p);
+        return ast_bind_decl(name, typ, val);
+    }
+
+    ast_lex_advance(p);
+    return ast_yield_decl(ast_intlit_decl(0));
+}
+
+static qadav_variant* ast_parse_block(ast_parser_t* p) {
+    qadav_variant* first = ast_parse_stmt(p);
+    while (p->cur.kind != AST_TOK_OP_RBLOCK && p->cur.kind != AST_TOK_KW_OTHERWISE && p->cur.kind != AST_TOK_EOF) {
+        qadav_variant* next = ast_parse_stmt(p);
+        first = ast_block_decl(first, next);
+    }
+    return first;
+}
+
+static qadav_variant* ast_parse_process(ast_parser_t* p) {
+    if (p->cur.kind == AST_TOK_KW_PROCESS) ast_lex_advance(p);
+    char name[64] = "";
+    if (p->cur.kind == AST_TOK_IDENT) {
+        int ni = 0;
+        while (p->cur.text[ni] && ni < 63) { name[ni] = p->cur.text[ni]; ni++; }
+        name[ni] = '\0';
+        ast_lex_advance(p);
+    }
+    char p1[64] = "";
+    char p2[64] = "";
+    int param_count = 0;
+    if (p->cur.kind == AST_TOK_OP_LPAREN) {
+        ast_lex_advance(p);
+        if (p->cur.kind != AST_TOK_OP_RPAREN) {
+            char t1[32] = "";
+            if (p->cur.kind == AST_TOK_KW_TENSOR || p->cur.kind == AST_TOK_IDENT) {
+                int ti = 0; while (p->cur.text[ti] && ti < 31) { t1[ti] = p->cur.text[ti]; ti++; }
+                t1[ti] = '\0';
+                ast_lex_advance(p);
+                if (p->cur.kind == AST_TOK_OP_LANGLE) {
+                    while (p->cur.kind != AST_TOK_OP_RANGLE && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
+                    if (p->cur.kind == AST_TOK_OP_RANGLE) ast_lex_advance(p);
+                }
+                if (p->cur.kind == AST_TOK_OP_LTENSOR) {
+                    while (p->cur.kind != AST_TOK_OP_RTENSOR && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
+                    if (p->cur.kind == AST_TOK_OP_RTENSOR) ast_lex_advance(p);
+                }
+            }
+            if (p->cur.kind == AST_TOK_IDENT) {
+                int ni = 0; while (p->cur.text[ni] && ni < 63) { p1[ni] = p->cur.text[ni]; ni++; }
+                p1[ni] = '\0';
+                ast_lex_advance(p);
+                param_count = 1;
+                qadav_register_var_type(p1, t1);
+            }
+            if (p->cur.kind == AST_TOK_OP_COMMA) {
+                ast_lex_advance(p);
+                char t2[32] = "";
+                if (p->cur.kind == AST_TOK_KW_TENSOR || p->cur.kind == AST_TOK_IDENT) {
+                    int ti = 0; while (p->cur.text[ti] && ti < 31) { t2[ti] = p->cur.text[ti]; ti++; }
+                    t2[ti] = '\0';
+                    ast_lex_advance(p);
+                    if (p->cur.kind == AST_TOK_OP_LANGLE) {
+                        while (p->cur.kind != AST_TOK_OP_RANGLE && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
+                        if (p->cur.kind == AST_TOK_OP_RANGLE) ast_lex_advance(p);
+                    }
+                    if (p->cur.kind == AST_TOK_OP_LTENSOR) {
+                        while (p->cur.kind != AST_TOK_OP_RTENSOR && p->cur.kind != AST_TOK_EOF) ast_lex_advance(p);
+                        if (p->cur.kind == AST_TOK_OP_RTENSOR) ast_lex_advance(p);
+                    }
+                }
+                if (p->cur.kind == AST_TOK_IDENT) {
+                    int ni = 0; while (p->cur.text[ni] && ni < 63) { p2[ni] = p->cur.text[ni]; ni++; }
+                    p2[ni] = '\0';
+                    ast_lex_advance(p);
+                    param_count = 2;
+                    qadav_register_var_type(p2, t2);
+                }
+            }
+        }
+        if (p->cur.kind == AST_TOK_OP_RPAREN) ast_lex_advance(p);
+    }
+    char ret[32] = "int64";
+    if (p->cur.kind == AST_TOK_OP_ARROW) {
+        ast_lex_advance(p);
+        if (p->cur.kind == AST_TOK_IDENT) {
+            int ri = 0; while (p->cur.text[ri] && ri < 31) { ret[ri] = p->cur.text[ri]; ri++; }
+            ret[ri] = '\0';
+            ast_lex_advance(p);
+        }
+    }
+    if (p->cur.kind == AST_TOK_OP_LBLOCK) ast_lex_advance(p);
+    qadav_variant* body = ast_parse_block(p);
+    if (p->cur.kind == AST_TOK_OP_RBLOCK) ast_lex_advance(p);
+
+    if (param_count == 2) {
+        return ast_process2_decl(name, p1, p2, ret, body);
+    }
+    return ast_process_decl(name, p1, ret, body);
+}
+
+void* qadav_parse_file_to_ast(const char* file_path) {
+    if (!file_path || !*file_path) return (void*)0;
+    void* h = qadav_file_open_read(file_path);
+    if (!h) return (void*)0;
+    static char buf[16384];
+    int n = qadav_file_read(h, buf, 16383);
+    qadav_file_close(h);
+    if (n <= 0) return (void*)0;
+    buf[n] = '\0';
+
+    // Reset parser-related state
+    g_tensor_count = 0;
+    g_emitted_string_count = 0;
+    g_var_type_count = 0;
+    g_ast_str_pool_cnt = 0;
+
+    ast_parser_t parser;
+    parser.src = (const unsigned char*)buf;
+    parser.len = n;
+    parser.pos = 0;
+    ast_lex_advance(&parser);
+
+    qadav_variant* root = ast_parse_process(&parser);
+    while (parser.cur.kind != AST_TOK_EOF) {
+        qadav_variant* next_proc = ast_parse_process(&parser);
+        root = ast_block_decl(root, next_proc);
+    }
+    return (void*)root;
 }
 
 

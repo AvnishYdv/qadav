@@ -118,23 +118,35 @@ process parse_rsca_attest⦅int64 stage ⸴ text record_var⦆ → int64 ⟦
 ⟧
 
 variant CoreAst ⟦
-    | ProcessDecl(name ↦ text ⸴ params ↦ tensor ⸴ ret_type ↦ text ⸴ body ↦ CoreAst) ·
+    | ProcessDecl(name ↦ text ⸴ param_name ↦ text ⸴ ret_type ↦ text ⸴ body ↦ CoreAst) ·
+    | Process2Decl(name ↦ text ⸴ p1 ↦ text ⸴ p2 ↦ text ⸴ ret_type ↦ text ⸴ body ↦ CoreAst) ·
     | BlockDecl(first ↦ CoreAst ⸴ second ↦ CoreAst) ·
     | BindDecl(name ↦ text ⸴ val_type ↦ text ⸴ value ↦ CoreAst) ·
     | YieldDecl(value ↦ CoreAst) ·
     | EmitDecl(value ↦ CoreAst) ·
     | WhenDecl(cond ↦ CoreAst ⸴ then_block ↦ CoreAst ⸴ else_block ↦ CoreAst) ·
+    | When1Decl(cond ↦ CoreAst ⸴ then_block ↦ CoreAst) ·
     | CycleDecl(cond ↦ CoreAst ⸴ body ↦ CoreAst) ·
     | BinaryOpDecl(op ↦ text ⸴ left ↦ CoreAst ⸴ right ↦ CoreAst) ·
     | CallDecl(name ↦ text ⸴ args ↦ tensor) ·
+    | Call0Decl(name ↦ text) ·
+    | Call1Decl(name ↦ text ⸴ arg ↦ CoreAst) ·
+    | Call2Decl(name ↦ text ⸴ arg1 ↦ CoreAst ⸴ arg2 ↦ CoreAst) ·
+    | TensorDecl(idx ↦ int64 ⸴ elem_count ↦ int64) ·
+    | ReduceSumDecl(inner ↦ CoreAst) ·
+    | ExprStmt(expr ↦ CoreAst) ·
     | IdentDecl(name ↦ text) ·
     | IntLitDecl(value ↦ int64) ·
+    | FloatLitDecl(value ↦ float64) ·
     | StrLitDecl(value ↦ text) ·
 ⟧
 
+process parse_to_sexpr⦅text file_path⦆ → text ⟦
+    yield "(Program)" ·
+⟧
+
 process parse_to_core_ast⦅text file_path⦆ → CoreAst ⟦
-    int64 s1 ↦ parse_process_decl⦅"main" ⸴ 0 ⸴ "int64"⦆ ·
-    CoreAst ast ↦ variant_init CoreAst ⦅IntLitDecl ↦ 0⦆ ·
+    CoreAst ast ↦ parse_file_to_ast⦅file_path⦆ ·
     yield ast ·
 ⟧
 

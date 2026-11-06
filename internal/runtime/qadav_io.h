@@ -75,6 +75,8 @@ long long   qadav_is_dot_proc(const char* name);
 long long   qadav_is_main_proc(const char* name);
 void        qadav_set_proc_is_main(long long is_main);
 long long   qadav_get_proc_is_main(void);
+void        qadav_set_proc_is_dot(long long is_dot);
+long long   qadav_get_proc_is_dot(void);
 const char* qadav_format_func_def_with_param(const char* name, const char* param_name);
 const char* qadav_format_param_alloca(const char* param_name);
 const char* qadav_format_param_store(const char* param_name);
@@ -102,6 +104,16 @@ const char* qadav_format_func_def_dot(const char* name);
 const char* qadav_format_ret_double(long long temp_id);
 const char* qadav_format_ret_i32(long long temp_id);
 const char* qadav_format_emit_float_call(long long reg);
+
+void*       qadav_parse_file_to_ast(const char* file_path);
+const char* qadav_format_func_def_2params(const char* name, const char* p1, const char* p2);
+const char* qadav_format_call_i64_imm(const char* callee, long long res_temp, long long arg1_temp, long long imm_val);
+const char* qadav_format_call_i64_2args(const char* callee, long long res_temp, long long arg1_temp, long long arg2_temp);
+const char* qadav_format_call_0args(const char* callee, long long res_temp);
+long long   qadav_register_var_type(const char* name, const char* typ);
+long long   qadav_get_var_type_code(const char* name);
+const char* qadav_get_tensor_val_str(long long elem_idx);
+void        qadav_set_current_tensor_walk_idx(long long idx);
 
 #endif
 

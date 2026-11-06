@@ -651,6 +651,10 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare void @qadav_set_proc_is_main(i64)\n")
 		header.WriteString("declare i64 @get_proc_is_main()\n")
 		header.WriteString("declare i64 @qadav_get_proc_is_main()\n")
+		header.WriteString("declare void @set_proc_is_dot(i64)\n")
+		header.WriteString("declare void @qadav_set_proc_is_dot(i64)\n")
+		header.WriteString("declare i64 @get_proc_is_dot()\n")
+		header.WriteString("declare i64 @qadav_get_proc_is_dot()\n")
 		header.WriteString("declare i8* @format_func_def_with_param(i8*, i8*)\n")
 		header.WriteString("declare i8* @qadav_format_func_def_with_param(i8*, i8*)\n")
 		header.WriteString("declare i8* @format_param_alloca(i8*)\n")
@@ -704,7 +708,25 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i8* @format_ret_i32(i64)\n")
 		header.WriteString("declare i8* @qadav_format_ret_i32(i64)\n")
 		header.WriteString("declare i8* @format_emit_float_call(i64)\n")
-		header.WriteString("declare i8* @qadav_format_emit_float_call(i64)\n\n")
+		header.WriteString("declare i8* @qadav_format_emit_float_call(i64)\n")
+		header.WriteString("declare i8* @parse_file_to_ast(i8*)\n")
+		header.WriteString("declare i8* @qadav_parse_file_to_ast(i8*)\n")
+		header.WriteString("declare i8* @format_func_def_2params(i8*, i8*, i8*)\n")
+		header.WriteString("declare i8* @qadav_format_func_def_2params(i8*, i8*, i8*)\n")
+		header.WriteString("declare i8* @format_call_i64_imm(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_call_i64_imm(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_call_i64_2args(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_call_i64_2args(i8*, i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_call_0args(i8*, i64)\n")
+		header.WriteString("declare i8* @qadav_format_call_0args(i8*, i64)\n")
+		header.WriteString("declare i64 @register_var_type(i8*, i8*)\n")
+		header.WriteString("declare i64 @qadav_register_var_type(i8*, i8*)\n")
+		header.WriteString("declare i64 @get_var_type_code(i8*)\n")
+		header.WriteString("declare i64 @qadav_get_var_type_code(i8*)\n")
+		header.WriteString("declare i8* @get_tensor_val_str(i64)\n")
+		header.WriteString("declare i8* @qadav_get_tensor_val_str(i64)\n")
+		header.WriteString("declare void @set_current_tensor_walk_idx(i64)\n")
+		header.WriteString("declare void @qadav_set_current_tensor_walk_idx(i64)\n\n")
 	}
 
 	// Quantum global state
@@ -1902,6 +1924,8 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "is_main_proc" || ident.Name == "qadav_is_main_proc" ||
 				ident.Name == "set_proc_is_main" || ident.Name == "qadav_set_proc_is_main" ||
 				ident.Name == "get_proc_is_main" || ident.Name == "qadav_get_proc_is_main" ||
+				ident.Name == "set_proc_is_dot" || ident.Name == "qadav_set_proc_is_dot" ||
+				ident.Name == "get_proc_is_dot" || ident.Name == "qadav_get_proc_is_dot" ||
 				ident.Name == "format_func_def_with_param" || ident.Name == "qadav_format_func_def_with_param" ||
 				ident.Name == "format_param_alloca" || ident.Name == "qadav_format_param_alloca" ||
 				ident.Name == "format_param_store" || ident.Name == "qadav_format_param_store" ||
