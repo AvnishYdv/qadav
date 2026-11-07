@@ -1,0 +1,16 @@
+network TransformerToy ⟦
+    dense ⟬64⸴ 128⟭ ·
+    relu ·
+    dense ⟬128⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+    relu ·
+    dense ⟬128⸴ 64⟭ ·
+    softmax ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "TRANSFORMER_TOY_MODEL_SPEC" ·
+    yield 0 ·
+⟧
+

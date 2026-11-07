@@ -1,0 +1,21 @@
+network TrainNet ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    tensor⟨float64⟩⟬4⸴ 2⟭ x ↦ tensor⟬⟬0.0⸴ 0.0⟭⸴ ⟬0.0⸴ 1.0⟭⸴ ⟬1.0⸴ 0.0⟭⸴ ⟬1.0⸴ 1.0⟭⟭ ·
+    tensor⟨float64⟩⟬4⸴ 1⟭ y ↦ tensor⟬⟬0.0⟭⸴ ⟬1.0⟭⸴ ⟬1.0⟭⸴ ⟬0.0⟭⟭ ·
+    provenance prov ⟦ TrainNet ⟧ ·
+    learn TrainNet on x ⸴ y ⟦
+        loss cross_entropy ·
+        optimizer adam ·
+        lr ↦ 0.003 ·
+        epochs ↦ 500 ·
+    ⟧
+    certify prov ·
+    emit "TRAIN_COMPLETE" ·
+    yield 0 ·
+⟧
+

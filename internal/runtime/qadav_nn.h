@@ -70,5 +70,10 @@ double         qadav_sqrt(double x);
 double         qadav_exp(double x);
 double         qadav_log(double x);
 
+// Toy QNMF / Transformer Engine for M9.11
+int qadav_run_toy_training(const char* cmd, void* mctp_cert, int epochs);
+int qadav_run_toy_evaluation(const char* cmd);
+
 #endif // QADAV_NN_H
+
 

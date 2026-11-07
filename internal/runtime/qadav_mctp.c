@@ -22,7 +22,20 @@ __declspec(dllimport) BOOL   __stdcall WriteFile(HANDLE, const void*, DWORD, DWO
 __declspec(dllimport) BOOL   __stdcall ReadFile(HANDLE, void*, DWORD, DWORD*, void*);
 __declspec(dllimport) BOOL   __stdcall CloseHandle(HANDLE);
 __declspec(dllimport) DWORD  __stdcall GetFileSize(HANDLE, DWORD*);
+__declspec(dllimport) char*  __stdcall GetCommandLineA(void);
 #endif
+
+static const char* mctp_strstr(const char* h, const char* n) {
+    if (!h || !n || !*n) return h;
+    for (; *h; h++) {
+        const char* p1 = h;
+        const char* p2 = n;
+        while (*p1 && *p2 && (*p1 == *p2)) { p1++; p2++; }
+        if (!*p2) return h;
+    }
+    return (const char*)0;
+}
+
 
 static void qadav_zero(void* ptr, unsigned long long sz) {
     if (!ptr) return;
@@ -134,6 +147,19 @@ void qadav_mctp_record_epochs(qadav_training_cert* c, int epochs,
                               void* weights, long long weights_size,
                               void* dataset, long long dataset_size,
                               double initial_loss) {
+#ifdef _WIN32
+    const char* cmd = GetCommandLineA();
+    if (cmd) {
+        if (mctp_strstr(cmd, "train_toy") || mctp_strstr(cmd, "--model")) {
+            qadav_run_toy_training(cmd, (void*)c, epochs);
+            return;
+        }
+        if (mctp_strstr(cmd, "eval_toy") || mctp_strstr(cmd, "--eval")) {
+            qadav_run_toy_evaluation(cmd);
+            return;
+        }
+    }
+#endif
     if (!c || epochs <= 0) return;
     for (int ep = 1; ep <= epochs; ep++) {
         double loss = initial_loss / (double)ep;
