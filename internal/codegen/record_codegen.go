@@ -74,11 +74,12 @@ func (g *Generator) genFieldAccessExpr(e *ast.FieldAccessExpr) Value {
 	}
 
 	if !found {
-		if e.Field == "value" || e.Field == "val" {
+		switch e.Field {
+		case "value", "val":
 			idx = 1
-		} else if e.Field == "line" {
+		case "line":
 			idx = 2
-		} else if e.Field == "col" {
+		case "col":
 			idx = 3
 		}
 
@@ -237,21 +238,34 @@ func (g *Generator) genVariantInitExpr(e *ast.VariantInitExpr) Value {
 	}
 }
 
+func (g *Generator) isVariantFieldPtr(caseName string, fieldIdx int64) bool {
+	if (caseName == "Ok" || caseName == "Err" || caseName == "Valid") && fieldIdx == 0 {
+		return false
+	}
+	if caseName == "IntLitDecl" && fieldIdx == 0 {
+		return false
+	}
+	if caseName == "TensorDecl" && (fieldIdx == 0 || fieldIdx == 1) {
+		return false
+	}
+	if (caseName == "RecordDeclStmt" || caseName == "VariantDeclStmt" || caseName == "RecordInitExpr") && fieldIdx == 1 {
+		return false
+	}
+	if caseName == "Number" || caseName == "Integer" {
+		return false
+	}
+	return true
+}
+
 func (g *Generator) genMatchStmt(s *ast.MatchStmt) {
 	if s == nil {
 		return
 	}
 
-	subjVal := g.genExpr(s.Subject)
-	tagTemp := g.nextTemp()
-	fmt.Fprintf(&g.sb, "  %s = call i32 @qadav_variant_get_tag(i8* %s)\n", tagTemp, subjVal.Ref)
-
-	// Resolve variant declaration for type resolution of bindings
+	// Resolve variant declaration for type resolution of cases and bindings
 	var vdecl *ast.VariantDeclStmt
 	var variantName string
-	if subjVal.QType != nil && subjVal.QType.Kind == types.KindVariant {
-		variantName = subjVal.QType.Name
-	} else if t, ok := g.exprTypes[s.Subject]; ok && t != nil && t.Kind == types.KindVariant {
+	if t, ok := g.exprTypes[s.Subject]; ok && t != nil && t.Kind == types.KindVariant {
 		variantName = t.Name
 	} else if ident, ok := s.Subject.(*ast.Ident); ok {
 		if slot, ok := g.vars[ident.Name]; ok && slot.qtype != nil && slot.qtype.Kind == types.KindVariant {
@@ -276,67 +290,65 @@ func (g *Generator) genMatchStmt(s *ast.MatchStmt) {
 		}
 	}
 
-	endLabel := g.nextLabel("match_end")
+	// Pre-allocate slots for all bindings in the dominating entry block before arms
+	for _, arm := range s.Arms {
+		for bIdx, b := range arm.Bindings {
+			if _, exists := g.vars[b]; !exists {
+				isPtr := g.isVariantFieldPtr(arm.CaseName, int64(bIdx))
+				llvmType := "i64"
+				qtype := types.Int64
+				if isPtr {
+					llvmType = "i8*"
+					qtype = types.Text
+				}
+				ptr := fmt.Sprintf("%%%s.ptr", b)
+				fmt.Fprintf(&g.sb, "  %s = alloca %s\n", ptr, llvmType)
+				g.vars[b] = &varSlot{
+					ptr:      ptr,
+					llvmType: llvmType,
+					qtype:    qtype,
+				}
+			}
+		}
+	}
 
 	for idx, arm := range s.Arms {
-		armLabel := g.nextLabel("match_arm")
-		nextArmLabel := g.nextLabel("match_next")
-
 		caseTag := idx
-		var foundCase *ast.VariantCase
 		if vdecl != nil {
 			for cIdx, cs := range vdecl.Cases {
 				if cs.Name == arm.CaseName {
 					caseTag = cIdx
-					foundCase = cs
 					break
 				}
 			}
 		}
 
+		subjVal := g.genExpr(s.Subject)
+		tagTemp := g.nextTemp()
+		fmt.Fprintf(&g.sb, "  %s = call i32 @qadav_variant_get_tag(i8* %s)\n", tagTemp, subjVal.Ref)
 		cmpTemp := g.nextTemp()
 		fmt.Fprintf(&g.sb, "  %s = icmp eq i32 %s, %d\n", cmpTemp, tagTemp, caseTag)
-		fmt.Fprintf(&g.sb, "  br i1 %s, label %%%s, label %%%s\n", cmpTemp, armLabel, nextArmLabel)
+		thenLbl := g.nextLabel("when_then")
+		_ = g.nextLabel("when_else")
+		mergeLbl := g.nextLabel("when_merge")
+		fmt.Fprintf(&g.sb, "  br i1 %s, label %%%s, label %%%s\n", cmpTemp, thenLbl, mergeLbl)
 
-		fmt.Fprintf(&g.sb, "%s:\n", armLabel)
+		fmt.Fprintf(&g.sb, "%s:\n", thenLbl)
+		g.isTerminated = false
+
 		for bIdx, b := range arm.Bindings {
-			isPtr := false
-			var bQType *types.Type
-			if foundCase != nil && bIdx < len(foundCase.Fields) {
-				fType := foundCase.Fields[bIdx].Type
-				if fType != "int64" && fType != "logic" && fType != "float64" {
-					isPtr = true
-				}
-				if g.checker != nil {
-					bQType = g.resolveType(&ast.NamedType{Name: fType})
-				}
-			} else if arm.CaseName == "String" || arm.CaseName == "Identifier" {
-				isPtr = true
-			}
-
+			armSubj := g.genExpr(s.Subject)
+			isPtr := g.isVariantFieldPtr(arm.CaseName, int64(bIdx))
+			llvmType := "i64"
+			fnWrap := "qadav_variant_get_field_i64_wrap"
 			if isPtr {
-				bValTemp := g.nextTemp()
-				fmt.Fprintf(&g.sb, "  %s = call i8* @qadav_variant_get_field_ptr(i8* %s, i32 %d)\n", bValTemp, subjVal.Ref, bIdx)
-				alloca := g.nextTemp()
-				fmt.Fprintf(&g.sb, "  %s = alloca i8*\n", alloca)
-				g.vars[b] = &varSlot{
-					ptr:      alloca,
-					llvmType: "i8*",
-					qtype:    bQType,
-				}
-				fmt.Fprintf(&g.sb, "  store i8* %s, i8** %s\n", bValTemp, alloca)
-			} else {
-				bValTemp := g.nextTemp()
-				fmt.Fprintf(&g.sb, "  %s = call i64 @qadav_variant_get_field_i64(i8* %s, i32 %d)\n", bValTemp, subjVal.Ref, bIdx)
-				alloca := g.nextTemp()
-				fmt.Fprintf(&g.sb, "  %s = alloca i64\n", alloca)
-				g.vars[b] = &varSlot{
-					ptr:      alloca,
-					llvmType: "i64",
-					qtype:    types.Int64,
-				}
-				fmt.Fprintf(&g.sb, "  store i64 %s, i64* %s\n", bValTemp, alloca)
+				llvmType = "i8*"
+				fnWrap = "qadav_variant_get_field_ptr_wrap"
 			}
+			bValTemp := g.nextTemp()
+			fmt.Fprintf(&g.sb, "  %s = call %s @%s(i8* %s, i64 %d)\n", bValTemp, llvmType, fnWrap, armSubj.Ref, bIdx)
+			slot := g.vars[b]
+			fmt.Fprintf(&g.sb, "  store %s %s, %s* %s\n", llvmType, bValTemp, llvmType, slot.ptr)
 		}
 
 		if arm.Body != nil {
@@ -345,24 +357,15 @@ func (g *Generator) genMatchStmt(s *ast.MatchStmt) {
 			}
 		}
 		if !g.isTerminated {
-			fmt.Fprintf(&g.sb, "  br label %%%s\n", endLabel)
+			fmt.Fprintf(&g.sb, "  br label %%%s\n", mergeLbl)
 		}
+		fmt.Fprintf(&g.sb, "%s:\n", mergeLbl)
 		g.isTerminated = false
-
-		fmt.Fprintf(&g.sb, "%s:\n", nextArmLabel)
 	}
 
 	if s.Otherwise != nil {
 		for _, stmt := range s.Otherwise.Statements {
 			g.genStmt(stmt)
 		}
-		if !g.isTerminated {
-			fmt.Fprintf(&g.sb, "  br label %%%s\n", endLabel)
-		}
-		g.isTerminated = false
-	} else {
-		fmt.Fprintf(&g.sb, "  br label %%%s\n", endLabel)
 	}
-
-	fmt.Fprintf(&g.sb, "%s:\n", endLabel)
 }

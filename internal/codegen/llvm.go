@@ -529,6 +529,8 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 	header.WriteString("declare i64 @qadav_variant_get_payload_i64(i8*)\n")
 	header.WriteString("declare i64 @qadav_variant_get_field_i64(i8*, i32)\n")
 	header.WriteString("declare i8* @qadav_variant_get_field_ptr(i8*, i32)\n")
+	header.WriteString("declare i64 @qadav_variant_get_field_i64_wrap(i8*, i64)\n")
+	header.WriteString("declare i8* @qadav_variant_get_field_ptr_wrap(i8*, i64)\n")
 	header.WriteString("declare i32 @qadav_variant_match(i8*, i32)\n")
 	header.WriteString("declare void @qadav_variant_free(i8*)\n")
 
@@ -807,18 +809,8 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i64 @qadav_emit_record_init(i8*, i64, i64)\n")
 		header.WriteString("declare i64 @emit_variant_init(i8*, i8*, i64, i64, i64)\n")
 		header.WriteString("declare i64 @qadav_emit_variant_init(i8*, i8*, i64, i64, i64)\n")
-		header.WriteString("declare i64 @emit_match_stmt(i8*, i64, i64)\n")
-		header.WriteString("declare i64 @qadav_emit_match_stmt(i8*, i64, i64)\n")
-		header.WriteString("declare i64 @emit_match_prelude(i64, i64, i64)\n")
-		header.WriteString("declare i64 @qadav_emit_match_prelude(i64, i64, i64)\n")
-		header.WriteString("declare i64 @emit_match_check(i64, i64, i64, i64)\n")
-		header.WriteString("declare i64 @qadav_emit_match_check(i64, i64, i64, i64)\n")
-		header.WriteString("declare void @emit_match_body_label(i64)\n")
-		header.WriteString("declare void @qadav_emit_match_body_label(i64)\n")
-		header.WriteString("declare void @emit_match_body_end()\n")
-		header.WriteString("declare void @qadav_emit_match_body_end()\n")
-		header.WriteString("declare void @emit_match_end()\n")
-		header.WriteString("declare void @qadav_emit_match_end()\n")
+		header.WriteString("declare i64 @is_variant_field_ptr(i8*, i64)\n")
+		header.WriteString("declare i64 @qadav_is_variant_field_ptr(i8*, i64)\n")
 		header.WriteString("declare i64 @record_imm_int(i64)\n")
 		header.WriteString("declare i64 @qadav_record_imm_int(i64)\n")
 		header.WriteString("declare i8* @format_trunc_line_reg(i64, i64)\n")
@@ -845,6 +837,18 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i64 @qadav_emit_call_4(i8*, i64, i64, i64, i64, i64)\n")
 		header.WriteString("declare i64 @emit_call_5(i8*, i64, i64, i64, i64, i64, i64)\n")
 		header.WriteString("declare i64 @qadav_emit_call_5(i8*, i64, i64, i64, i64, i64, i64)\n")
+		header.WriteString("declare void @set_call_arg_extra(i64)\n")
+		header.WriteString("declare void @qadav_set_call_arg_extra(i64)\n")
+		header.WriteString("declare void @set_call_arg_extra_2(i64)\n")
+		header.WriteString("declare void @qadav_set_call_arg_extra_2(i64)\n")
+		header.WriteString("declare i64 @emit_call_4_sub(i8*, i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @qadav_emit_call_4_sub(i8*, i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @emit_call_5_sub(i8*, i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @qadav_emit_call_5_sub(i8*, i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @prealloc_match_bindings(i8*)\n")
+		header.WriteString("declare i64 @qadav_prealloc_match_bindings(i8*)\n")
+		header.WriteString("declare i64 @is_void_call_proc(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_void_call_proc(i8*)\n")
 	}
 
 	// Quantum global state
@@ -2092,7 +2096,11 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "format_emit_float_call" || ident.Name == "qadav_format_emit_float_call" ||
 				ident.Name == "str_eq" || ident.Name == "is_affirm_ident" || ident.Name == "is_deny_ident" ||
 				ident.Name == "is_text_returning_proc" || ident.Name == "is_logic_returning_proc" ||
-				ident.Name == "emit_call_3" || ident.Name == "emit_call_4" || ident.Name == "emit_call_5" {
+				ident.Name == "is_void_call_proc" || ident.Name == "qadav_is_void_call_proc" ||
+				ident.Name == "emit_call_3" || ident.Name == "emit_call_4" || ident.Name == "emit_call_5" ||
+				ident.Name == "emit_call_4_sub" || ident.Name == "emit_call_5_sub" ||
+				ident.Name == "set_call_arg_extra" || ident.Name == "set_call_arg_extra_2" ||
+				ident.Name == "prealloc_match_bindings" || ident.Name == "qadav_prealloc_match_bindings" {
 				g.usesDynamicIO = true
 			}
 			if g.checker != nil && g.checker.Networks() != nil {

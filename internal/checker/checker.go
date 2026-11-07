@@ -1281,6 +1281,27 @@ func New() *Checker {
 		})
 	}
 
+	for _, fnName := range []string{"variant_get_field_i64_wrap", "qadav_variant_get_field_i64_wrap"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"variant_get_field_ptr_wrap", "qadav_variant_get_field_ptr_wrap"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+
 	for _, fnName := range []string{"emit_record_init", "qadav_emit_record_init"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
@@ -1301,50 +1322,13 @@ func New() *Checker {
 			},
 		})
 	}
-	for _, fnName := range []string{"emit_match_stmt", "qadav_emit_match_stmt"} {
+	for _, fnName := range []string{"is_variant_field_ptr", "qadav_is_variant_field_ptr"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
 			Type: &types.Type{
 				Kind:    types.KindProcess,
-				Params:  []*types.Type{types.Text, types.Int64, types.Int64},
+				Params:  []*types.Type{types.Text, types.Int64},
 				Results: []*types.Type{types.Int64},
-			},
-		})
-	}
-	for _, fnName := range []string{"emit_match_prelude", "qadav_emit_match_prelude"} {
-		_ = global.Define(&Symbol{
-			Name: fnName,
-			Type: &types.Type{
-				Kind:    types.KindProcess,
-				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
-				Results: []*types.Type{types.Int64},
-			},
-		})
-	}
-	for _, fnName := range []string{"emit_match_check", "qadav_emit_match_check"} {
-		_ = global.Define(&Symbol{
-			Name: fnName,
-			Type: &types.Type{
-				Kind:    types.KindProcess,
-				Params:  []*types.Type{types.Int64, types.Int64, types.Int64, types.Int64},
-				Results: []*types.Type{types.Int64},
-			},
-		})
-	}
-	for _, fnName := range []string{"emit_match_body_label", "qadav_emit_match_body_label"} {
-		_ = global.Define(&Symbol{
-			Name: fnName,
-			Type: &types.Type{
-				Kind:   types.KindProcess,
-				Params: []*types.Type{types.Int64},
-			},
-		})
-	}
-	for _, fnName := range []string{"emit_match_body_end", "qadav_emit_match_body_end", "emit_match_end", "qadav_emit_match_end"} {
-		_ = global.Define(&Symbol{
-			Name: fnName,
-			Type: &types.Type{
-				Kind: types.KindProcess,
 			},
 		})
 	}
@@ -1419,6 +1403,36 @@ func New() *Checker {
 			},
 		})
 	}
+	for _, fnName := range []string{"set_call_arg_extra", "qadav_set_call_arg_extra", "set_call_arg_extra_2", "qadav_set_call_arg_extra_2"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{types.Void},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_call_4_sub", "qadav_emit_call_4_sub", "emit_call_5_sub", "qadav_emit_call_5_sub"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64, types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"prealloc_match_bindings", "qadav_prealloc_match_bindings"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
 	for _, fnName := range []string{"emit_record_get_field", "qadav_emit_record_get_field"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
@@ -1440,7 +1454,7 @@ func New() *Checker {
 			},
 		})
 	}
-	for _, fnName := range []string{"is_affirm_ident", "qadav_is_affirm_ident", "is_deny_ident", "qadav_is_deny_ident", "is_text_returning_proc", "qadav_is_text_returning_proc", "is_logic_returning_proc", "qadav_is_logic_returning_proc"} {
+	for _, fnName := range []string{"is_affirm_ident", "qadav_is_affirm_ident", "is_deny_ident", "qadav_is_deny_ident", "is_text_returning_proc", "qadav_is_text_returning_proc", "is_logic_returning_proc", "qadav_is_logic_returning_proc", "is_void_call_proc", "qadav_is_void_call_proc"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
 			Type: &types.Type{

@@ -452,6 +452,8 @@ long long qadav_is_text_returning_proc(const char* name);
 long long is_text_returning_proc(const char* name) { return qadav_is_text_returning_proc(name); }
 long long qadav_is_logic_returning_proc(const char* name);
 long long is_logic_returning_proc(const char* name) { return qadav_is_logic_returning_proc(name); }
+long long qadav_is_void_call_proc(const char* name);
+long long is_void_call_proc(const char* name) { return qadav_is_void_call_proc(name); }
 
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);
@@ -610,20 +612,10 @@ extern long long qadav_get_next_var_init_arg_count(void);
 long long get_next_var_init_arg_count(void) { return qadav_get_next_var_init_arg_count(); }
 extern long long qadav_emit_record_init(const char* tn, long long fc, long long t);
 extern long long qadav_emit_variant_init(const char* vn, const char* cn, long long pr, long long pk, long long t);
-extern long long qadav_emit_match_stmt(const char* s, long long ac, long long t);
 long long emit_record_init(const char* tn, long long fc, long long t) { return qadav_emit_record_init(tn, fc, t); }
 long long emit_variant_init(const char* vn, const char* cn, long long pr, long long pk, long long t) { return qadav_emit_variant_init(vn, cn, pr, pk, t); }
-long long emit_match_stmt(const char* s, long long ac, long long t) { return qadav_emit_match_stmt(s, ac, t); }
-extern long long qadav_emit_match_prelude(long long sr, long long ac, long long ti);
-long long emit_match_prelude(long long sr, long long ac, long long ti) { return qadav_emit_match_prelude(sr, ac, ti); }
-extern long long qadav_emit_match_check(long long ai, long long ac, long long tr, long long ti);
-long long emit_match_check(long long ai, long long ac, long long tr, long long ti) { return qadav_emit_match_check(ai, ac, tr, ti); }
-extern void qadav_emit_match_body_label(long long ai);
-void emit_match_body_label(long long ai) { qadav_emit_match_body_label(ai); }
-extern void qadav_emit_match_body_end(void);
-void emit_match_body_end(void) { qadav_emit_match_body_end(); }
-extern void qadav_emit_match_end(void);
-void emit_match_end(void) { qadav_emit_match_end(); }
+extern long long qadav_is_variant_field_ptr(const char* cn, long long idx);
+long long is_variant_field_ptr(const char* cn, long long idx) { return qadav_is_variant_field_ptr(cn, idx); }
 
 extern long long qadav_record_imm_int(long long val);
 long long record_imm_int(long long val) { return qadav_record_imm_int(val); }
@@ -640,6 +632,22 @@ long long emit_record_get_field(long long r, long long o, long long i, long long
 extern long long qadav_emit_call_3(const char* callee, long long res_temp, long long r1, long long r2, long long r3);
 extern long long qadav_emit_call_4(const char* callee, long long res_temp, long long r1, long long r2, long long r3, long long r4);
 extern long long qadav_emit_call_5(const char* callee, long long res_temp, long long r1, long long r2, long long r3, long long r4, long long r5);
+extern void qadav_set_call_arg_extra(long long r);
+extern void qadav_set_call_arg_extra_2(long long r);
+extern long long qadav_emit_call_4_sub(const char* callee, long long res_temp, long long r1, long long r2, long long r3);
+extern long long qadav_emit_call_5_sub(const char* callee, long long res_temp, long long r1, long long r2, long long r3);
 long long emit_call_3(const char* c, long long res, long long r1, long long r2, long long r3) { return qadav_emit_call_3(c, res, r1, r2, r3); }
 long long emit_call_4(const char* c, long long res, long long r1, long long r2, long long r3, long long r4) { return qadav_emit_call_4(c, res, r1, r2, r3, r4); }
 long long emit_call_5(const char* c, long long res, long long r1, long long r2, long long r3, long long r4, long long r5) { return qadav_emit_call_5(c, res, r1, r2, r3, r4, r5); }
+void set_call_arg_extra(long long r) { qadav_set_call_arg_extra(r); }
+void set_call_arg_extra_2(long long r) { qadav_set_call_arg_extra_2(r); }
+long long emit_call_4_sub(const char* c, long long res, long long r1, long long r2, long long r3) { return qadav_emit_call_4_sub(c, res, r1, r2, r3); }
+long long emit_call_5_sub(const char* c, long long res, long long r1, long long r2, long long r3) { return qadav_emit_call_5_sub(c, res, r1, r2, r3); }
+
+extern long long qadav_variant_get_field_i64_wrap(void* variant, long long idx);
+long long variant_get_field_i64_wrap(void* variant, long long idx) { return qadav_variant_get_field_i64_wrap(variant, idx); }
+extern void* qadav_variant_get_field_ptr_wrap(void* variant, long long idx);
+void* variant_get_field_ptr_wrap(void* variant, long long idx) { return qadav_variant_get_field_ptr_wrap(variant, idx); }
+
+extern long long qadav_prealloc_match_bindings(const char* subject);
+long long prealloc_match_bindings(const char* s) { return qadav_prealloc_match_bindings(s); }

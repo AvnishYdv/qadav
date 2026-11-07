@@ -1,6 +1,8 @@
 #ifndef QADAV_IO_H
 #define QADAV_IO_H
 
+#include "qadav_variant.h"
+
 // QDS file format (Qadav Dataset Format):
 //   Header (32 bytes):
 //     magic[4]       = "QDS1"
@@ -162,15 +164,12 @@ const char* qadav_format_record_get_field_i64(long long res_reg, long long obj_r
 const char* qadav_format_variant_create_i64(const char* var_name, const char* case_name, long long val, long long temp_id);
 const char* qadav_format_variant_get_tag(long long res_reg, long long obj_reg);
 const char* qadav_format_variant_get_field_i64(long long res_reg, long long obj_reg, long long idx);
+long long qadav_variant_get_field_i64_wrap(void* variant, long long idx);
+void* qadav_variant_get_field_ptr_wrap(void* variant, long long idx);
 long long qadav_get_next_var_init_arg_count(void);
 long long qadav_emit_record_init(const char* type_name, long long field_count, long long temp_id);
 long long qadav_emit_variant_init(const char* var_name, const char* case_name, long long payload_reg, long long payload_kind, long long temp_id);
-long long qadav_emit_match_stmt(const char* subject, long long arm_count, long long temp_id);
-long long qadav_emit_match_prelude(long long subject_reg, long long arm_count, long long temp_id);
-long long qadav_emit_match_check(long long arm_idx, long long arm_count, long long tag_reg, long long temp_id);
-void qadav_emit_match_body_label(long long arm_idx);
-void qadav_emit_match_body_end(void);
-void qadav_emit_match_end(void);
+long long qadav_is_variant_field_ptr(const char* case_name, long long idx);
 long long qadav_record_imm_int(long long val);
 const char* qadav_format_trunc_line_reg(long long temp_id, long long reg);
 long long qadav_emit_proc_header(const char* name, const char* ret_type, const char* p1_name);
@@ -181,9 +180,15 @@ long long qadav_is_affirm_ident(const char* name);
 long long qadav_is_deny_ident(const char* name);
 long long qadav_is_text_returning_proc(const char* name);
 long long qadav_is_logic_returning_proc(const char* name);
+long long qadav_is_void_call_proc(const char* name);
 long long qadav_emit_call_3(const char* callee, long long res_temp, long long r1, long long r2, long long r3);
 long long qadav_emit_call_4(const char* callee, long long res_temp, long long r1, long long r2, long long r3, long long r4);
 long long qadav_emit_call_5(const char* callee, long long res_temp, long long r1, long long r2, long long r3, long long r4, long long r5);
+void qadav_set_call_arg_extra(long long r);
+void qadav_set_call_arg_extra_2(long long r);
+long long qadav_emit_call_4_sub(const char* callee, long long res_temp, long long r1, long long r2, long long r3);
+long long qadav_emit_call_5_sub(const char* callee, long long res_temp, long long r1, long long r2, long long r3);
+long long qadav_prealloc_match_bindings(const char* subject);
 #endif
 
 
