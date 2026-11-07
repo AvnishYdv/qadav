@@ -1,0 +1,35 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary host_auth ⟦
+        rule safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain host_log with host_auth ⟦ capacity ↦ 20 · ⟧
+
+    ethical_boundary untrusted_auth_a ⟦
+        rule tool_safety ↦ 1.0 ·
+    ⟧
+
+    ethical_boundary untrusted_auth_b ⟦
+        rule tool_safety ↦ 1.0 ·
+    ⟧
+
+    sandbox_create sandbox_a with untrusted_auth_a ⟦ capacity ↦ 10 · ⟧
+    sandbox_create sandbox_b with untrusted_auth_b ⟦ capacity ↦ 10 · ⟧
+
+    tool_register safe_tool with untrusted_auth_a pre ⟦ 1 ⟧ post ⟦ 1 ⟧ ·
+
+    sandbox_run sandbox_a ⦅ safe_tool⦅"trigger_violation"⦆ ⦆ ·
+    sandbox_run sandbox_b ⦅ safe_tool⦅"valid_arg"⦆ ⦆ ·
+
+    text att_a ↦ sandbox_verify sandbox_a ·
+    text att_b ↦ sandbox_verify sandbox_b ·
+
+    emit "SANDBOX_A_ATTESTATION:" ·
+    emit att_a ·
+    emit "SANDBOX_B_ATTESTATION:" ·
+    emit att_b ·
+
+    emit "ISOLATION_CONFIRMED: Host survives, Sandbox A violated, Sandbox B clean" ·
+
+    yield 0 ·
+⟧

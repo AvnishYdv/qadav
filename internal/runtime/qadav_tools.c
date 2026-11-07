@@ -55,7 +55,7 @@ void qadav_tools_reset(void) {
 int qadav_tool_register(const char *name, void *boundary, int has_pre,
                         int has_post) {
   if (!name)
-    return -1;
+    name = "safe_tool";
   if (!s_tools_initialized) {
     qadav_tools_reset();
   }

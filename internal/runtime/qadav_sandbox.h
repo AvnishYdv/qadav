@@ -40,7 +40,7 @@ unsigned long long qadav_sandbox_get_create_count(void);
 unsigned long long qadav_sandbox_get_free_count(void);
 
 // Text conversion helper for YDV runtime emission
-const char* qadav_sandbox_verify_text(const char* name);
+const char* qadav_sandbox_verify_text(const void* sb_or_name);
 
 #endif
 

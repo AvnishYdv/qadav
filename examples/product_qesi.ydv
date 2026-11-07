@@ -1,0 +1,29 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary host_auth ⟦
+        rule safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain host_log with host_auth ⟦ capacity ↦ 20 · ⟧
+
+    ethical_boundary untrusted_auth ⟦
+        rule tool_safety ↦ 1.0 ·
+    ⟧
+
+    sandbox_create untrusted_sandbox with untrusted_auth ⟦ capacity ↦ 10 · ⟧
+
+    tool_register safe_tool with untrusted_auth pre ⟦ 1 ⟧ post ⟦ 1 ⟧ ·
+
+    sandbox_run untrusted_sandbox ⦅ safe_tool⦅"valid_arg"⦆ ⦆ ·
+
+    sandbox_run untrusted_sandbox ⦅ safe_tool⦅"trigger_violation"⦆ ⦆ ·
+
+    text attestation ↦ sandbox_verify untrusted_sandbox ·
+
+    emit "HOST_SURVIVED" ·
+    emit attestation ·
+
+    verify_chain host_log ·
+    emit "Host reasoning chain verified after sandbox containment" ·
+
+    yield 0 ·
+⟧

@@ -91,6 +91,13 @@ qadav_reasoning_chain* qadav_qera_create(const char* name, int capacity, void* a
         qadav_qeeh_boundary_hash(auth_boundary, chain->authorized_boundary_id);
     }
 
+    void qadav_sandbox_set_host_chain(void* chain);
+    static int s_host_chain_set = 0;
+    if (!s_host_chain_set) {
+        s_host_chain_set = 1;
+        qadav_sandbox_set_host_chain(chain);
+    }
+
     return chain;
 }
 

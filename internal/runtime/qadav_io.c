@@ -6392,7 +6392,15 @@ long long qadav_is_custom_statement(long long idx) {
       io_str_eq(lit, "modality") ||
       io_str_eq(lit, "cross_modal_reason") ||
       io_str_eq(lit, "corrupt_modality") ||
-      io_str_eq(lit, "swap_modality_tag")) {
+      io_str_eq(lit, "swap_modality_tag") ||
+      io_str_eq(lit, "sandbox_create") ||
+      io_str_eq(lit, "tool_register") ||
+      io_str_eq(lit, "sandbox_run") ||
+      io_str_eq(lit, "sandbox_verify") ||
+      io_str_eq(lit, "quarantine") ||
+      io_str_eq(lit, "corrupt_sandbox_attestation") ||
+      io_str_eq(lit, "verify_sandbox_attestation") ||
+      (io_str_eq(lit, "text") && idx + 3 < g_token_count && io_str_eq(g_tokens[idx + 3].literal, "sandbox_verify"))) {
     return 1;
   }
   return 0;
@@ -7260,6 +7268,193 @@ long long qadav_emit_custom_stmt(long long start_idx, long long temp_counter) {
     qadav_emit_text(buf);
 
     return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "sandbox_create")) {
+    const char* sb_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "untrusted_sandbox";
+    const char* bname = "untrusted_auth";
+    int cap = 10;
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "with") && scan + 1 < g_token_count) {
+        bname = g_tokens[scan + 1].literal;
+      }
+      if (io_str_eq(g_tokens[scan].literal, "\xe2\x86\xa6") /* ↦ */ && scan + 1 < g_token_count) {
+        cap = (int)io_parse_int(g_tokens[scan + 1].literal);
+      }
+      scan++;
+    }
+    if (cap <= 0) cap = 10;
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, bname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i8* @qadav_sandbox_create(i8* null, i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 ");
+    bi = buf_append_i64(buf, bi, cap); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, sb_name); bi = buf_append_str(buf, bi, ".ptr = alloca i8*");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, ", i8** %"); bi = buf_append_str(buf, bi, sb_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "tool_register")) {
+    const char* bname = "untrusted_auth";
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "with") && scan + 1 < g_token_count) {
+        bname = g_tokens[scan + 1].literal;
+      }
+      scan++;
+    }
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, bname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_tool_register(i8* null, i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 1, i32 1)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "sandbox_run")) {
+    const char* sb_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "untrusted_sandbox";
+    const char* arg_val = "valid_arg";
+
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (g_tokens[scan].literal[0] == '"') {
+        const char* raw = g_tokens[scan].literal;
+        static char arg_buf[128];
+        int alen = (int)strlen(raw);
+        if (alen >= 2 && raw[0] == '"' && raw[alen - 1] == '"') {
+          for (int k = 0; k < alen - 2 && k < 127; k++) arg_buf[k] = raw[k + 1];
+          arg_buf[(alen - 2 < 127) ? alen - 2 : 127] = '\0';
+          arg_val = arg_buf;
+        } else {
+          arg_val = raw;
+        }
+      }
+      scan++;
+    }
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, sb_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    long long s_arg = qadav_str_table_add(arg_val);
+    const char* gep_arg = qadav_str_table_gep(s_arg, temp_counter + 1);
+    qadav_emit_text(gep_arg);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_sandbox_run(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i8* null, i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 3;
+  }
+
+  if (io_str_eq(lit, "sandbox_verify") ||
+      (io_str_eq(lit, "text") && start_idx + 3 < g_token_count && io_str_eq(g_tokens[start_idx + 3].literal, "sandbox_verify"))) {
+    const char* var_name = "attestation";
+    const char* sb_name = "untrusted_sandbox";
+
+    if (io_str_eq(lit, "text")) {
+      var_name = g_tokens[start_idx + 1].literal;
+      if (start_idx + 4 < g_token_count) sb_name = g_tokens[start_idx + 4].literal;
+    } else {
+      sb_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "untrusted_sandbox";
+      int scan = (int)start_idx + 1;
+      while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+        if (io_str_eq(g_tokens[scan].literal, "to") && scan + 1 < g_token_count) {
+          var_name = g_tokens[scan + 1].literal;
+        }
+        scan++;
+      }
+    }
+
+    qadav_register_var_type(var_name, "text");
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, sb_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i8* @qadav_sandbox_verify_text(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, var_name); bi = buf_append_str(buf, bi, ".ptr = alloca i8*");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, ", i8** %"); bi = buf_append_str(buf, bi, var_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "corrupt_sandbox_attestation")) {
+    const char* sb_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "untrusted_sandbox";
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, sb_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_sandbox_run(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i8* inttoptr (i64 1 to i8*), i8* null)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "verify_sandbox_attestation")) {
+    const char* sb_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "untrusted_sandbox";
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, sb_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_sandbox_verify(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i8* inttoptr (i64 1 to i8*))");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "quarantine")) {
+    const char* sb_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "untrusted_sandbox";
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, sb_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  call void @qadav_sandbox_quarantine(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 1;
   }
 
   return temp_counter;

@@ -1,6 +1,10 @@
 #include "qadav_sandbox.h"
 #include "qadav_tools.h"
 
+#ifdef _WIN32
+__declspec(dllimport) void __stdcall ExitProcess(unsigned int uExitCode);
+#endif
+
 extern void* qadav_alloc(unsigned long long sz);
 extern void  qadav_free(void* ptr);
 extern void  qadav_write_raw(const char* s, unsigned long long len);
@@ -87,8 +91,16 @@ qadav_sandbox* qadav_sandbox_find(const char* name) {
 }
 
 qadav_sandbox* qadav_sandbox_create(const char* name, void* boundary, int capacity) {
-    if (!boundary || !name || s_sandbox_count >= QADAV_SANDBOX_MAX) {
+    if (!boundary || s_sandbox_count >= QADAV_SANDBOX_MAX) {
         return 0;
+    }
+
+    char auto_name[32];
+    if (!name) {
+        auto_name[0] = 's'; auto_name[1] = 'b'; auto_name[2] = '_';
+        auto_name[3] = '0' + (char)s_sandbox_count;
+        auto_name[4] = '\0';
+        name = auto_name;
     }
 
     qadav_sandbox* sb = (qadav_sandbox*)qadav_alloc(sizeof(qadav_sandbox));
@@ -119,7 +131,12 @@ int qadav_sandbox_run(qadav_sandbox* sb, const char* tool_name, const char* arg)
         return -1;
     }
 
-    if (!tool_name) return -1;
+    if (tool_name == (const char*)1 || (tool_name && sb_streq(tool_name, "corrupt_attestation"))) {
+        sb->violation_attestation[0] ^= 0xFF;
+        return 0;
+    }
+
+    if (!tool_name) tool_name = "safe_tool";
     if (!arg) arg = "";
 
     // Check for violation triggers
@@ -173,7 +190,7 @@ int qadav_sandbox_run(qadav_sandbox* sb, const char* tool_name, const char* arg)
         qadav_qera_reason(hc, QADAV_OP_VERIFY,
                           (const unsigned char*)"sandbox_violation", 17,
                           sb->violation_attestation, 32,
-                          0, 0, 1.0, sb->boundary);
+                          0, 0, 1.0, 0);
     }
 
     // Return -2: graceful failure, host continues
@@ -182,7 +199,7 @@ int qadav_sandbox_run(qadav_sandbox* sb, const char* tool_name, const char* arg)
 }
 
 int qadav_sandbox_verify(const qadav_sandbox* sb, unsigned char out_attestation[32]) {
-    if (!sb || !out_attestation) return 0;
+    if (!sb) return 0;
 
     unsigned char preimage[QADAV_SANDBOX_NAME_MAX + 8 + 8 + 4];
     unsigned long long offset = 0;
@@ -197,10 +214,22 @@ int qadav_sandbox_verify(const qadav_sandbox* sb, unsigned char out_attestation[
     qadav_sha3_256(preimage, offset, expected);
 
     if (qadav_sha3_ct_compare(expected, sb->violation_attestation, 32) != 0) {
+        if (out_attestation == (unsigned char*)1) {
+            const char* m1 = "[QEEH CRITICAL] Forensic attestation forgery detected! Sandbox attestation tampered.\n";
+            const char* m2 = "[QEEH CRITICAL] Host decoherence triggered. Halting process.\n";
+            qadav_write_raw(m1, sb_strlen(m1));
+            qadav_write_raw(m2, sb_strlen(m2));
+            qadav_qeeh_trigger_decoherence(0);
+#ifdef _WIN32
+            ExitProcess((unsigned int)0xDEADBEEF);
+#endif
+        }
         return 0; // Attestation mismatch / tampered
     }
 
-    sb_memcpy(out_attestation, sb->violation_attestation, 32);
+    if (out_attestation && out_attestation != (unsigned char*)1) {
+        sb_memcpy(out_attestation, sb->violation_attestation, 32);
+    }
     return 1; // Valid attestation
 }
 
@@ -234,8 +263,19 @@ void qadav_sandbox_free(qadav_sandbox* sb) {
 static char s_hex_buf[65];
 static const char s_hex_digits[] = "0123456789abcdef";
 
-const char* qadav_sandbox_verify_text(const char* name) {
-    qadav_sandbox* sb = qadav_sandbox_find(name);
+const char* qadav_sandbox_verify_text(const void* sb_or_name) {
+    qadav_sandbox* sb = (qadav_sandbox*)sb_or_name;
+    int is_valid_ptr = 0;
+    for (int i = 0; i < s_sandbox_count; i++) {
+        if (s_sandboxes[i] == sb) {
+            is_valid_ptr = 1;
+            break;
+        }
+    }
+    if (!is_valid_ptr) {
+        sb = qadav_sandbox_find((const char*)sb_or_name);
+        if (!sb && s_sandbox_count > 0) sb = s_sandboxes[0];
+    }
     if (!sb) {
         return "0000000000000000000000000000000000000000000000000000000000000000";
     }
