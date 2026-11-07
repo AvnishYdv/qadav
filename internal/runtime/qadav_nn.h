@@ -74,6 +74,10 @@ double         qadav_log(double x);
 int qadav_run_toy_training(const char* cmd, void* mctp_cert, int epochs);
 int qadav_run_toy_evaluation(const char* cmd);
 
+// Scaled QNMF v2 / Transformer v2 Engine for M9.12 (15-20M params, P1+P2+P3)
+int qadav_run_v2_training(const char* cmd, void* mctp_cert, int epochs);
+int qadav_run_v2_evaluation(const char* cmd);
+
 #endif // QADAV_NN_H
 
 

@@ -1,0 +1,15 @@
+network TransformerV2 ⟦
+    dense ⟬128⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 8000⟭ ·
+    relu ·
+    dense ⟬8000⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+    softmax ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "TRANSFORMER_V2_SPEC_17_67M_4L_8H" ·
+    yield 0 ·
+⟧
