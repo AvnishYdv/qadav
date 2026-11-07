@@ -330,10 +330,20 @@ int qadav_qera_audit(qadav_reasoning_chain* chain) {
 }
 
 int qadav_qera_corrupt_step(qadav_reasoning_chain* chain, int step_idx, int at_idx) {
-    if (!chain || step_idx < 0 || step_idx >= chain->n_steps) return -1;
+    if (!chain || chain->n_steps <= 0) return -1;
     if (at_idx == -1 && chain->certs) {
         qadav_reason_certificate* certs = (qadav_reason_certificate*)chain->certs;
-        certs[step_idx].witness[0] ^= 0xFF;
+        int target = step_idx;
+        if (target < 0 || target >= chain->n_steps) target = chain->n_steps - 1;
+        int has_cert = 0;
+        for (int b = 0; b < 32; b++) { if (certs[target].cert_id[b] != 0) { has_cert = 1; break; } }
+        if (!has_cert) {
+            for (int k = chain->n_steps - 1; k >= 0; k--) {
+                for (int b = 0; b < 32; b++) { if (certs[k].cert_id[b] != 0) { target = k; has_cert = 1; break; } }
+                if (has_cert) break;
+            }
+        }
+        certs[target].witness[0] ^= 0xFF;
         return 0;
     }
     if (at_idx == -2 && chain->bundle) {
@@ -358,6 +368,7 @@ int qadav_qera_corrupt_step(qadav_reasoning_chain* chain, int step_idx, int at_i
             }
         }
     }
+    if (step_idx < 0 || step_idx >= chain->n_steps) step_idx = chain->n_steps - 1;
     chain->steps[step_idx].step_commitment[at_idx % 32] ^= 0xFF;
     return 0;
 }

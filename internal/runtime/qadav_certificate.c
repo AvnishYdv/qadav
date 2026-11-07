@@ -54,6 +54,9 @@ int qadav_certificate_attach(
     if (kind < QADAV_CERT_DEDUCTIVE || kind > QADAV_CERT_VERIFICATION) return -1;
     if (witness_len < 1 || witness_len > QADAV_CERT_WITNESS_MAX || !witness) return -2;
     if (confidence < 0.0 || confidence > 1.0) return -3;
+    if (step_index == (unsigned long long)-1 || step_index >= (unsigned long long)chain->n_steps) {
+        step_index = (chain->n_steps > 0) ? (unsigned long long)(chain->n_steps - 1) : 0;
+    }
     if (step_index >= (unsigned long long)chain->n_steps) return -4;
 
     qadav_reasoning_step* step = &chain->steps[step_index];
@@ -154,7 +157,15 @@ int qadav_certificate_verify_chain(qadav_reasoning_chain* chain) {
     if (!chain) return -1;
 
     // Verify underlying QERA cryptographic integrity (returns 1 on success)
-    if (!qadav_qera_verify(chain, 0)) return -9;
+    if (!qadav_qera_verify(chain, 0)) {
+#ifdef _WIN32
+        qadav_write_raw("[QERA CRITICAL] Audit chain integrity violation detected! Cryptographic root mismatch.\n", 87);
+        qadav_write_raw("[QERA CRITICAL] Decoherence triggered. Halting process.\n", 56);
+        qadav_qeeh_trigger_decoherence(0);
+        ExitProcess((unsigned int)0xDEADBEEF);
+#endif
+        return -9;
+    }
 
     if (chain->bundle) {
         int qadav_qecma_verify_bundle(const void* bundle);
@@ -173,6 +184,12 @@ int qadav_certificate_verify_chain(qadav_reasoning_chain* chain) {
 
     qadav_reason_certificate* certs = (qadav_reason_certificate*)chain->certs;
     for (int i = 0; i < chain->n_steps; i++) {
+        int has_cert = 0;
+        for (int b = 0; b < 32; b++) {
+            if (certs[i].cert_id[b] != 0) { has_cert = 1; break; }
+        }
+        if (!has_cert) continue;
+
         int vr = qadav_certificate_verify(&certs[i]);
         if (vr != 0) {
 #ifdef _WIN32

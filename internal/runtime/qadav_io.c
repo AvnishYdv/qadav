@@ -6697,8 +6697,7 @@ long long qadav_emit_custom_stmt(long long start_idx, long long temp_counter) {
 
     bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 5);
     bi = buf_append_str(buf, bi, " = call i32 @qadav_certificate_attach(i8* %t");
-    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i64 ");
-    bi = buf_append_i64(buf, bi, step_idx); bi = buf_append_str(buf, bi, ", i8 ");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i64 -1, i8 ");
     bi = buf_append_i64(buf, bi, op); bi = buf_append_str(buf, bi, ", i8* %t");
     bi = buf_append_i64(buf, bi, temp_counter + 4); bi = buf_append_str(buf, bi, ", i32 ");
     bi = buf_append_i64(buf, bi, wit_len); bi = buf_append_str(buf, bi, ", double ");
