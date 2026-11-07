@@ -606,12 +606,19 @@ void _chkstk(void) {}
 
 #endif
 
-extern long long qadav_emit_record_init(long long t);
-extern long long qadav_emit_variant_init(long long t);
-extern long long qadav_emit_match_stmt(const char* s, long long t);
-long long emit_record_init(long long t) { return qadav_emit_record_init(t); }
-long long emit_variant_init(long long t) { return qadav_emit_variant_init(t); }
-long long emit_match_stmt(const char* s, long long t) { return qadav_emit_match_stmt(s, t); }
+extern long long qadav_get_next_var_init_arg_count(void);
+long long get_next_var_init_arg_count(void) { return qadav_get_next_var_init_arg_count(); }
+extern long long qadav_emit_record_init(const char* tn, long long fc, long long t);
+extern long long qadav_emit_variant_init(const char* vn, const char* cn, long long pr, long long pk, long long t);
+extern long long qadav_emit_match_stmt(const char* s, long long ac, long long t);
+long long emit_record_init(const char* tn, long long fc, long long t) { return qadav_emit_record_init(tn, fc, t); }
+long long emit_variant_init(const char* vn, const char* cn, long long pr, long long pk, long long t) { return qadav_emit_variant_init(vn, cn, pr, pk, t); }
+long long emit_match_stmt(const char* s, long long ac, long long t) { return qadav_emit_match_stmt(s, ac, t); }
+
+extern long long qadav_record_imm_int(long long val);
+long long record_imm_int(long long val) { return qadav_record_imm_int(val); }
+extern const char* qadav_format_trunc_line_reg(long long temp_id, long long reg);
+const char* format_trunc_line_reg(long long temp_id, long long reg) { return qadav_format_trunc_line_reg(temp_id, reg); }
 
 extern long long qadav_emit_proc_header(const char* name, const char* ret_type, const char* p1_name);
 extern long long qadav_emit_proc_header_2(const char* name, const char* ret_type, const char* p1_name, const char* p2_name);

@@ -162,9 +162,12 @@ const char* qadav_format_record_get_field_i64(long long res_reg, long long obj_r
 const char* qadav_format_variant_create_i64(const char* var_name, const char* case_name, long long val, long long temp_id);
 const char* qadav_format_variant_get_tag(long long res_reg, long long obj_reg);
 const char* qadav_format_variant_get_field_i64(long long res_reg, long long obj_reg, long long idx);
-long long qadav_emit_record_init(long long temp_counter);
-long long qadav_emit_variant_init(long long temp_counter);
-long long qadav_emit_match_stmt(const char* subject, long long temp_counter);
+long long qadav_get_next_var_init_arg_count(void);
+long long qadav_emit_record_init(const char* type_name, long long field_count, long long temp_id);
+long long qadav_emit_variant_init(const char* var_name, const char* case_name, long long payload_reg, long long payload_kind, long long temp_id);
+long long qadav_emit_match_stmt(const char* subject, long long arm_count, long long temp_id);
+long long qadav_record_imm_int(long long val);
+const char* qadav_format_trunc_line_reg(long long temp_id, long long reg);
 long long qadav_emit_proc_header(const char* name, const char* ret_type, const char* p1_name);
 long long qadav_emit_proc_header_2(const char* name, const char* ret_type, const char* p1_name, const char* p2_name);
 long long qadav_emit_record_get_field(long long res_temp, long long obj_temp, long long idx, long long is_ptr);

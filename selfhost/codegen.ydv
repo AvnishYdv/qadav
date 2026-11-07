@@ -322,7 +322,9 @@ process parse_expression⦅int64 idx⦆ → CoreAst ⟦
     ⟧
     when kcode ≡ 37 ⟦
         text vname ↦ token_literal⦅idx ⊕ 1⦆ ·
-        yield ast_variant_init⦅vname ⸴ "Valid" ⸴ ast_int_lit⦅8⦆⦆ ·
+        text cname_vi ↦ token_literal⦅idx ⊕ 3⦆ ·
+        CoreAst pld ↦ parse_primary⦅idx ⊕ 5⦆ ·
+        yield ast_variant_init⦅vname ⸴ cname_vi ⸴ pld⦆ ·
     ⟧
     when kcode ≡ 2 ∧ token_kind_code⦅idx ⊕ 1⦆ ≡ 30 ⟦
         text oname ↦ token_literal⦅idx⦆ ·
@@ -870,7 +872,8 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             yield temp_counter ⊕ 1 ·
         | IntLitDecl(v) ⟹
             set_last_int_value⦅v⦆ ·
-            set_last_temp⦅0 ⊖ 1⦆ ·
+            int64 imm_h ↦ record_imm_int⦅v⦆ ·
+            set_last_temp⦅imm_h⦆ ·
             set_last_emit_kind⦅1⦆ ·
             yield temp_counter ·
         | FloatLitDecl(v) ⟹
@@ -940,7 +943,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 set_last_emit_kind⦅2⦆ ·
                 yield res_temp_bin ⊕ 1 ·
             ⟧ otherwise ⟦
-                when ekind_l ≡ 2 ∧ is_e_op ≡ 1 ⟦
+                when (ekind_l ≡ 2 ∨ ekind_l ≡ 0) ∧ is_e_op ≡ 1 ⟦
                     text cmp_line ↦ format_icmp_eq_ptr⦅res_temp_bin ⸴ reg_l_bin ⸴ reg_r_bin⦆ ·
                     emit cmp_line ·
                     set_last_temp⦅res_temp_bin⦆ ·
@@ -964,9 +967,15 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             int64 t_yield_y ↦ walk_core_ast⦅inner ⸴ temp_counter⦆ ·
             int64 is_m_y ↦ get_proc_is_main⦅⦆ ·
             when is_m_y ≡ 1 ⟦
-                int64 val_y ↦ last_int_value⦅⦆ ·
-                text strunc_y ↦ format_trunc_line_id⦅t_yield_y ⸴ val_y⦆ ·
-                emit strunc_y ·
+                int64 last_t_m ↦ get_last_temp⦅⦆ ·
+                when last_t_m ≽ 0 ⟦
+                    text strunc_reg ↦ format_trunc_line_reg⦅t_yield_y ⸴ last_t_m⦆ ·
+                    emit strunc_reg ·
+                ⟧ otherwise ⟦
+                    int64 val_y ↦ last_int_value⦅⦆ ·
+                    text strunc_y ↦ format_trunc_line_id⦅t_yield_y ⸴ val_y⦆ ·
+                    emit strunc_y ·
+                ⟧
                 text sret_y ↦ format_ret_line_id⦅t_yield_y⦆ ·
                 emit sret_y ·
                 yield t_yield_y ⊕ 1 ·
@@ -1182,7 +1191,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
         | VariantDeclStmt(name ⸴ count) ⟹
             yield temp_counter ·
         | MatchStmt(subject ⸴ arms) ⟹
-            int64 next_t_m ↦ emit_match_stmt⦅subject ⸴ temp_counter⦆ ·
+            int64 next_t_m ↦ emit_match_stmt⦅subject ⸴ 2 ⸴ temp_counter⦆ ·
             yield next_t_m ·
         | ProcedureDecl(name ⸴ p ⸴ ret ⸴ body) ⟹
             emit_proc_header⦅name ⸴ ret ⸴ p⦆ ·
@@ -1197,11 +1206,20 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             emit "" ·
             yield t_proc2_d ·
         | RecordInitExpr(type_name ⸴ field_count) ⟹
-            int64 next_t_rec ↦ emit_record_init⦅temp_counter⦆ ·
+            int64 next_t_rec ↦ emit_record_init⦅type_name ⸴ field_count ⸴ temp_counter⦆ ·
             yield next_t_rec ·
         | VariantInitExpr(var_name ⸴ case_name ⸴ payload) ⟹
-            int64 next_t_var ↦ emit_variant_init⦅temp_counter⦆ ·
-            yield next_t_var ·
+            int64 acnt ↦ get_next_var_init_arg_count⦅⦆ ·
+            when acnt ≼ 1 ⟦
+                int64 t_payload ↦ walk_core_ast⦅payload ⸴ temp_counter⦆ ·
+                int64 reg_payload ↦ get_last_temp⦅⦆ ·
+                int64 pkind ↦ get_last_emit_kind⦅⦆ ·
+                int64 next_t_var ↦ emit_variant_init⦅var_name ⸴ case_name ⸴ reg_payload ⸴ pkind ⸴ t_payload⦆ ·
+                yield next_t_var ·
+            ⟧ otherwise ⟦
+                int64 next_t_var2 ↦ emit_variant_init⦅var_name ⸴ case_name ⸴ 0 ⸴ 0 ⸴ temp_counter⦆ ·
+                yield next_t_var2 ·
+            ⟧
         | FieldAccessExpr(obj_name ⸴ field_name) ⟹
             text load_line ↦ format_load_type⦅obj_name ⸴ "i8*" ⸴ temp_counter⦆ ·
             emit load_line ·

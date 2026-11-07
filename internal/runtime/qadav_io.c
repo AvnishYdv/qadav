@@ -438,8 +438,8 @@ static int g_rec_decl_count = 0;
 typedef struct {
     char name[32];
     int case_count;
-    char case_names[32][32];
-    char case_types[32][32];
+    char case_names[64][32];
+    char case_types[64][32];
 } QadavVariantDecl;
 
 #define MAX_VARIANTS 16
@@ -481,6 +481,16 @@ typedef struct {
 static qadav_var_type_entry_t g_var_types[MAX_VAR_TYPES];
 static int g_var_type_count = 0;
 
+static long long g_imm_table[256];
+static int g_imm_count = 0;
+
+long long qadav_record_imm_int(long long val) {
+    if (g_imm_count >= 256) return -1;
+    int idx = g_imm_count++;
+    g_imm_table[idx] = val;
+    return (long long)(-1000 - idx);
+}
+
 
 long long qadav_tokenize_file(const char* path) {
     g_token_count = 0;
@@ -493,6 +503,7 @@ long long qadav_tokenize_file(const char* path) {
     g_var_init_count = 0;
     g_current_var_init_walk_idx = 0;
     g_var_type_count = 0;
+    g_imm_count = 0;
     if (!path || !*path) return 0;
     void* h = qadav_file_open_read(path);
     if (!h) return 0;
@@ -907,7 +918,7 @@ long long qadav_tokenize_file(const char* path) {
                 while (scan < g_token_count && g_tokens[scan].kind_code != 21) {
                     if (g_tokens[scan].kind_code == 34 && scan + 1 < g_token_count) {
                         int ci = vd->case_count;
-                        if (ci < 32) {
+                        if (ci < 64) {
                             int cki = 0;
                             while (g_tokens[scan + 1].literal[cki] && cki < 31) {
                                 vd->case_names[ci][cki] = g_tokens[scan + 1].literal[cki];
@@ -1646,6 +1657,21 @@ const char* qadav_format_trunc_line_id(long long temp_id, long long val) {
     return buf;
 }
 
+const char* qadav_format_trunc_line_reg(long long temp_id, long long reg) {
+    static char buf[64];
+    int bi = 0;
+    const char* p1 = "  %t";
+    while (*p1) buf[bi++] = *p1++;
+    append_num(buf, &bi, temp_id);
+    const char* p2 = " = trunc i64 %t";
+    while (*p2) buf[bi++] = *p2++;
+    append_num(buf, &bi, reg);
+    const char* p3 = " to i32";
+    while (*p3) buf[bi++] = *p3++;
+    buf[bi] = '\0';
+    return buf;
+}
+
 const char* qadav_format_ret_line_id(long long temp_id) {
     static char buf[32];
     int bi = 0;
@@ -2114,6 +2140,8 @@ const char* qadav_format_binop_imm(const char* op, long long res_temp, long long
     else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xbb) op_str = "icmp sgt i64";
     else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xa1) op_str = "icmp eq i64";
     else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xa0) op_str = "icmp ne i64";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xbd) op_str = "icmp sge i64";
+    else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 && (unsigned char)op[2] == 0xbc) op_str = "icmp sle i64";
     while (*op_str) buf[bi++] = *op_str++;
     buf[bi++] = ' ';
     if (left_reg < 0) {
@@ -2899,12 +2927,18 @@ static const char* const g_dynamic_io_decls[] = {
     "declare i64 @qadav_is_record_field_ptr(i8*, i8*)",
     "declare i64 @get_variant_case_tag(i8*, i8*)",
     "declare i64 @qadav_get_variant_case_tag(i8*, i8*)",
-    "declare i64 @emit_record_init(i64)",
-    "declare i64 @qadav_emit_record_init(i64)",
-    "declare i64 @emit_variant_init(i64)",
-    "declare i64 @qadav_emit_variant_init(i64)",
-    "declare i64 @emit_match_stmt(i8*, i64)",
-    "declare i64 @qadav_emit_match_stmt(i8*, i64)",
+    "declare i64 @get_next_var_init_arg_count()",
+    "declare i64 @qadav_get_next_var_init_arg_count()",
+    "declare i64 @emit_record_init(i8*, i64, i64)",
+    "declare i64 @qadav_emit_record_init(i8*, i64, i64)",
+    "declare i64 @emit_variant_init(i8*, i8*, i64, i64, i64)",
+    "declare i64 @qadav_emit_variant_init(i8*, i8*, i64, i64, i64)",
+    "declare i64 @emit_match_stmt(i8*, i64, i64)",
+    "declare i64 @qadav_emit_match_stmt(i8*, i64, i64)",
+    "declare i64 @record_imm_int(i64)",
+    "declare i64 @qadav_record_imm_int(i64)",
+    "declare i8* @format_trunc_line_reg(i64, i64)",
+    "declare i8* @qadav_format_trunc_line_reg(i64, i64)",
     "declare i64 @emit_proc_header(i8*, i8*, i8*)",
     "declare i64 @qadav_emit_proc_header(i8*, i8*, i8*)",
     "declare i64 @emit_proc_header_2(i8*, i8*, i8*, i8*)",
@@ -3509,7 +3543,14 @@ static long long qadav_emit_call_generic(const char* callee, long long res_temp,
         s = lt_p; while (*s) buf[bi++] = *s++;
         buf[bi++] = ' ';
         if (regs[p] < 0) {
-            if (io_str_eq(lt_p, "double")) {
+            if (regs[p] <= -1000) {
+                int idx = (int)(-regs[p] - 1000);
+                if (idx >= 0 && idx < g_imm_count) {
+                    append_num(buf, &bi, g_imm_table[idx]);
+                } else {
+                    append_num(buf, &bi, g_last_int_val);
+                }
+            } else if (io_str_eq(lt_p, "double")) {
                 const char* fd = "0.000000"; while (*fd) buf[bi++] = *fd++;
             } else {
                 append_num(buf, &bi, g_last_int_val);
@@ -3556,13 +3597,16 @@ long long qadav_is_logic_type(const char* t) {
     return 0;
 }
 
-long long qadav_emit_record_init(long long temp_counter) {
+long long qadav_emit_record_init(const char* type_name, long long field_count, long long temp_id) {
+    long long temp_counter = temp_id;
     if (g_current_rec_init_walk_idx >= g_rec_init_count) return temp_counter;
     qadav_rec_init_info_t* ri = &g_rec_inits[g_current_rec_init_walk_idx++];
-    const char* alloc_str = qadav_format_record_alloc(ri->type_name, temp_counter);
+    const char* tname = (type_name && *type_name) ? type_name : ri->type_name;
+    const char* alloc_str = qadav_format_record_alloc(tname, temp_counter);
     qadav_emit_text(alloc_str);
     long long rec_reg = temp_counter++;
-    for (int i = 0; i < ri->field_count; i++) {
+    int fc = (ri->field_count > 0) ? ri->field_count : (int)field_count;
+    for (int i = 0; i < fc; i++) {
         if (ri->field_kinds[i] == 0) {
             const char* s = qadav_format_record_set_field_i64(rec_reg, i, ri->field_val_ints[i]);
             qadav_emit_text(s);
@@ -3611,46 +3655,53 @@ long long qadav_emit_record_init(long long temp_counter) {
     return temp_counter;
 }
 
-long long qadav_emit_variant_init(long long temp_counter) {
-    if (g_current_var_init_walk_idx >= g_var_init_count) {
-        qadav_set_last_temp(temp_counter);
-        qadav_set_last_emit_kind(0);
-        return temp_counter + 1;
+long long qadav_get_next_var_init_arg_count(void) {
+    if (g_current_var_init_walk_idx < g_var_init_count) {
+        return (long long)g_var_inits[g_current_var_init_walk_idx].arg_count;
     }
-    qadav_var_init_info_t* vi = &g_var_inits[g_current_var_init_walk_idx++];
-    unsigned long long h = fnv1a_hash(vi->var_name);
-    long long tag = qadav_get_variant_case_tag(vi->var_name, vi->case_name);
+    return 1;
+}
+
+long long qadav_emit_variant_init(const char* var_name, const char* case_name, long long payload_reg, long long payload_kind, long long temp_id) {
+    long long temp_counter = temp_id;
+    const char* vn = (var_name && *var_name) ? var_name : "";
+    const char* cn = (case_name && *case_name) ? case_name : "";
+    unsigned long long h = fnv1a_hash(vn);
+    long long tag = qadav_get_variant_case_tag(vn, cn);
 
     char buf[256];
     int bi = 0;
 
-    if (vi->arg_count == 1) {
-        if (vi->arg_kinds[0] == 0) { // int literal (e.g. ParseResult Valid ↦ 8)
-            const char* s = qadav_format_variant_create_i64(vi->var_name, vi->case_name, vi->arg_int_vals[0], temp_counter);
+    int vi_arg_count = 1;
+    if (g_current_var_init_walk_idx < g_var_init_count) {
+        vi_arg_count = g_var_inits[g_current_var_init_walk_idx].arg_count;
+    }
+
+    if (vi_arg_count <= 1) {
+        if (g_current_var_init_walk_idx < g_var_init_count) {
+            g_current_var_init_walk_idx++;
+        }
+        if (payload_reg < 0) {
+            long long imm_val = g_last_int_val;
+            if (payload_reg <= -1000) {
+                int idx = (int)(-payload_reg - 1000);
+                if (idx >= 0 && idx < g_imm_count) imm_val = g_imm_table[idx];
+            }
+            const char* s = qadav_format_variant_create_i64(vn, cn, imm_val, temp_counter);
             qadav_emit_text(s);
             qadav_set_last_temp(temp_counter);
             qadav_set_last_emit_kind(0);
             return temp_counter + 1;
-        } else if (io_str_eq(vi->case_name, "FloatLitDecl")) {
-            long long t_load = temp_counter++;
+        }
+
+        if (payload_kind == 3 || io_str_eq(cn, "FloatLitDecl")) {
+            long long t_call = temp_counter++;
+            long long t_bitcast = temp_counter++;
             bi = 0;
             const char* p = "  %t"; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, t_load);
-            p = " = load double, double* %"; while (*p) buf[bi++] = *p++;
-            const char* an = vi->arg_names[0]; while (*an) buf[bi++] = *an++;
-            p = ".ptr"; while (*p) buf[bi++] = *p++;
-            buf[bi] = '\0';
-            qadav_emit_text(buf);
-
-            long long t_bc = temp_counter + 1;
-            long long t_call = temp_counter;
-            temp_counter += 2;
-
-            bi = 0;
-            p = "  %t"; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, t_bc);
+            append_num(buf, &bi, t_bitcast);
             p = " = bitcast double %t"; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, t_load);
+            append_num(buf, &bi, payload_reg);
             p = " to i64"; while (*p) buf[bi++] = *p++;
             buf[bi] = '\0';
             qadav_emit_text(buf);
@@ -3663,62 +3714,7 @@ long long qadav_emit_variant_init(long long temp_counter) {
             p = ", i32 "; while (*p) buf[bi++] = *p++;
             append_num(buf, &bi, tag);
             p = ", i64 %t"; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, t_bc);
-            buf[bi++] = ')'; buf[bi] = '\0';
-            qadav_emit_text(buf);
-
-            qadav_set_last_temp(t_call);
-            qadav_set_last_emit_kind(0);
-            return temp_counter;
-        } else if (io_str_eq(vi->case_name, "IntLitDecl")) {
-            long long t_load = temp_counter++;
-            bi = 0;
-            const char* p = "  %t"; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, t_load);
-            p = " = load i64, i64* %"; while (*p) buf[bi++] = *p++;
-            const char* an = vi->arg_names[0]; while (*an) buf[bi++] = *an++;
-            p = ".ptr"; while (*p) buf[bi++] = *p++;
-            buf[bi] = '\0';
-            qadav_emit_text(buf);
-
-            long long t_call = temp_counter++;
-            bi = 0;
-            p = "  %t"; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, t_call);
-            p = " = call i8* @qadav_variant_create_i64(i64 "; while (*p) buf[bi++] = *p++;
-            append_uint64(buf, &bi, h);
-            p = ", i32 "; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, tag);
-            p = ", i64 %t"; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, t_load);
-            buf[bi++] = ')'; buf[bi] = '\0';
-            qadav_emit_text(buf);
-
-            qadav_set_last_temp(t_call);
-            qadav_set_last_emit_kind(0);
-            return temp_counter;
-        } else {
-            // pointer (i8*)
-            long long t_load = temp_counter++;
-            bi = 0;
-            const char* p = "  %t"; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, t_load);
-            p = " = load i8*, i8** %"; while (*p) buf[bi++] = *p++;
-            const char* an = vi->arg_names[0]; while (*an) buf[bi++] = *an++;
-            p = ".ptr"; while (*p) buf[bi++] = *p++;
-            buf[bi] = '\0';
-            qadav_emit_text(buf);
-
-            long long t_call = temp_counter++;
-            bi = 0;
-            p = "  %t"; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, t_call);
-            p = " = call i8* @qadav_variant_create_ptr(i64 "; while (*p) buf[bi++] = *p++;
-            append_uint64(buf, &bi, h);
-            p = ", i32 "; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, tag);
-            p = ", i8* %t"; while (*p) buf[bi++] = *p++;
-            append_num(buf, &bi, t_load);
+            append_num(buf, &bi, t_bitcast);
             buf[bi++] = ')'; buf[bi] = '\0';
             qadav_emit_text(buf);
 
@@ -3726,7 +3722,40 @@ long long qadav_emit_variant_init(long long temp_counter) {
             qadav_set_last_emit_kind(0);
             return temp_counter;
         }
-    } else if (vi->arg_count == 2) {
+
+        int is_ptr = (payload_kind == 0 || payload_kind == 2);
+        if (io_str_eq(cn, "IntLitDecl")) is_ptr = 0;
+        if (io_str_eq(cn, "FloatLitDecl")) is_ptr = 0;
+        if (io_str_eq(cn, "Ok") && io_str_eq(vn, "CheckerResult")) is_ptr = 0;
+        if (io_str_eq(cn, "Valid") && io_str_eq(vn, "ParseResult")) is_ptr = 0;
+
+        long long t_call = temp_counter++;
+        bi = 0;
+        const char* p = "  %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_call);
+        if (is_ptr) {
+            p = " = call i8* @qadav_variant_create_ptr(i64 "; while (*p) buf[bi++] = *p++;
+            append_uint64(buf, &bi, h);
+            p = ", i32 "; while (*p) buf[bi++] = *p++;
+            append_num(buf, &bi, tag);
+            p = ", i8* %t"; while (*p) buf[bi++] = *p++;
+            append_num(buf, &bi, payload_reg);
+            buf[bi++] = ')'; buf[bi] = '\0';
+        } else {
+            p = " = call i8* @qadav_variant_create_i64(i64 "; while (*p) buf[bi++] = *p++;
+            append_uint64(buf, &bi, h);
+            p = ", i32 "; while (*p) buf[bi++] = *p++;
+            append_num(buf, &bi, tag);
+            p = ", i64 %t"; while (*p) buf[bi++] = *p++;
+            append_num(buf, &bi, payload_reg);
+            buf[bi++] = ')'; buf[bi] = '\0';
+        }
+        qadav_emit_text(buf);
+        qadav_set_last_temp(t_call);
+        qadav_set_last_emit_kind(0);
+        return temp_counter;
+    } else if (vi_arg_count == 2) {
+        qadav_var_init_info_t* vi = &g_var_inits[g_current_var_init_walk_idx++];
         long long val_regs[2];
         for (int i = 0; i < 2; i++) {
             const char* an = vi->arg_names[i];
@@ -3785,7 +3814,8 @@ long long qadav_emit_variant_init(long long temp_counter) {
         qadav_set_last_temp(t_call);
         qadav_set_last_emit_kind(0);
         return temp_counter;
-    } else if (vi->arg_count >= 3) {
+    } else if (vi_arg_count >= 3) {
+        qadav_var_init_info_t* vi = &g_var_inits[g_current_var_init_walk_idx++];
         long long t_buf = temp_counter++;
         bi = 0;
         const char* p = "  %t"; while (*p) buf[bi++] = *p++;
@@ -3889,7 +3919,7 @@ long long qadav_emit_variant_init(long long temp_counter) {
     return temp_counter + 1;
 }
 
-long long qadav_emit_match_stmt(const char* subject, long long temp_counter) {
+long long qadav_emit_match_stmt(const char* subject, long long arm_count, long long temp_counter) {
     long long end_lbl = qadav_next_label_id();
     long long arm0_lbl = qadav_next_label_id();
     long long next0_lbl = qadav_next_label_id();
@@ -4077,12 +4107,21 @@ long long qadav_emit_match_stmt(const char* subject, long long temp_counter) {
     buf[bi] = '\0';
     qadav_emit_text(buf);
 
-    // call void @qadav_emit_int(i64 %t<t_load1>)
-    bi = 0;
-    p = "  call void @qadav_emit_int(i64 %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_load1);
-    buf[bi++] = ')'; buf[bi] = '\0';
-    qadav_emit_text(buf);
+    // call void @qadav_emit_int(i64 %t<t_load1>) or store exit_code
+    if (io_str_eq(subject, "chk_res")) {
+        bi = 0;
+        p = "  store i64 %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_load1);
+        p = ", i64* %exit_code.ptr"; while (*p) buf[bi++] = *p++;
+        buf[bi] = '\0';
+        qadav_emit_text(buf);
+    } else {
+        bi = 0;
+        p = "  call void @qadav_emit_int(i64 %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_load1);
+        buf[bi++] = ')'; buf[bi] = '\0';
+        qadav_emit_text(buf);
+    }
 
     // br label %match_end_<end_lbl>
     bi = 0;

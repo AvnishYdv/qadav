@@ -1270,12 +1270,33 @@ func New() *Checker {
 		})
 	}
 
-	for _, fnName := range []string{"emit_record_init", "qadav_emit_record_init", "emit_variant_init", "qadav_emit_variant_init"} {
+	for _, fnName := range []string{"get_next_var_init_arg_count", "qadav_get_next_var_init_arg_count"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,
 			Type: &types.Type{
 				Kind:    types.KindProcess,
-				Params:  []*types.Type{types.Int64},
+				Params:  []*types.Type{},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+
+	for _, fnName := range []string{"emit_record_init", "qadav_emit_record_init"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64, types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_variant_init", "qadav_emit_variant_init"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text, types.Int64, types.Int64, types.Int64},
 				Results: []*types.Type{types.Int64},
 			},
 		})
@@ -1285,8 +1306,28 @@ func New() *Checker {
 			Name: fnName,
 			Type: &types.Type{
 				Kind:    types.KindProcess,
-				Params:  []*types.Type{types.Text, types.Int64},
+				Params:  []*types.Type{types.Text, types.Int64, types.Int64},
 				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"record_imm_int", "qadav_record_imm_int"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_trunc_line_reg", "qadav_format_trunc_line_reg"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
 			},
 		})
 	}
