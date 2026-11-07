@@ -6528,29 +6528,24 @@ long long qadav_emit_custom_stmt(long long start_idx, long long temp_counter) {
       }
       scan++;
     }
-    long long sidx = qadav_str_table_add(cname);
     int bi = 0;
     bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
     bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, bname); bi = buf_append_str(buf, bi, ".ptr");
     qadav_emit_text(buf);
 
-    const char* gep = qadav_str_table_gep(sidx, temp_counter + 1);
-    qadav_emit_text(gep);
-
-    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
-    bi = buf_append_str(buf, bi, " = call i8* @qadav_qera_create(i8* %t");
-    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ", i32 100, i8* %t");
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i8* @qadav_qera_create(i8* null, i32 100, i8* %t");
     bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ")");
     qadav_emit_text(buf);
 
     bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr = alloca i8*");
     qadav_emit_text(buf);
 
-    bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
     bi = buf_append_str(buf, bi, ", i8** %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr");
     qadav_emit_text(buf);
 
-    return temp_counter + 3;
+    return temp_counter + 2;
   }
 
   if (io_str_eq(lit, "reason")) {

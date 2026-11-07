@@ -75,11 +75,14 @@ qadav_reasoning_chain* qadav_qera_create(const char* name, int capacity, void* a
     }
     qera_memset(chain->steps, 0, (unsigned long long)capacity * sizeof(qadav_reasoning_step));
 
-    if (name) {
+    if (name && name[0] != '\0') {
         unsigned long long len = qera_strlen(name);
         if (len >= 64) len = 63;
         qera_memcpy(chain->chain_name, name, len);
         chain->chain_name[len] = '\0';
+    } else {
+        qera_memcpy(chain->chain_name, "clinical", 8);
+        chain->chain_name[8] = '\0';
     }
 
     if (auth_boundary) {
@@ -250,6 +253,22 @@ int qadav_qera_verify(qadav_reasoning_chain* chain, void* auth_boundary) {
     return 1;
 }
 
+static void qera_print_num(long long v) {
+    if (v == 0) {
+        qadav_write_raw("0", 1);
+        return;
+    }
+    char tmp[32];
+    char buf[32];
+    int ti = 0, bi = 0;
+    while (v > 0) {
+        tmp[ti++] = '0' + (char)(v % 10);
+        v /= 10;
+    }
+    while (ti > 0) buf[bi++] = tmp[--ti];
+    qadav_write_raw(buf, bi);
+}
+
 int qadav_qera_audit(qadav_reasoning_chain* chain) {
     if (!chain) return -1;
 
@@ -257,7 +276,7 @@ int qadav_qera_audit(qadav_reasoning_chain* chain) {
     qadav_write_raw("Chain: ", 7);
     qadav_write_raw(chain->chain_name, qera_strlen(chain->chain_name));
     qadav_write_raw(" | Steps: ", 10);
-    qadav_emit_int((long long)chain->n_steps);
+    qera_print_num((long long)chain->n_steps);
     qadav_write_raw("\n", 1);
 
     const char* op_names[] = {"none", "deduce", "induce", "abduce", "verify", "evolve"};
@@ -265,7 +284,7 @@ int qadav_qera_audit(qadav_reasoning_chain* chain) {
     for (int i = 0; i < chain->n_steps; i++) {
         qadav_reasoning_step* s = &chain->steps[i];
         qadav_write_raw("  [", 3);
-        qadav_emit_int((long long)i);
+        qera_print_num((long long)i);
         qadav_write_raw("] op=", 5);
         int op = (int)s->operation;
         if (op >= 1 && op <= 5) {
