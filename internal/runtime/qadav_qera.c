@@ -1,5 +1,6 @@
 #include "qadav_qera.h"
 #include "qadav_certificate.h"
+#include "qadav_qecma.h"
 
 #ifdef _WIN32
 __declspec(dllimport) void __stdcall ExitProcess(unsigned int uExitCode);
@@ -327,6 +328,28 @@ int qadav_qera_corrupt_step(qadav_reasoning_chain* chain, int step_idx, int at_i
         qadav_reason_certificate* certs = (qadav_reason_certificate*)chain->certs;
         certs[step_idx].witness[0] ^= 0xFF;
         return 0;
+    }
+    if (at_idx == -2 && chain->bundle) {
+        qadav_qecma_bundle* b = (qadav_qecma_bundle*)chain->bundle;
+        for (unsigned int i = 0; i < b->count; i++) {
+            if (b->items[i].tag == QADAV_TAG_TENSOR && b->items[i].raw_data) {
+                ((volatile unsigned char*)b->items[i].raw_data)[0] ^= 0xFF;
+                return 0;
+            }
+        }
+        if (b->count > 0 && b->items[0].raw_data) {
+            ((volatile unsigned char*)b->items[0].raw_data)[0] ^= 0xFF;
+            return 0;
+        }
+    }
+    if (at_idx == -3 && chain->bundle) {
+        qadav_qecma_bundle* b = (qadav_qecma_bundle*)chain->bundle;
+        for (unsigned int i = 0; i < b->count; i++) {
+            if (b->items[i].tag == QADAV_TAG_TEXT) {
+                b->items[i].tag = QADAV_TAG_TENSOR;
+                return 0;
+            }
+        }
     }
     chain->steps[step_idx].step_commitment[at_idx % 32] ^= 0xFF;
     return 0;

@@ -38,6 +38,7 @@ typedef struct qadav_reasoning_chain {
     int                    is_verified;
     void*                  certs;           // Attached TTPCR certificates (Invention #15)
     int                    n_certs;
+    void*                  bundle;          // Attached QECMA bundle (Invention #12)
 } qadav_reasoning_chain;
 
 // Lifecycle

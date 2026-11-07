@@ -16,6 +16,7 @@ typedef struct qadav_modality_item {
     unsigned char tag;          // QADAV_TAG_*
     unsigned char digest[32];   // SHA3-256 of raw modality data
     unsigned long long data_len;// Original length in bytes
+    const void* raw_data;       // pointer to live modality buffer
 } qadav_modality_item;
 
 typedef struct qadav_qecma_bundle {
@@ -36,6 +37,12 @@ int qadav_qecma_build(qadav_qecma_bundle* bundle);
 
 // Get the computed unified root
 int qadav_qecma_get_unified_root(const qadav_qecma_bundle* bundle, unsigned char out[32]);
+
+// Print bundle structure, modalities, and unified root
+void qadav_qecma_print_bundle(const qadav_qecma_bundle* bundle);
+
+// Verify live modality data integrity and canonical Merkle root
+int qadav_qecma_verify_bundle(const qadav_qecma_bundle* bundle);
 
 // Perform cross-modal reasoning step using unified root as input attestation
 int qadav_qera_reason_cross_modal(qadav_reasoning_chain* chain,

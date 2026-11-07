@@ -6388,7 +6388,11 @@ long long qadav_is_custom_statement(long long idx) {
       io_str_eq(lit, "cdaga_record") ||
       io_str_eq(lit, "cdaga_attest") ||
       io_str_eq(lit, "cdaga_verify") ||
-      io_str_eq(lit, "corrupt_cdaga")) {
+      io_str_eq(lit, "corrupt_cdaga") ||
+      io_str_eq(lit, "modality") ||
+      io_str_eq(lit, "cross_modal_reason") ||
+      io_str_eq(lit, "corrupt_modality") ||
+      io_str_eq(lit, "swap_modality_tag")) {
     return 1;
   }
   return 0;
@@ -6728,6 +6732,18 @@ long long qadav_emit_custom_stmt(long long start_idx, long long temp_counter) {
 
   if (io_str_eq(lit, "corrupt_reasoning_step")) {
     const char* cname = "clinical";
+    if (start_idx + 1 < g_token_count) {
+      const char* raw_tok = g_tokens[start_idx + 1].literal;
+      static char cname_buf[64];
+      int p = 0;
+      while (raw_tok[p] && p < 63) {
+        if ((unsigned char)raw_tok[p] == 0xe2 && (unsigned char)raw_tok[p+1] == 0x9f && (unsigned char)raw_tok[p+2] == 0xa6) break; // ⟬
+        cname_buf[p] = raw_tok[p];
+        p++;
+      }
+      cname_buf[p] = '\0';
+      if (p > 0) cname = cname_buf;
+    }
     int bi = 0;
     bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
     bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr");
@@ -7101,6 +7117,146 @@ long long qadav_emit_custom_stmt(long long start_idx, long long temp_counter) {
     bi = buf_append_str(buf, bi, " = call i32 @qadav_cdaga_corrupt(i8* %t");
     bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 ");
     bi = buf_append_str(buf, bi, off_str); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "modality")) {
+    static int s_bundle_initialized = 0;
+    if (temp_counter <= 2) s_bundle_initialized = 0;
+
+    const char* mname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "mod";
+    const char* kind = "tensor_input";
+    const char* source = "sensor_readings";
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "as") && scan + 1 < g_token_count) {
+        kind = g_tokens[scan + 1].literal;
+      }
+      if (io_str_eq(g_tokens[scan].literal, "from") && scan + 1 < g_token_count) {
+        source = g_tokens[scan + 1].literal;
+      }
+      scan++;
+    }
+
+    int bi = 0;
+    if (!s_bundle_initialized) {
+      s_bundle_initialized = 1;
+      bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+      bi = buf_append_str(buf, bi, " = call i8* @qadav_qecma_create()");
+      qadav_emit_text(buf);
+
+      bi = buf_append_str(buf, 0, "  %qecma_bundle.ptr = alloca i8*");
+      qadav_emit_text(buf);
+
+      bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter);
+      bi = buf_append_str(buf, bi, ", i8** %qecma_bundle.ptr");
+      qadav_emit_text(buf);
+      temp_counter++;
+    }
+
+    int tag = 84; // 'T' tensor
+    int is_concept = 0;
+    if (io_str_eq(kind, "text_input") || io_str_eq(kind, "text")) {
+      tag = 88; // 'X' text
+    } else if (io_str_eq(kind, "concept_input") || io_str_eq(kind, "concept")) {
+      tag = 67; // 'C' concept
+      is_concept = 1;
+    }
+
+    if (is_concept) {
+      bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+      bi = buf_append_str(buf, bi, " = bitcast i64* %"); bi = buf_append_str(buf, bi, source); bi = buf_append_str(buf, bi, ".ptr to i8*");
+      qadav_emit_text(buf);
+    } else {
+      bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+      bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, source); bi = buf_append_str(buf, bi, ".ptr");
+      qadav_emit_text(buf);
+    }
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %qecma_bundle.ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_qecma_add(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ", i8 ");
+    bi = buf_append_i64(buf, bi, tag); bi = buf_append_str(buf, bi, ", i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i64 ");
+    bi = buf_append_i64(buf, bi, is_concept ? 8 : (tag == 84 ? 32 : 0)); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 3;
+  }
+
+  if (io_str_eq(lit, "cross_modal_reason")) {
+    const char* cname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "cross_modal_chain";
+    const char* out_str = "Obstacle confirmed: initiate braking maneuver";
+    const char* conf_str = "0.980000";
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "to") && scan + 1 < g_token_count) {
+        out_str = g_tokens[scan + 1].literal;
+      }
+      if (io_str_eq(g_tokens[scan].literal, "with") && scan + 1 < g_token_count) {
+        conf_str = g_tokens[scan + 1].literal;
+      }
+      scan++;
+    }
+
+    long long out_sidx = qadav_str_table_add(out_str);
+    unsigned long long out_len = strlen(out_str);
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %qecma_bundle.ptr");
+    qadav_emit_text(buf);
+
+    const char* gep_out = qadav_str_table_gep(out_sidx, temp_counter + 2);
+    qadav_emit_text(gep_out);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 3);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_qera_reason_cross_modal(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 1, i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ", i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 2); bi = buf_append_str(buf, bi, ", i64 ");
+    bi = buf_append_i64(buf, bi, out_len); bi = buf_append_str(buf, bi, ", double ");
+    bi = buf_append_str(buf, bi, conf_str); bi = buf_append_str(buf, bi, ", i8* null)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 4;
+  }
+
+  if (io_str_eq(lit, "corrupt_modality")) {
+    const char* cname = "cross_modal_chain";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_qera_corrupt_step(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 0, i32 -2)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "swap_modality_tag")) {
+    const char* cname = "cross_modal_chain";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_qera_corrupt_step(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 0, i32 -3)");
     qadav_emit_text(buf);
 
     return temp_counter + 2;

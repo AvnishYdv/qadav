@@ -156,6 +156,19 @@ int qadav_certificate_verify_chain(qadav_reasoning_chain* chain) {
     // Verify underlying QERA cryptographic integrity (returns 1 on success)
     if (!qadav_qera_verify(chain, 0)) return -9;
 
+    if (chain->bundle) {
+        int qadav_qecma_verify_bundle(const void* bundle);
+        if (!qadav_qecma_verify_bundle(chain->bundle)) {
+#ifdef _WIN32
+            qadav_qeeh_trigger_decoherence(0);
+            ExitProcess((unsigned int)0xDEADBEEF);
+#endif
+            return -12;
+        }
+        void qadav_write_raw(const char* s, unsigned long long len);
+        qadav_write_raw("QECMA_VERIFIED\n", 15);
+    }
+
     if (!chain->certs) return 0; // Pure QERA chain without certificates, verified
 
     qadav_reason_certificate* certs = (qadav_reason_certificate*)chain->certs;

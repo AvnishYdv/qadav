@@ -1,4 +1,5 @@
 #include "qadav_qecma.h"
+#include "qadav_tensor.h"
 
 #ifdef _WIN32
 __declspec(dllimport) void __stdcall ExitProcess(unsigned int uExitCode);
@@ -30,6 +31,69 @@ static unsigned long long qecma_strlen(const char* s) {
     return len;
 }
 
+static void qecma_print_hex(const unsigned char* d, int len) {
+    const char* hex = "0123456789abcdef";
+    char buf[2];
+    for (int i = 0; i < len; i++) {
+        buf[0] = hex[(d[i] >> 4) & 0x0F];
+        buf[1] = hex[d[i] & 0x0F];
+        qadav_write_raw(buf, 2);
+    }
+}
+
+static void qecma_print_num(long long n) {
+    if (n < 0) {
+        qadav_write_raw("-", 1);
+        n = -n;
+    }
+    char buf[32];
+    int pos = 0;
+    if (n == 0) buf[pos++] = '0';
+    while (n > 0) {
+        buf[pos++] = (char)('0' + (n % 10));
+        n /= 10;
+    }
+    for (int i = 0; i < pos / 2; i++) {
+        char tmp = buf[i];
+        buf[i] = buf[pos - 1 - i];
+        buf[pos - 1 - i] = tmp;
+    }
+    qadav_write_raw(buf, (unsigned long long)pos);
+}
+
+void qadav_qecma_print_bundle(const qadav_qecma_bundle* bundle) {
+    if (!bundle) return;
+    qadav_write_raw("--- QECMA MULTIMODAL EVIDENCE BUNDLE ---\n", 41);
+    qadav_write_raw("Modalities: ", 12);
+    qecma_print_num((long long)bundle->count);
+    qadav_write_raw("\n", 1);
+
+    for (unsigned int i = 0; i < bundle->count; i++) {
+        const qadav_modality_item* item = &bundle->items[i];
+        qadav_write_raw("  [", 3);
+        qecma_print_num((long long)i);
+        qadav_write_raw("] tag=0x", 8);
+        qecma_print_hex(&item->tag, 1);
+        if (item->tag == QADAV_TAG_TENSOR) {
+            qadav_write_raw(" (tensor)", 9);
+        } else if (item->tag == QADAV_TAG_TEXT) {
+            qadav_write_raw(" (text)", 7);
+        } else if (item->tag == QADAV_TAG_CONCEPT) {
+            qadav_write_raw(" (concept)", 10);
+        }
+        qadav_write_raw(" len=", 5);
+        qecma_print_num((long long)item->data_len);
+        qadav_write_raw(" digest=", 8);
+        qecma_print_hex(item->digest, 16);
+        qadav_write_raw("...\n", 4);
+    }
+
+    qadav_write_raw("Unified Root: ", 14);
+    qecma_print_hex(bundle->unified_root, 32);
+    qadav_write_raw("\n----------------------------------------\n", 42);
+    qadav_write_raw("QECMA_BUNDLED\n", 14);
+}
+
 qadav_qecma_bundle* qadav_qecma_create(void) {
     qadav_qecma_bundle* bundle = (qadav_qecma_bundle*)qadav_alloc(sizeof(qadav_qecma_bundle));
     if (!bundle) return 0;
@@ -48,6 +112,14 @@ int qadav_qecma_add(qadav_qecma_bundle* bundle, unsigned char tag, const void* d
     if (!bundle || bundle->count >= QADAV_QECMA_MAX_MODALITIES) return -1;
     if (tag != QADAV_TAG_TENSOR && tag != QADAV_TAG_TEXT && tag != QADAV_TAG_CONCEPT) return -2;
 
+    if (tag == QADAV_TAG_TENSOR && data) {
+        const qadav_tensor* t = (const qadav_tensor*)data;
+        if (t->elem_size == 8 && t->total_size > 0 && t->total_size <= 1000000 && t->data != 0) {
+            data = t->data;
+            if (len == 0) len = (unsigned long long)t->total_size * 8;
+        }
+    }
+
     if (data && len == 0) {
         len = qecma_strlen((const char*)data);
     }
@@ -56,6 +128,7 @@ int qadav_qecma_add(qadav_qecma_bundle* bundle, unsigned char tag, const void* d
 
     qadav_modality_item* item = &bundle->items[bundle->count];
     item->tag = tag;
+    item->raw_data = data;
     item->data_len = len;
     qadav_sha3_256((const unsigned char*)data, len, item->digest);
 
@@ -142,6 +215,41 @@ int qadav_qecma_get_unified_root(const qadav_qecma_bundle* bundle, unsigned char
     return 0;
 }
 
+int qadav_qecma_verify_bundle(const qadav_qecma_bundle* bundle) {
+    if (!bundle || bundle->count == 0) return 0;
+
+    // 1. Check live raw_data digests
+    for (unsigned int i = 0; i < bundle->count; i++) {
+        const qadav_modality_item* item = &bundle->items[i];
+        if (item->raw_data && item->data_len > 0) {
+            unsigned char cur_digest[32];
+            qadav_sha3_256((const unsigned char*)item->raw_data, item->data_len, cur_digest);
+            for (int b = 0; b < 32; b++) {
+                if (cur_digest[b] != item->digest[b]) {
+                    qadav_write_raw("[QEEH CRITICAL] Cross-modal evidence tampered! Modality data hash mismatch.\n", 76);
+                    qadav_write_raw("[QEEH CRITICAL] Decoherence triggered. Halting process.\n", 56);
+                    return 0;
+                }
+            }
+        }
+    }
+
+    // 2. Recompute Merkle root with current items
+    qadav_qecma_bundle tmp;
+    qecma_memcpy(&tmp, bundle, sizeof(qadav_qecma_bundle));
+    if (qadav_qecma_build(&tmp) != 0) return 0;
+
+    for (int b = 0; b < 32; b++) {
+        if (tmp.unified_root[b] != bundle->unified_root[b]) {
+            qadav_write_raw("[QEEH CRITICAL] Cross-modal evidence domain separation violation! Tag swap detected.\n", 86);
+            qadav_write_raw("[QEEH CRITICAL] Decoherence triggered. Halting process.\n", 56);
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 int qadav_qera_reason_cross_modal(qadav_reasoning_chain* chain,
                                   int operation,
                                   qadav_qecma_bundle* bundle,
@@ -152,6 +260,12 @@ int qadav_qera_reason_cross_modal(qadav_reasoning_chain* chain,
 
     // Ensure bundle is built
     if (qadav_qecma_build(bundle) != 0) return -2;
+
+    // Attach bundle to chain
+    chain->bundle = bundle;
+
+    // Print bundle diagnostic and QECMA_BUNDLED
+    qadav_qecma_print_bundle(bundle);
 
     // Attest reasoning step with bundle->unified_root as the 32-byte input data
     return qadav_qera_reason(chain,
