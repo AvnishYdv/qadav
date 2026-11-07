@@ -1,0 +1,31 @@
+// examples/lexer_keyword_extract.ydv
+// Just one function — classify_keyword from lexer.ydv (22 whens).
+
+process classify_keyword⦅text kw⦆ → text ⟦
+    text res ↦ "IDENT" ·
+    when kw ≡ "process" ⟦ res ← "PROCESS" · ⟧
+    when kw ≡ "procedure" ⟦ res ← "PROCEDURE" · ⟧
+    when kw ≡ "record" ⟦ res ← "RECORD" · ⟧
+    when kw ≡ "variant" ⟦ res ← "VARIANT" · ⟧
+    when kw ≡ "match" ⟦ res ← "MATCH" · ⟧
+    when kw ≡ "when" ⟦ res ← "WHEN" · ⟧
+    when kw ≡ "otherwise" ⟦ res ← "OTHERWISE" · ⟧
+    when kw ≡ "yield" ⟦ res ← "YIELD_KW" · ⟧
+    when kw ≡ "emit" ⟦ res ← "EMIT" · ⟧
+    when kw ≡ "observe" ⟦ res ← "OBSERVE" · ⟧
+    when kw ≡ "qubit" ⟦ res ← "QUBIT_DECL" · ⟧
+    when kw ≡ "entangle" ⟦ res ← "ENTANGLE" · ⟧
+    when kw ≡ "superpose" ⟦ res ← "SUPERPOSE" · ⟧
+    when kw ≡ "collapse" ⟦ res ← "COLLAPSE" · ⟧
+    when kw ≡ "int64" ⟦ res ← "INT64" · ⟧
+    when kw ≡ "int32" ⟦ res ← "INT32" · ⟧
+    when kw ≡ "float64" ⟦ res ← "FLOAT64" · ⟧
+    when kw ≡ "text" ⟦ res ← "TEXT" · ⟧
+    when kw ≡ "logic" ⟦ res ← "LOGIC" · ⟧
+    when kw ≡ "network" ⟦ res ← "NETWORK" · ⟧
+    when kw ≡ "learn" ⟦ res ← "LEARN" · ⟧
+    when kw ≡ "rsca_attest" ⟦ res ← "RSCA_ATTEST" · ⟧
+    when kw ≡ "rsca_verify" ⟦ res ← "RSCA_VERIFY" · ⟧
+    yield res ·
+⟧
+

@@ -614,6 +614,16 @@ extern long long qadav_emit_match_stmt(const char* s, long long ac, long long t)
 long long emit_record_init(const char* tn, long long fc, long long t) { return qadav_emit_record_init(tn, fc, t); }
 long long emit_variant_init(const char* vn, const char* cn, long long pr, long long pk, long long t) { return qadav_emit_variant_init(vn, cn, pr, pk, t); }
 long long emit_match_stmt(const char* s, long long ac, long long t) { return qadav_emit_match_stmt(s, ac, t); }
+extern long long qadav_emit_match_prelude(long long sr, long long ac, long long ti);
+long long emit_match_prelude(long long sr, long long ac, long long ti) { return qadav_emit_match_prelude(sr, ac, ti); }
+extern long long qadav_emit_match_check(long long ai, long long ac, long long tr, long long ti);
+long long emit_match_check(long long ai, long long ac, long long tr, long long ti) { return qadav_emit_match_check(ai, ac, tr, ti); }
+extern void qadav_emit_match_body_label(long long ai);
+void emit_match_body_label(long long ai) { qadav_emit_match_body_label(ai); }
+extern void qadav_emit_match_body_end(void);
+void emit_match_body_end(void) { qadav_emit_match_body_end(); }
+extern void qadav_emit_match_end(void);
+void emit_match_end(void) { qadav_emit_match_end(); }
 
 extern long long qadav_record_imm_int(long long val);
 long long record_imm_int(long long val) { return qadav_record_imm_int(val); }

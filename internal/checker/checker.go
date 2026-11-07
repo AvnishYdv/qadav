@@ -1311,6 +1311,43 @@ func New() *Checker {
 			},
 		})
 	}
+	for _, fnName := range []string{"emit_match_prelude", "qadav_emit_match_prelude"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_match_check", "qadav_emit_match_check"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_match_body_label", "qadav_emit_match_body_label"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:   types.KindProcess,
+				Params: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_match_body_end", "qadav_emit_match_body_end", "emit_match_end", "qadav_emit_match_end"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind: types.KindProcess,
+			},
+		})
+	}
 	for _, fnName := range []string{"record_imm_int", "qadav_record_imm_int"} {
 		_ = global.Define(&Symbol{
 			Name: fnName,

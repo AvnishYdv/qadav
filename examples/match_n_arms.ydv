@@ -1,0 +1,26 @@
+variant Color ⟦
+    | Red(v ↦ int64) ·
+    | Green(v ↦ int64) ·
+    | Blue(v ↦ int64) ·
+    | Yellow(v ↦ int64) ·
+    | Purple(v ↦ int64) ·
+    | Orange(v ↦ int64) ·
+⟧
+
+process name⦅Color c⦆ → int64 ⟦
+    match c ⟦
+        | Red(v) ⟹ yield 1 ·
+        | Green(v) ⟹ yield 2 ·
+        | Blue(v) ⟹ yield 3 ·
+        | Yellow(v) ⟹ yield 4 ·
+        | Purple(v) ⟹ yield 5 ·
+        | Orange(v) ⟹ yield 6 ·
+    ⟧
+⟧
+
+process main⦅⦆ → int64 ⟦
+    Color c ↦ variant_init Color ⦅Purple ↦ 0⦆ ·
+    int64 n ↦ name⦅c⦆ ·
+    emit n ·
+    yield 0 ·
+⟧

@@ -1,0 +1,12 @@
+process main⦅⦆ → int64 ⟦
+    int64 a ↦ 5 ·
+    int64 b ↦ 3 ·
+    int64 c ↦ 2 ·
+    when a ≡ b ⊕ c ⟦
+        emit "eq" ·
+    ⟧ otherwise ⟦
+        emit "neq" ·
+    ⟧
+    yield 0 ·
+⟧
+

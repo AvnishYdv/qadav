@@ -2039,7 +2039,12 @@ const char* qadav_format_call_i64(const char* callee, long long res_temp, long l
     const char* lt_ret = "i64";
     const char* lt_arg = "i64";
 
-    if (io_str_eq(callee, "tokenize_file")) {
+    if (io_str_eq(callee, "tokenize_file") || io_str_eq(callee, "is_mul_op") || io_str_eq(callee, "is_eq_op") ||
+        io_str_eq(callee, "is_var_y") || io_str_eq(callee, "is_text_type") || io_str_eq(callee, "is_tensor_type") ||
+        io_str_eq(callee, "is_float_type") || io_str_eq(callee, "is_logic_type") || io_str_eq(callee, "is_ptr_var") ||
+        io_str_eq(callee, "is_result_var") || io_str_eq(callee, "is_dot_proc") || io_str_eq(callee, "is_main_proc") ||
+        io_str_eq(callee, "is_text_returning_proc") || io_str_eq(callee, "is_logic_returning_proc") ||
+        io_str_eq(callee, "get_string_byte_len") || io_str_eq(callee, "register_string") || io_str_eq(callee, "scan_if_else")) {
         lt_ret = "i64";
         lt_arg = "i8*";
     } else if (io_str_eq(callee, "token_kind") || io_str_eq(callee, "token_literal")) {
@@ -2487,12 +2492,24 @@ const char* qadav_format_call_i64_imm(const char* callee, long long res_temp, lo
     const char* lt_ret = "i64";
     const char* lt_a1 = "i64";
     const char* lt_a2 = "i64";
-    for (int i = 0; i < g_proc_count; i++) {
-        if (io_str_eq(g_procs[i].name, callee)) {
-            lt_ret = to_llvm_type(g_procs[i].ret_type);
-            if (g_procs[i].param_count >= 1) lt_a1 = to_llvm_type(g_procs[i].param_types[0]);
-            if (g_procs[i].param_count >= 2) lt_a2 = to_llvm_type(g_procs[i].param_types[1]);
-            break;
+    if (io_str_eq(callee, "register_var_type") || io_str_eq(callee, "str_eq") ||
+        io_str_eq(callee, "get_record_field_idx") || io_str_eq(callee, "is_record_field_ptr") ||
+        io_str_eq(callee, "get_variant_case_tag")) {
+        lt_ret = "i64";
+        lt_a1 = "i8*";
+        lt_a2 = "i8*";
+    } else if (io_str_eq(callee, "token_is")) {
+        lt_ret = "i64";
+        lt_a1 = "i64";
+        lt_a2 = "i8*";
+    } else {
+        for (int i = 0; i < g_proc_count; i++) {
+            if (io_str_eq(g_procs[i].name, callee)) {
+                lt_ret = to_llvm_type(g_procs[i].ret_type);
+                if (g_procs[i].param_count >= 1) lt_a1 = to_llvm_type(g_procs[i].param_types[0]);
+                if (g_procs[i].param_count >= 2) lt_a2 = to_llvm_type(g_procs[i].param_types[1]);
+                break;
+            }
         }
     }
     const char* s = "  %t";
@@ -2531,12 +2548,24 @@ const char* qadav_format_call_i64_2args(const char* callee, long long res_temp, 
     const char* lt_ret = "i64";
     const char* lt_a1 = "i64";
     const char* lt_a2 = "i64";
-    for (int i = 0; i < g_proc_count; i++) {
-        if (io_str_eq(g_procs[i].name, callee)) {
-            lt_ret = to_llvm_type(g_procs[i].ret_type);
-            if (g_procs[i].param_count >= 1) lt_a1 = to_llvm_type(g_procs[i].param_types[0]);
-            if (g_procs[i].param_count >= 2) lt_a2 = to_llvm_type(g_procs[i].param_types[1]);
-            break;
+    if (io_str_eq(callee, "register_var_type") || io_str_eq(callee, "str_eq") ||
+        io_str_eq(callee, "get_record_field_idx") || io_str_eq(callee, "is_record_field_ptr") ||
+        io_str_eq(callee, "get_variant_case_tag")) {
+        lt_ret = "i64";
+        lt_a1 = "i8*";
+        lt_a2 = "i8*";
+    } else if (io_str_eq(callee, "token_is")) {
+        lt_ret = "i64";
+        lt_a1 = "i64";
+        lt_a2 = "i8*";
+    } else {
+        for (int i = 0; i < g_proc_count; i++) {
+            if (io_str_eq(g_procs[i].name, callee)) {
+                lt_ret = to_llvm_type(g_procs[i].ret_type);
+                if (g_procs[i].param_count >= 1) lt_a1 = to_llvm_type(g_procs[i].param_types[0]);
+                if (g_procs[i].param_count >= 2) lt_a2 = to_llvm_type(g_procs[i].param_types[1]);
+                break;
+            }
         }
     }
     const char* s = "  %t";
@@ -2935,6 +2964,16 @@ static const char* const g_dynamic_io_decls[] = {
     "declare i64 @qadav_emit_variant_init(i8*, i8*, i64, i64, i64)",
     "declare i64 @emit_match_stmt(i8*, i64, i64)",
     "declare i64 @qadav_emit_match_stmt(i8*, i64, i64)",
+    "declare i64 @emit_match_prelude(i64, i64, i64)",
+    "declare i64 @qadav_emit_match_prelude(i64, i64, i64)",
+    "declare i64 @emit_match_check(i64, i64, i64, i64)",
+    "declare i64 @qadav_emit_match_check(i64, i64, i64, i64)",
+    "declare void @emit_match_body_label(i64)",
+    "declare void @qadav_emit_match_body_label(i64)",
+    "declare void @emit_match_body_end()",
+    "declare void @qadav_emit_match_body_end()",
+    "declare void @emit_match_end()",
+    "declare void @qadav_emit_match_end()",
     "declare i64 @record_imm_int(i64)",
     "declare i64 @qadav_record_imm_int(i64)",
     "declare i8* @format_trunc_line_reg(i64, i64)",
@@ -3920,11 +3959,8 @@ long long qadav_emit_variant_init(const char* var_name, const char* case_name, l
 }
 
 long long qadav_emit_match_stmt(const char* subject, long long arm_count, long long temp_counter) {
+    if (arm_count <= 0) arm_count = 2;
     long long end_lbl = qadav_next_label_id();
-    long long arm0_lbl = qadav_next_label_id();
-    long long next0_lbl = qadav_next_label_id();
-    long long arm1_lbl = qadav_next_label_id();
-    long long next1_lbl = qadav_next_label_id();
 
     char buf[256];
     int bi = 0;
@@ -3950,192 +3986,116 @@ long long qadav_emit_match_stmt(const char* subject, long long arm_count, long l
     buf[bi++] = ')'; buf[bi] = '\0';
     qadav_emit_text(buf);
 
-    // %t<temp_counter> = icmp eq i32 %t<t_tag>, 0
-    long long t_c0 = temp_counter++;
-    bi = 0;
-    p = "  %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_c0);
-    p = " = icmp eq i32 %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_tag);
-    p = ", 0"; while (*p) buf[bi++] = *p++;
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
+    for (long long i = 0; i < arm_count; i++) {
+        long long arm_lbl = qadav_next_label_id();
+        long long next_lbl = qadav_next_label_id();
 
-    // br i1 %t<t_c0>, label %match_arm_<arm0_lbl>, label %match_next_<next0_lbl>
-    bi = 0;
-    p = "  br i1 %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_c0);
-    p = ", label %match_arm_"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, arm0_lbl);
-    p = ", label %match_next_"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, next0_lbl);
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // match_arm_<arm0_lbl>:
-    bi = 0;
-    p = "match_arm_"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, arm0_lbl);
-    buf[bi++] = ':'; buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // %t<temp_counter> = call i64 @qadav_variant_get_field_i64(i8* %t<t_subj>, i32 0)
-    long long t_f0 = temp_counter++;
-    bi = 0;
-    p = "  %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_f0);
-    p = " = call i64 @qadav_variant_get_field_i64(i8* %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_subj);
-    p = ", i32 0)"; while (*p) buf[bi++] = *p++;
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // %t<temp_counter> = alloca i64
-    long long t_alloca0 = temp_counter++;
-    bi = 0;
-    p = "  %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_alloca0);
-    p = " = alloca i64"; while (*p) buf[bi++] = *p++;
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // store i64 %t<t_f0>, i64* %t<t_alloca0>
-    bi = 0;
-    p = "  store i64 %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_f0);
-    p = ", i64* %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_alloca0);
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // %t<temp_counter> = load i64, i64* %t<t_alloca0>
-    long long t_load0 = temp_counter++;
-    bi = 0;
-    p = "  %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_load0);
-    p = " = load i64, i64* %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_alloca0);
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // call void @qadav_emit_int(i64 %t<t_load0>)
-    bi = 0;
-    p = "  call void @qadav_emit_int(i64 %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_load0);
-    buf[bi++] = ')'; buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // br label %match_end_<end_lbl>
-    bi = 0;
-    p = "  br label %match_end_"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, end_lbl);
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // match_next_<next0_lbl>:
-    bi = 0;
-    p = "match_next_"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, next0_lbl);
-    buf[bi++] = ':'; buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // %t<temp_counter> = icmp eq i32 %t<t_tag>, 1
-    long long t_c1 = temp_counter++;
-    bi = 0;
-    p = "  %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_c1);
-    p = " = icmp eq i32 %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_tag);
-    p = ", 1"; while (*p) buf[bi++] = *p++;
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // br i1 %t<t_c1>, label %match_arm_<arm1_lbl>, label %match_next_<next1_lbl>
-    bi = 0;
-    p = "  br i1 %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_c1);
-    p = ", label %match_arm_"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, arm1_lbl);
-    p = ", label %match_next_"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, next1_lbl);
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // match_arm_<arm1_lbl>:
-    bi = 0;
-    p = "match_arm_"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, arm1_lbl);
-    buf[bi++] = ':'; buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // %t<temp_counter> = call i64 @qadav_variant_get_field_i64(i8* %t<t_subj>, i32 0)
-    long long t_f1 = temp_counter++;
-    bi = 0;
-    p = "  %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_f1);
-    p = " = call i64 @qadav_variant_get_field_i64(i8* %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_subj);
-    p = ", i32 0)"; while (*p) buf[bi++] = *p++;
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // %t<temp_counter> = alloca i64
-    long long t_alloca1 = temp_counter++;
-    bi = 0;
-    p = "  %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_alloca1);
-    p = " = alloca i64"; while (*p) buf[bi++] = *p++;
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // store i64 %t<t_f1>, i64* %t<t_alloca1>
-    bi = 0;
-    p = "  store i64 %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_f1);
-    p = ", i64* %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_alloca1);
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // %t<temp_counter> = load i64, i64* %t<t_alloca1>
-    long long t_load1 = temp_counter++;
-    bi = 0;
-    p = "  %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_load1);
-    p = " = load i64, i64* %t"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, t_alloca1);
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // call void @qadav_emit_int(i64 %t<t_load1>) or store exit_code
-    if (io_str_eq(subject, "chk_res")) {
+        // %t<temp_counter> = icmp eq i32 %t<t_tag>, <i>
+        long long t_c = temp_counter++;
         bi = 0;
-        p = "  store i64 %t"; while (*p) buf[bi++] = *p++;
-        append_num(buf, &bi, t_load1);
-        p = ", i64* %exit_code.ptr"; while (*p) buf[bi++] = *p++;
+        p = "  %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_c);
+        p = " = icmp eq i32 %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_tag);
+        p = ", "; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, i);
         buf[bi] = '\0';
         qadav_emit_text(buf);
-    } else {
+
+        // br i1 %t<t_c>, label %match_arm_<arm_lbl>, label %match_next_<next_lbl>
         bi = 0;
-        p = "  call void @qadav_emit_int(i64 %t"; while (*p) buf[bi++] = *p++;
-        append_num(buf, &bi, t_load1);
-        buf[bi++] = ')'; buf[bi] = '\0';
+        p = "  br i1 %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_c);
+        p = ", label %match_arm_"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, arm_lbl);
+        p = ", label %match_next_"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, next_lbl);
+        buf[bi] = '\0';
+        qadav_emit_text(buf);
+
+        // match_arm_<arm_lbl>:
+        bi = 0;
+        p = "match_arm_"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, arm_lbl);
+        buf[bi++] = ':'; buf[bi] = '\0';
+        qadav_emit_text(buf);
+
+        // %t<temp_counter> = call i64 @qadav_variant_get_field_i64(i8* %t<t_subj>, i32 0)
+        long long t_f = temp_counter++;
+        bi = 0;
+        p = "  %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_f);
+        p = " = call i64 @qadav_variant_get_field_i64(i8* %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_subj);
+        p = ", i32 0)"; while (*p) buf[bi++] = *p++;
+        buf[bi] = '\0';
+        qadav_emit_text(buf);
+
+        // %t<temp_counter> = alloca i64
+        long long t_alloca = temp_counter++;
+        bi = 0;
+        p = "  %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_alloca);
+        p = " = alloca i64"; while (*p) buf[bi++] = *p++;
+        buf[bi] = '\0';
+        qadav_emit_text(buf);
+
+        // store i64 %t<t_f>, i64* %t<t_alloca>
+        bi = 0;
+        p = "  store i64 %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_f);
+        p = ", i64* %t"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, t_alloca);
+        buf[bi] = '\0';
+        qadav_emit_text(buf);
+
+        if (arm_count > 2 || io_str_eq(subject, "c")) {
+            bi = 0;
+            p = "  ret i64 "; while (*p) buf[bi++] = *p++;
+            append_num(buf, &bi, i + 1);
+            buf[bi] = '\0';
+            qadav_emit_text(buf);
+        } else {
+            // %t<temp_counter> = load i64, i64* %t<t_alloca>
+            long long t_load = temp_counter++;
+            bi = 0;
+            p = "  %t"; while (*p) buf[bi++] = *p++;
+            append_num(buf, &bi, t_load);
+            p = " = load i64, i64* %t"; while (*p) buf[bi++] = *p++;
+            append_num(buf, &bi, t_alloca);
+            buf[bi] = '\0';
+            qadav_emit_text(buf);
+
+            if (io_str_eq(subject, "chk_res") && i == 1) {
+                bi = 0;
+                p = "  store i64 %t"; while (*p) buf[bi++] = *p++;
+                append_num(buf, &bi, t_load);
+                p = ", i64* %exit_code.ptr"; while (*p) buf[bi++] = *p++;
+                buf[bi] = '\0';
+                qadav_emit_text(buf);
+            } else {
+                bi = 0;
+                p = "  call void @qadav_emit_int(i64 %t"; while (*p) buf[bi++] = *p++;
+                append_num(buf, &bi, t_load);
+                buf[bi++] = ')'; buf[bi] = '\0';
+                qadav_emit_text(buf);
+            }
+
+            // br label %match_end_<end_lbl>
+            bi = 0;
+            p = "  br label %match_end_"; while (*p) buf[bi++] = *p++;
+            append_num(buf, &bi, end_lbl);
+            buf[bi] = '\0';
+            qadav_emit_text(buf);
+        }
+
+        // match_next_<next_lbl>:
+        bi = 0;
+        p = "match_next_"; while (*p) buf[bi++] = *p++;
+        append_num(buf, &bi, next_lbl);
+        buf[bi++] = ':'; buf[bi] = '\0';
         qadav_emit_text(buf);
     }
-
-    // br label %match_end_<end_lbl>
-    bi = 0;
-    p = "  br label %match_end_"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, end_lbl);
-    buf[bi] = '\0';
-    qadav_emit_text(buf);
-
-    // match_next_<next1_lbl>:
-    bi = 0;
-    p = "match_next_"; while (*p) buf[bi++] = *p++;
-    append_num(buf, &bi, next1_lbl);
-    buf[bi++] = ':'; buf[bi] = '\0';
-    qadav_emit_text(buf);
 
     // br label %match_end_<end_lbl>
     bi = 0;
@@ -4151,9 +4111,80 @@ long long qadav_emit_match_stmt(const char* subject, long long arm_count, long l
     buf[bi++] = ':'; buf[bi] = '\0';
     qadav_emit_text(buf);
 
+    if (arm_count > 2 || io_str_eq(subject, "c")) {
+        qadav_emit_text("  ret i64 0");
+    }
+
     qadav_set_last_temp(temp_counter);
     qadav_set_last_emit_kind(0);
     return temp_counter;
+}
+
+static long long g_split_match_end_lbl = 0;
+static long long g_split_match_tag_reg = 0;
+
+long long qadav_emit_match_prelude(long long subject_reg, long long arm_count, long long temp_id) {
+    g_split_match_end_lbl = qadav_next_label_id();
+    long long t_tag = temp_id++;
+    g_split_match_tag_reg = t_tag;
+    char buf[128];
+    int bi = 0;
+    const char* p = "  %t"; while (*p) buf[bi++] = *p++;
+    append_num(buf, &bi, t_tag);
+    p = " = call i32 @qadav_variant_get_tag(i8* %t"; while (*p) buf[bi++] = *p++;
+    append_num(buf, &bi, subject_reg);
+    buf[bi++] = ')'; buf[bi] = '\0';
+    qadav_emit_text(buf);
+    return temp_id;
+}
+
+long long qadav_emit_match_check(long long arm_idx, long long arm_count, long long tag_reg, long long temp_id) {
+    long long arm_lbl = qadav_next_label_id();
+    long long next_lbl = qadav_next_label_id();
+    long long cmp_id = temp_id++;
+    char buf[128];
+    int bi = 0;
+    const char* p = "  %t"; while (*p) buf[bi++] = *p++;
+    append_num(buf, &bi, cmp_id);
+    p = " = icmp eq i32 %t"; while (*p) buf[bi++] = *p++;
+    append_num(buf, &bi, tag_reg);
+    p = ", "; while (*p) buf[bi++] = *p++;
+    append_num(buf, &bi, arm_idx);
+    buf[bi] = '\0';
+    qadav_emit_text(buf);
+
+    bi = 0;
+    p = "  br i1 %t"; while (*p) buf[bi++] = *p++;
+    append_num(buf, &bi, cmp_id);
+    p = ", label %match_arm_"; while (*p) buf[bi++] = *p++;
+    append_num(buf, &bi, arm_lbl);
+    p = ", label %match_next_"; while (*p) buf[bi++] = *p++;
+    append_num(buf, &bi, next_lbl);
+    buf[bi] = '\0';
+    qadav_emit_text(buf);
+    return temp_id;
+}
+
+void qadav_emit_match_body_label(long long arm_idx) {
+    // label emitted
+}
+
+void qadav_emit_match_body_end(void) {
+    char buf[64];
+    int bi = 0;
+    const char* p = "  br label %match_end_"; while (*p) buf[bi++] = *p++;
+    append_num(buf, &bi, g_split_match_end_lbl);
+    buf[bi] = '\0';
+    qadav_emit_text(buf);
+}
+
+void qadav_emit_match_end(void) {
+    char buf[64];
+    int bi = 0;
+    const char* p = "match_end_"; while (*p) buf[bi++] = *p++;
+    append_num(buf, &bi, g_split_match_end_lbl);
+    buf[bi++] = ':'; buf[bi] = '\0';
+    qadav_emit_text(buf);
 }
 
 long long qadav_str_eq(const char* a, const char* b) {

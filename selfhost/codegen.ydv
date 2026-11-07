@@ -223,6 +223,23 @@ process parse_binary_op⦅text op ⸴ CoreAst left ⸴ CoreAst right⦆ → Core
     yield ast_binop⦅op ⸴ left ⸴ right⦆ ·
 ⟧
 
+process get_tok_precedence⦅int64 kcode ⸴ text op⦆ → int64 ⟦
+    int64 p ↦ 10 ·
+    when kcode ≡ 13 ∨ kcode ≡ 14 ∨ kcode ≡ 16 ∨ kcode ≡ 17 ∨ kcode ≡ 18 ∨ kcode ≡ 19 ⟦
+        p ← 5 ·
+    ⟧ otherwise ⟦
+        when kcode ≡ 15 ⟦
+            int64 is_m ↦ is_mul_op⦅op⦆ ·
+            when is_m ≡ 1 ⟦
+                p ← 20 ·
+            ⟧ otherwise ⟦
+                p ← 10 ·
+            ⟧
+        ⟧
+    ⟧
+    yield p ·
+⟧
+
 process parse_expression⦅int64 idx⦆ → CoreAst ⟦
     int64 kcode ↦ token_kind_code⦅idx⦆ ·
     when kcode ≡ 27 ∨ token_literal⦅idx⦆ ≡ "∑" ⟦
@@ -286,21 +303,24 @@ process parse_expression⦅int64 idx⦆ → CoreAst ⟦
                         CoreAst a1_3 ↦ parse_primary⦅idx ⊕ 2⦆ ·
                         CoreAst a2_3 ↦ parse_primary⦅idx ⊕ 4⦆ ·
                         CoreAst a3_3 ↦ parse_expression⦅idx ⊕ 6⦆ ·
-                        left_call ← ast_call3⦅cname ⸴ a1_3 ⸴ a2_3 ⸴ a3_3⦆ ·
+                        CoreAst c3 ↦ variant_init CoreAst ⦅Call3Decl ↦ cname ⸴ a1_3 ⸴ a2_3 ⸴ a3_3⦆ ·
+                        left_call ← c3 ·
                     ⟧ otherwise ⟦
                         when n_commas ≡ 3 ⟦
                             CoreAst a1_4 ↦ parse_primary⦅idx ⊕ 2⦆ ·
                             CoreAst a2_4 ↦ parse_primary⦅idx ⊕ 4⦆ ·
                             CoreAst a3_4 ↦ parse_primary⦅idx ⊕ 6⦆ ·
                             CoreAst a4_4 ↦ parse_expression⦅idx ⊕ 8⦆ ·
-                            left_call ← ast_call4⦅cname ⸴ a1_4 ⸴ a2_4 ⸴ a3_4 ⸴ a4_4⦆ ·
+                            CoreAst c4 ↦ variant_init CoreAst ⦅Call4Decl ↦ cname ⸴ a1_4 ⸴ a2_4 ⸴ a3_4 ⸴ a4_4⦆ ·
+                            left_call ← c4 ·
                         ⟧ otherwise ⟦
                             CoreAst a1_5 ↦ parse_primary⦅idx ⊕ 2⦆ ·
                             CoreAst a2_5 ↦ parse_primary⦅idx ⊕ 4⦆ ·
                             CoreAst a3_5 ↦ parse_primary⦅idx ⊕ 6⦆ ·
                             CoreAst a4_5 ↦ parse_primary⦅idx ⊕ 8⦆ ·
                             CoreAst a5_5 ↦ parse_expression⦅idx ⊕ 10⦆ ·
-                            left_call ← ast_call5⦅cname ⸴ a1_5 ⸴ a2_5 ⸴ a3_5 ⸴ a4_5 ⸴ a5_5⦆ ·
+                            CoreAst c5 ↦ variant_init CoreAst ⦅Call5Decl ↦ cname ⸴ a1_5 ⸴ a2_5 ⸴ a3_5 ⸴ a4_5 ⸴ a5_5⦆ ·
+                            left_call ← c5 ·
                         ⟧
                     ⟧
                 ⟧
@@ -335,9 +355,32 @@ process parse_expression⦅int64 idx⦆ → CoreAst ⟦
     int64 op_code ↦ token_kind_code⦅idx ⊕ 1⦆ ·
     when op_code ≡ 13 ∨ op_code ≡ 14 ∨ op_code ≡ 15 ∨ op_code ≡ 16 ∨ op_code ≡ 17 ∨ op_code ≡ 18 ∨ op_code ≡ 19 ⟦
         text op ↦ token_literal⦅idx ⊕ 1⦆ ·
-        CoreAst right ↦ parse_primary⦅idx ⊕ 2⦆ ·
-        left ← parse_binary_op⦅op ⸴ left ⸴ right⦆ ·
+        int64 p1 ↦ get_tok_precedence⦅op_code ⸴ op⦆ ·
+        int64 op2_code ↦ token_kind_code⦅idx ⊕ 3⦆ ·
+        int64 is_op2 ↦ 0 ·
+        when op2_code ≡ 13 ∨ op2_code ≡ 14 ∨ op2_code ≡ 15 ∨ op2_code ≡ 16 ∨ op2_code ≡ 17 ∨ op2_code ≡ 18 ∨ op2_code ≡ 19 ⟦
+            is_op2 ← 1 ·
+        ⟧
         int64 cur_pos ↦ idx ⊕ 3 ·
+        CoreAst r_first ↦ parse_primary⦅idx ⊕ 2⦆ ·
+        when is_op2 ≡ 1 ⟦
+            text op2 ↦ token_literal⦅idx ⊕ 3⦆ ·
+            int64 p2 ↦ get_tok_precedence⦅op2_code ⸴ op2⦆ ·
+            when p2 ≻ p1 ⟦
+                CoreAst r_second ↦ parse_primary⦅idx ⊕ 4⦆ ·
+                CoreAst right_bin ↦ parse_binary_op⦅op2 ⸴ r_first ⸴ r_second⦆ ·
+                left ← parse_binary_op⦅op ⸴ left ⸴ right_bin⦆ ·
+                cur_pos ← idx ⊕ 5 ·
+            ⟧ otherwise ⟦
+                CoreAst left_bin ↦ parse_binary_op⦅op ⸴ left ⸴ r_first⦆ ·
+                CoreAst next_r ↦ parse_primary⦅idx ⊕ 4⦆ ·
+                left ← parse_binary_op⦅op2 ⸴ left_bin ⸴ next_r⦆ ·
+                cur_pos ← idx ⊕ 5 ·
+            ⟧
+        ⟧ otherwise ⟦
+            left ← parse_binary_op⦅op ⸴ left ⸴ r_first⦆ ·
+            cur_pos ← idx ⊕ 3 ·
+        ⟧
         int64 is_log ↦ token_kind_code⦅cur_pos⦆ ·
         cycle is_log ≡ 38 ∨ is_log ≡ 39 ⟦
             text lop ↦ token_literal⦅cur_pos⦆ ·
@@ -560,7 +603,23 @@ process parse_statement⦅int64 cur_idx⦆ → CoreAst ⟦
     // MATCH: match subject ⟦ arms ⟧
     when kcode ≡ 33 ⟦
         text msubj ↦ token_literal⦅cur_idx ⊕ 1⦆ ·
-        yield ast_match⦅msubj ⸴ ast_int_lit⦅0⦆⦆ ·
+        int64 scan_m ↦ cur_idx ⊕ 2 ·
+        int64 depth_m ↦ 0 ·
+        int64 arm_cnt ↦ 0 ·
+        when token_kind_code⦅scan_m⦆ ≡ 20 ⟦
+            depth_m ← 1 ·
+            scan_m ← scan_m ⊕ 1 ·
+            cycle depth_m ≻ 0 ⟦
+                int64 kc_m ↦ token_kind_code⦅scan_m⦆ ·
+                when kc_m ≡ 20 ⟦ depth_m ← depth_m ⊕ 1 · ⟧
+                when kc_m ≡ 21 ⟦ depth_m ← depth_m ⊖ 1 · ⟧
+                when kc_m ≡ 34 ∧ depth_m ≡ 1 ⟦
+                    arm_cnt ← arm_cnt ⊕ 1 ·
+                ⟧
+                scan_m ← scan_m ⊕ 1 ·
+            ⟧
+        ⟧
+        yield ast_match⦅msubj ⸴ ast_int_lit⦅arm_cnt⦆⦆ ·
     ⟧
 
     // CYCLE: cycle cond ⟦ body ⟧
@@ -582,6 +641,12 @@ process parse_statement⦅int64 cur_idx⦆ → CoreAst ⟦
         int64 cbody_end ↦ cur_c ·
         CoreAst cbody ↦ parse_statement_list⦅cbody_start ⸴ cbody_end⦆ ·
         yield ast_cycle⦅ccond ⸴ cbody⦆ ·
+    ⟧
+
+    when kcode ≡ 2 ∧ token_kind_code⦅cur_idx ⊕ 1⦆ ≡ 22 ⟦
+        CoreAst e ↦ parse_expression⦅cur_idx⦆ ·
+        CoreAst stmt ↦ variant_init CoreAst ⦅ExprStmt ↦ e⦆ ·
+        yield stmt ·
     ⟧
 
     yield ast_int_lit⦅0⦆ ·
@@ -1191,7 +1256,13 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
         | VariantDeclStmt(name ⸴ count) ⟹
             yield temp_counter ·
         | MatchStmt(subject ⸴ arms) ⟹
-            int64 next_t_m ↦ emit_match_stmt⦅subject ⸴ 2 ⸴ temp_counter⦆ ·
+            int64 dummy_w ↦ walk_core_ast⦅arms ⸴ temp_counter⦆ ·
+            int64 val_arms ↦ last_int_value⦅⦆ ·
+            int64 n_arms ↦ 2 ·
+            when val_arms ≻ 0 ⟦
+                n_arms ← val_arms ·
+            ⟧
+            int64 next_t_m ↦ emit_match_stmt⦅subject ⸴ n_arms ⸴ temp_counter⦆ ·
             yield next_t_m ·
         | ProcedureDecl(name ⸴ p ⸴ ret ⸴ body) ⟹
             emit_proc_header⦅name ⸴ ret ⸴ p⦆ ·
