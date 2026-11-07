@@ -44,4 +44,7 @@ int qadav_certificate_verify(const qadav_reason_certificate* cert);
 // Verify whole chain (all certs valid + commitment links match)
 int qadav_certificate_verify_chain(qadav_reasoning_chain* chain);
 
+// Simulate certificate tamper (--test only)
+int qadav_certificate_corrupt(qadav_reasoning_chain* chain, int cert_idx, int at_idx);
+
 #endif

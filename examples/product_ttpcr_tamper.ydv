@@ -1,0 +1,14 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary logic_auth ⟦
+        rule logical_consistency ↦ 1.0 ·
+        rule no_hallucination ↦ 1.0 ·
+    ⟧
+    reasoning_chain clinical with logic_auth ⟦ capacity ↦ 100 · ⟧
+    certified_reason clinical deduce from "patient has fever" to "possible infection" witness "clinical_guideline_temp_gt_38" confidence ↦ 0.92 ·
+    certified_reason clinical induce from "possible infection" to "order blood test" witness "pathology_protocol_wbc" confidence ↦ 0.88 ·
+    certified_reason clinical verify from "order blood test" to "confirm diagnosis" witness "lab_panel_differential" confidence ↦ 0.95 ·
+    corrupt_certificate clinical ·
+    verify_chain clinical ·
+    emit "UNREACHABLE" ·
+    yield 0 ·
+⟧

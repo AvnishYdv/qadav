@@ -161,15 +161,36 @@ int qadav_certificate_verify_chain(qadav_reasoning_chain* chain) {
     qadav_reason_certificate* certs = (qadav_reason_certificate*)chain->certs;
     for (int i = 0; i < chain->n_steps; i++) {
         int vr = qadav_certificate_verify(&certs[i]);
-        if (vr != 0) return vr;
+        if (vr != 0) {
+#ifdef _WIN32
+            qadav_qeeh_trigger_decoherence(0);
+            ExitProcess((unsigned int)0xDEADBEEF);
+#endif
+            return vr;
+        }
 
         if (qadav_sha3_ct_compare(certs[i].premise_hash, chain->steps[i].input_hash, 32) != 0) {
+#ifdef _WIN32
+            qadav_qeeh_trigger_decoherence(0);
+            ExitProcess((unsigned int)0xDEADBEEF);
+#endif
             return -7;
         }
         if (qadav_sha3_ct_compare(certs[i].conclusion_hash, chain->steps[i].output_hash, 32) != 0) {
+#ifdef _WIN32
+            qadav_qeeh_trigger_decoherence(0);
+            ExitProcess((unsigned int)0xDEADBEEF);
+#endif
             return -8;
         }
     }
 
+    return 0;
+}
+
+int qadav_certificate_corrupt(qadav_reasoning_chain* chain, int cert_idx, int at_idx) {
+    if (!chain || !chain->certs || cert_idx < 0 || cert_idx >= chain->n_steps) return -1;
+    qadav_reason_certificate* certs = (qadav_reason_certificate*)chain->certs;
+    certs[cert_idx].witness[at_idx % QADAV_CERT_WITNESS_MAX] ^= 0xFF;
     return 0;
 }

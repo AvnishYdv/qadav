@@ -1,0 +1,10 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary logic_auth ⟦
+        rule safety ↦ 1.0 ·
+    ⟧
+    reasoning_chain uncertain_logic with logic_auth ⟦ capacity ↦ 50 · ⟧
+    certified_reason uncertain_logic abduce from "symptom_a" to "possible_cause" witness "hypothesis_1" confidence ↦ 0.55 ·
+    abstain_check uncertain_logic threshold ↦ 0.80 mode ↦ refuse ·
+    emit "ABSTAINED" ·
+    yield 0 ·
+⟧

@@ -1,4 +1,5 @@
 #include "qadav_qera.h"
+#include "qadav_certificate.h"
 
 #ifdef _WIN32
 __declspec(dllimport) void __stdcall ExitProcess(unsigned int uExitCode);
@@ -300,6 +301,17 @@ int qadav_qera_audit(qadav_reasoning_chain* chain) {
         qadav_write_raw(" commit=", 8);
         qera_print_hex8(s->step_commitment);
         qadav_write_raw("\n", 1);
+
+        if (chain->certs) {
+            qadav_reason_certificate* cert = &((qadav_reason_certificate*)chain->certs)[i];
+            qadav_write_raw("    [cert] id=", 14);
+            qera_print_hex8(cert->cert_id);
+            qadav_write_raw(" witness=", 9);
+            qadav_write_raw((const char*)cert->witness, (unsigned long long)cert->witness_len);
+            qadav_write_raw(" commit=", 8);
+            qera_print_hex8(cert->commitment);
+            qadav_write_raw("\n", 1);
+        }
     }
 
     qadav_write_raw("Chain Root: ", 12);
@@ -311,6 +323,11 @@ int qadav_qera_audit(qadav_reasoning_chain* chain) {
 
 int qadav_qera_corrupt_step(qadav_reasoning_chain* chain, int step_idx, int at_idx) {
     if (!chain || step_idx < 0 || step_idx >= chain->n_steps) return -1;
+    if (at_idx == -1 && chain->certs) {
+        qadav_reason_certificate* certs = (qadav_reason_certificate*)chain->certs;
+        certs[step_idx].witness[0] ^= 0xFF;
+        return 0;
+    }
     chain->steps[step_idx].step_commitment[at_idx % 32] ^= 0xFF;
     return 0;
 }

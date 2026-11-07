@@ -126,15 +126,86 @@ int qadav_abstain_check(
     return 1; // Confidence below threshold: signal abstention
 }
 
+extern void qadav_write_raw(const char* s, unsigned long long len);
+
+static unsigned long long abstain_strlen(const char* s) {
+    if (!s) return 0;
+    unsigned long long len = 0;
+    while (s[len]) len++;
+    return len;
+}
+
+static void abstain_print_num(long long v) {
+    if (v == 0) {
+        qadav_write_raw("0", 1);
+        return;
+    }
+    char tmp[32];
+    char buf[32];
+    int ti = 0, bi = 0;
+    while (v > 0) {
+        tmp[ti++] = '0' + (char)(v % 10);
+        v /= 10;
+    }
+    while (ti > 0) buf[bi++] = tmp[--ti];
+    qadav_write_raw(buf, bi);
+}
+
+static void abstain_print_float(double val) {
+    if (val < 0.0) {
+        qadav_write_raw("-", 1);
+        val = -val;
+    }
+    long long int_part = (long long)val;
+    double frac = val - (double)int_part;
+    long long frac_part = (long long)(frac * 1000000.0 + 0.5);
+    abstain_print_num(int_part);
+    qadav_write_raw(".", 1);
+    char buf[7];
+    for (int i = 5; i >= 0; i--) {
+        buf[i] = '0' + (char)(frac_part % 10);
+        frac_part /= 10;
+    }
+    buf[6] = '\0';
+    qadav_write_raw(buf, 6);
+}
+
 int qadav_abstain_execute(
     qadav_reasoning_chain* chain,
     qadav_abstain_policy* policy
 ) {
-    if (!qadav_abstain_check(chain, policy, 0)) {
-        return 0; // Sufficient confidence, proceed normally
+    qadav_abstain_policy default_policy;
+    if (!policy) {
+        default_policy.threshold = 0.80;
+        default_policy.mode = QADAV_ABSTAIN_REFUSE;
+        default_policy.max_retries = 0;
+        policy = &default_policy;
     }
 
-    // Graceful abstention: returns action mode (RETRY, ESCALATE, or REFUSE)
-    // Never triggers decoherence or memory wiping
-    return policy ? policy->mode : QADAV_ABSTAIN_REFUSE;
+    double conf = qadav_abstain_compute_confidence(chain);
+    int should_abstain = qadav_abstain_check(chain, policy, 0);
+
+    qadav_write_raw("--- TTPCR CALIBRATED ABSTENTION ---\n", 36);
+    qadav_write_raw("Chain: ", 7);
+    if (chain && chain->chain_name[0]) {
+        qadav_write_raw(chain->chain_name, abstain_strlen(chain->chain_name));
+    } else {
+        qadav_write_raw("uncertain_logic", 15);
+    }
+    qadav_write_raw(" | Threshold: ", 14);
+    abstain_print_float(policy->threshold);
+    qadav_write_raw(" | Calibrated: ", 15);
+    abstain_print_float(conf);
+    qadav_write_raw("\n", 1);
+
+    if (should_abstain) {
+        qadav_write_raw("Action: REFUSE (Confidence below safety threshold)\n", 51);
+        qadav_write_raw("Status: GRACEFUL_ABSTENTION_SIGNALED\n", 37);
+    } else {
+        qadav_write_raw("Action: PROCEED (Confidence sufficient)\n", 40);
+        qadav_write_raw("Status: PROCEED_AUTHORIZED\n", 27);
+    }
+    qadav_write_raw("-----------------------------------\n", 36);
+
+    return should_abstain ? policy->mode : 0;
 }
