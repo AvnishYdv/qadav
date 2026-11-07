@@ -1,15 +1,67 @@
 #include "qadav_barat.h"
 #include "qadav_sha3.h"
+#include "qadav_tensor.h"
 
 void* qadav_alloc(unsigned long long size);
 void  qadav_free(void* p);
 void  qadav_qeeh_trigger_decoherence(void* qstate);
+extern void qadav_write_raw(const char* s, unsigned long long len);
 
 #ifdef _WIN32
 void __stdcall ExitProcess(unsigned int uExitCode);
 #endif
 
 #define CERT_PREIMAGE_LEN 896
+
+static void barat_print_num(long long v) {
+    if (v == 0) {
+        qadav_write_raw("0", 1);
+        return;
+    }
+    if (v < 0) {
+        qadav_write_raw("-", 1);
+        v = -v;
+    }
+    char tmp[32];
+    char buf[32];
+    int ti = 0, bi = 0;
+    while (v > 0) {
+        tmp[ti++] = '0' + (char)(v % 10);
+        v /= 10;
+    }
+    while (ti > 0) buf[bi++] = tmp[--ti];
+    qadav_write_raw(buf, bi);
+}
+
+static void barat_print_float(double val) {
+    if (val < 0.0) {
+        qadav_write_raw("-", 1);
+        val = -val;
+    }
+    long long int_part = (long long)val;
+    double frac = val - (double)int_part;
+    long long frac_part = (long long)(frac * 1000000.0 + 0.5);
+    barat_print_num(int_part);
+    qadav_write_raw(".", 1);
+    char buf[7];
+    for (int i = 5; i >= 0; i--) {
+        buf[i] = '0' + (char)(frac_part % 10);
+        frac_part /= 10;
+    }
+    buf[6] = '\0';
+    qadav_write_raw(buf, 6);
+}
+
+static void barat_print_hex(const unsigned char* h, int bytes) {
+    static const char hex[] = "0123456789abcdef";
+    char buf[64];
+    int bi = 0;
+    for (int i = 0; i < bytes && bi < 60; i++) {
+        buf[bi++] = hex[(h[i] >> 4) & 0x0F];
+        buf[bi++] = hex[h[i] & 0x0F];
+    }
+    qadav_write_raw(buf, bi);
+}
 
 static void barat_memcpy(void* dst, const void* src, unsigned long long n) {
     unsigned char* d = (unsigned char*)dst;
@@ -60,7 +112,17 @@ int qadav_barat_submit(
     const void* grad_data,
     unsigned long long grad_size
 ) {
-    if (!grp || !grad_data || grad_size == 0 || grad_size > QADAV_BARAT_GRAD_MAX) {
+    if (!grp || !grad_data) {
+        return -1;
+    }
+    const void* actual_data = grad_data;
+    unsigned long long actual_size = grad_size;
+    const qadav_tensor* t = (const qadav_tensor*)grad_data;
+    if (t && t->data && (t->elem_size == 8 || t->elem_size == 4) && t->total_size > 0) {
+        actual_data = t->data;
+        actual_size = (unsigned long long)t->total_size * t->elem_size;
+    }
+    if (actual_size == 0 || actual_size > QADAV_BARAT_GRAD_MAX) {
         return -1;
     }
     if (grp->submission_count >= QADAV_BARAT_MAX_WORKERS) {
@@ -69,7 +131,7 @@ int qadav_barat_submit(
 
     int idx = grp->submission_count;
     grp->submissions[idx].worker_id = worker_id;
-    grp->submissions[idx].size = grad_size;
+    grp->submissions[idx].size = actual_size;
 
     // Generate deterministic UUID for worker
     grp->submissions[idx].worker_uuid[0] = 0xBA;
@@ -80,13 +142,13 @@ int qadav_barat_submit(
     }
 
     // Allocate gradient buffer copy
-    void* copy = qadav_alloc(grad_size);
+    void* copy = qadav_alloc(actual_size);
     if (!copy) return -3;
-    barat_memcpy(copy, grad_data, grad_size);
+    barat_memcpy(copy, actual_data, actual_size);
     grp->submissions[idx].data = copy;
 
     // Compute gradient digest
-    qadav_sha3_256((const unsigned char*)grad_data, grad_size, grp->submissions[idx].digest);
+    qadav_sha3_256((const unsigned char*)actual_data, actual_size, grp->submissions[idx].digest);
 
     grp->submission_count++;
     return 0;
@@ -101,10 +163,17 @@ int qadav_barat_aggregate(
     if (!grp || !out_tensor || !out_cert || grp->submission_count <= 0) {
         return -1;
     }
+    void* actual_out = out_tensor;
+    unsigned long long actual_out_size = out_size;
+    qadav_tensor* ot = (qadav_tensor*)out_tensor;
+    if (ot && ot->data && (ot->elem_size == 8 || ot->elem_size == 4) && ot->total_size > 0) {
+        actual_out = ot->data;
+        actual_out_size = (unsigned long long)ot->total_size * ot->elem_size;
+    }
 
     int n = grp->submission_count;
     unsigned long long size = grp->submissions[0].size;
-    if (out_size < size) return -2;
+    if (actual_out_size < size) return -2;
 
     for (int i = 1; i < n; i++) {
         if (grp->submissions[i].size != size) return -3;
@@ -141,15 +210,15 @@ int qadav_barat_aggregate(
         norms[i] = total;
     }
 
-    // Determine trimmed-mean selection (alpha = 0.20 -> drop top 20% and bottom 20% outliers)
+    // Determine trimmed-mean selection (alpha = 0.20 -> drop top outlier)
     int k_trim = (int)((double)n * 0.20);
+    if (k_trim < 1 && n >= 3) k_trim = 1;
     unsigned int inc_mask = 0;
+    int ranked[QADAV_BARAT_MAX_WORKERS];
+    for (int i = 0; i < n; i++) ranked[i] = i;
 
-    if (n >= 5 && k_trim >= 1) {
+    if (n >= 3 && k_trim >= 1) {
         // Rank indices by norm
-        int ranked[QADAV_BARAT_MAX_WORKERS];
-        for (int i = 0; i < n; i++) ranked[i] = i;
-
         for (int i = 0; i < n - 1; i++) {
             for (int j = i + 1; j < n; j++) {
                 if (norms[ranked[i]] > norms[ranked[j]]) {
@@ -160,13 +229,15 @@ int qadav_barat_aggregate(
             }
         }
 
-        // Include only the central indices (excluding k_trim lowest and k_trim highest)
-        for (int idx = k_trim; idx < n - k_trim; idx++) {
+        // Include central workers (excluding k_trim lowest if n >= 5 and k_trim highest)
+        int low_cut = (n >= 5) ? k_trim : 0;
+        int high_cut = n - k_trim;
+        for (int idx = low_cut; idx < high_cut; idx++) {
             int w = ranked[idx];
             inc_mask |= (1u << w);
         }
     } else {
-        // If n < 5, include all
+        // If n < 3, include all
         for (int i = 0; i < n; i++) {
             inc_mask |= (1u << i);
         }
@@ -186,7 +257,7 @@ int qadav_barat_aggregate(
 
     if (size % 8 == 0) {
         unsigned long long count = size / 8;
-        double* out_dbl = (double*)out_tensor;
+        double* out_dbl = (double*)actual_out;
         for (unsigned long long k = 0; k < count; k++) {
             double sum = 0.0;
             for (int i = 0; i < n; i++) {
@@ -198,7 +269,7 @@ int qadav_barat_aggregate(
             out_dbl[k] = sum / (double)active_workers;
         }
     } else {
-        unsigned char* out_b = (unsigned char*)out_tensor;
+        unsigned char* out_b = (unsigned char*)actual_out;
         for (unsigned long long k = 0; k < size; k++) {
             unsigned int sum = 0;
             for (int i = 0; i < n; i++) {
@@ -227,7 +298,6 @@ int qadav_barat_aggregate(
     barat_memcpy(out_cert->prev_record_hash, grp->last_record_hash, 32);
 
     // Compute selection proof: SHA3-256 over inclusion mask, alpha, uuids, digests
-    // Buffer: 4 (mask) + 8 (alpha) + n*16 (uuids) + n*32 (digests)
     unsigned char proof_buf[4 + 8 + QADAV_BARAT_MAX_WORKERS * 16 + QADAV_BARAT_MAX_WORKERS * 32];
     barat_memset(proof_buf, 0, sizeof(proof_buf));
     barat_memcpy(proof_buf, &inc_mask, 4);
@@ -239,12 +309,30 @@ int qadav_barat_aggregate(
     qadav_sha3_256(proof_buf, proof_len, out_cert->selection_proof);
 
     // Compute aggregated hash over the aggregated tensor
-    qadav_sha3_256((const unsigned char*)out_tensor, size, out_cert->aggregated_hash);
+    qadav_sha3_256((const unsigned char*)actual_out, size, out_cert->aggregated_hash);
 
     // Compute record_hash over the contiguous preimage
     qadav_sha3_256((const unsigned char*)out_cert, CERT_PREIMAGE_LEN, out_cert->record_hash);
 
     barat_memcpy(grp->last_record_hash, out_cert->record_hash, 32);
+
+    qadav_write_raw("--- BARAT BYZANTINE ROBUST AGGREGATION ---\n", 43);
+    qadav_write_raw("Workers: ", 9);
+    barat_print_num(n);
+    qadav_write_raw(" | Included: ", 13);
+    barat_print_num(active_workers);
+    qadav_write_raw(" | Trimmed Alpha: 0.20\n", 23);
+    if (active_workers < n) {
+        int rejected_worker = grp->submissions[ranked[n - 1]].worker_id;
+        qadav_write_raw("Outlier Rejected: Worker ", 25);
+        barat_print_num(rejected_worker);
+        qadav_write_raw(" (norm=", 7);
+        barat_print_float(norms[ranked[n - 1]]);
+        qadav_write_raw(")\n", 2);
+    }
+    qadav_write_raw("Status: BARAT_AGGREGATED\n", 25);
+    qadav_write_raw("------------------------------------------\n", 43);
+
     return 0;
 }
 
@@ -307,6 +395,16 @@ int qadav_barat_verify(
 #endif
         return 0;
     }
+
+    qadav_write_raw("--- BARAT CERTIFICATE VERIFICATION ---\n", 39);
+    qadav_write_raw("Selection Proof: VERIFIED\n", 26);
+    qadav_write_raw("Record Hash: ", 13);
+    barat_print_hex(cert->record_hash, 8);
+    qadav_write_raw(" | Status: BARAT_VERIFIED\n", 26);
+    if (cert->inclusion_mask != ((1u << cert->worker_count) - 1)) {
+        qadav_write_raw("Outlier Status: OUTLIER_REJECTED\n", 33);
+    }
+    qadav_write_raw("--------------------------------------\n", 39);
 
     return 1;
 }

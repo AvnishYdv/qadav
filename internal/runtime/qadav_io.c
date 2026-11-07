@@ -563,7 +563,7 @@ typedef struct {
   char val_strs[16][32];
 } qadav_tensor_info_t;
 
-static qadav_tensor_info_t g_tensors[4];
+static qadav_tensor_info_t g_tensors[16];
 static int g_tensor_count = 0;
 static int g_current_tensor_walk_idx = 0;
 
@@ -718,7 +718,14 @@ long long qadav_tokenize_file(const char *path) {
                             buf[ej] == '\r' || buf[ej] == '\n' ||
                             ((unsigned char)buf[ej] == 0xe2 &&
                              (unsigned char)buf[ej + 1] == 0xb8 &&
-                             (unsigned char)buf[ej + 2] == 0xb4))) {
+                             (unsigned char)buf[ej + 2] == 0xb4) ||
+                            ((unsigned char)buf[ej] == 0xe2 &&
+                             (unsigned char)buf[ej + 1] == 0x9f &&
+                             (unsigned char)buf[ej + 2] == 0xac) ||
+                            ((unsigned char)buf[ej] == 0xe2 &&
+                             (unsigned char)buf[ej + 1] == 0x9f &&
+                             (unsigned char)buf[ej + 2] == 0xad &&
+                             elem_idx > 0 && elem_idx < 15))) {
             if ((unsigned char)buf[ej] == 0xe2)
               ej += 3;
             else
@@ -779,7 +786,7 @@ long long qadav_tokenize_file(const char *path) {
           elem_idx++;
         }
         g_tensor_count++;
-        if (g_tensor_count >= 2)
+        if (g_tensor_count >= 16)
           break;
       }
     }
@@ -6373,7 +6380,15 @@ long long qadav_is_custom_statement(long long idx) {
       io_str_eq(lit, "corrupt_reasoning_step") ||
       io_str_eq(lit, "provenance") ||
       io_str_eq(lit, "learn") ||
-      io_str_eq(lit, "certify")) {
+      io_str_eq(lit, "certify") ||
+      io_str_eq(lit, "barat_submit") ||
+      io_str_eq(lit, "barat_aggregate") ||
+      io_str_eq(lit, "barat_verify") ||
+      io_str_eq(lit, "corrupt_barat") ||
+      io_str_eq(lit, "cdaga_record") ||
+      io_str_eq(lit, "cdaga_attest") ||
+      io_str_eq(lit, "cdaga_verify") ||
+      io_str_eq(lit, "corrupt_cdaga")) {
     return 1;
   }
   return 0;
@@ -6809,6 +6824,286 @@ long long qadav_emit_custom_stmt(long long start_idx, long long temp_counter) {
     qadav_emit_text(buf);
 
     return temp_counter + 1;
+  }
+
+  if (io_str_eq(lit, "barat_submit")) {
+    const char* wid_str = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "0";
+    const char* grp_name = "barat_grp";
+    const char* grad_name = "grad_w0";
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "into") && scan + 1 < g_token_count) {
+        grp_name = g_tokens[scan + 1].literal;
+      }
+      if (io_str_eq(g_tokens[scan].literal, "with") && scan + 1 < g_token_count) {
+        grad_name = g_tokens[scan + 1].literal;
+      }
+      scan++;
+    }
+
+    int bi = 0;
+    if (io_str_eq(wid_str, "0")) {
+      bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+      bi = buf_append_str(buf, bi, " = call i8* @qadav_barat_create_group(i32 0)");
+      qadav_emit_text(buf);
+
+      bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, grp_name); bi = buf_append_str(buf, bi, ".ptr = alloca i8*");
+      qadav_emit_text(buf);
+
+      bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter);
+      bi = buf_append_str(buf, bi, ", i8** %"); bi = buf_append_str(buf, bi, grp_name); bi = buf_append_str(buf, bi, ".ptr");
+      qadav_emit_text(buf);
+      temp_counter++;
+    }
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, grp_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, grad_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_barat_submit(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 ");
+    bi = buf_append_str(buf, bi, wid_str); bi = buf_append_str(buf, bi, ", i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ", i64 1024)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 3;
+  }
+
+  if (io_str_eq(lit, "barat_aggregate")) {
+    const char* grp_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "barat_grp";
+    const char* agg_name = "agg_grad";
+    const char* cert_name = "b_cert";
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "into") && scan + 1 < g_token_count) {
+        if (scan > 2 && io_str_eq(g_tokens[scan - 1].literal, "cert")) {
+          cert_name = g_tokens[scan + 1].literal;
+        } else {
+          agg_name = g_tokens[scan + 1].literal;
+        }
+      }
+      scan++;
+    }
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, agg_name); bi = buf_append_str(buf, bi, ".ptr = alloca [1024 x i8]");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [1024 x i8], [1024 x i8]* %"); bi = buf_append_str(buf, bi, agg_name); bi = buf_append_str(buf, bi, ".ptr, i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, cert_name); bi = buf_append_str(buf, bi, ".ptr = alloca [1024 x i8]");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [1024 x i8], [1024 x i8]* %"); bi = buf_append_str(buf, bi, cert_name); bi = buf_append_str(buf, bi, ".ptr, i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, grp_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 3);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_barat_aggregate(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 2); bi = buf_append_str(buf, bi, ", i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i64 1024, i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 4;
+  }
+
+  if (io_str_eq(lit, "barat_verify")) {
+    const char* cert_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "b_cert";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [1024 x i8], [1024 x i8]* %"); bi = buf_append_str(buf, bi, cert_name); bi = buf_append_str(buf, bi, ".ptr, i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_barat_verify(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i8* null, i64 0)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "corrupt_barat")) {
+    const char* cert_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "b_cert";
+    const char* off_str = "16";
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "\xe2\x86\xa6") /* ↦ */ && scan + 1 < g_token_count) {
+        off_str = g_tokens[scan + 1].literal;
+      }
+      scan++;
+    }
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [1024 x i8], [1024 x i8]* %"); bi = buf_append_str(buf, bi, cert_name); bi = buf_append_str(buf, bi, ".ptr, i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_barat_corrupt(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 ");
+    bi = buf_append_str(buf, bi, off_str); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "cdaga_record")) {
+    const char* dev_names[8];
+    int dev_count = 0;
+    const char* rec_name = "rec";
+    int scan = (int)start_idx + 1;
+    int in_bracket = 0;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "\xe2\x9f\xa6") /* ⟦ */) {
+        in_bracket = 1;
+      } else if (io_str_eq(g_tokens[scan].literal, "\xe2\x9f\xa7") /* ⟧ */) {
+        in_bracket = 0;
+      } else if (in_bracket && !io_str_eq(g_tokens[scan].literal, "\xe2\xb8\xb4") /* ⸴ */) {
+        if (dev_count < 8) {
+          dev_names[dev_count++] = g_tokens[scan].literal;
+        }
+      } else if (io_str_eq(g_tokens[scan].literal, "into") && scan + 1 < g_token_count) {
+        rec_name = g_tokens[scan + 1].literal;
+      }
+      scan++;
+    }
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, rec_name); bi = buf_append_str(buf, bi, ".ptr = alloca [512 x i8]");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %dev_bufs.ptr = alloca [8 x i8*]");
+    qadav_emit_text(buf);
+    bi = buf_append_str(buf, 0, "  %dev_sizes.ptr = alloca [8 x i64]");
+    qadav_emit_text(buf);
+
+    for (int i = 0; i < dev_count; i++) {
+      bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+      bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, dev_names[i]); bi = buf_append_str(buf, bi, ".ptr");
+      qadav_emit_text(buf);
+
+      bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+      bi = buf_append_str(buf, bi, " = getelementptr inbounds [8 x i8*], [8 x i8*]* %dev_bufs.ptr, i64 0, i64 ");
+      bi = buf_append_i64(buf, bi, i);
+      qadav_emit_text(buf);
+
+      bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter);
+      bi = buf_append_str(buf, bi, ", i8** %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+      qadav_emit_text(buf);
+
+      bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+      bi = buf_append_str(buf, bi, " = getelementptr inbounds [8 x i64], [8 x i64]* %dev_sizes.ptr, i64 0, i64 ");
+      bi = buf_append_i64(buf, bi, i);
+      qadav_emit_text(buf);
+
+      bi = buf_append_str(buf, 0, "  store i64 1024, i64* %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+      qadav_emit_text(buf);
+
+      temp_counter += 3;
+    }
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [512 x i8], [512 x i8]* %"); bi = buf_append_str(buf, bi, rec_name); bi = buf_append_str(buf, bi, ".ptr, i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [8 x i8*], [8 x i8*]* %dev_bufs.ptr, i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [8 x i64], [8 x i64]* %dev_sizes.ptr, i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 3);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_cdaga_record_aggregation(i8* null, i64 1, i8** %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ", i64* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 2); bi = buf_append_str(buf, bi, ", i32 ");
+    bi = buf_append_i64(buf, bi, dev_count); bi = buf_append_str(buf, bi, ", i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 4;
+  }
+
+  if (io_str_eq(lit, "cdaga_attest")) {
+    const char* rec_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "rec";
+    const char* chain_name = "training_log";
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "to") && scan + 1 < g_token_count) {
+        chain_name = g_tokens[scan + 1].literal;
+      }
+      scan++;
+    }
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [512 x i8], [512 x i8]* %"); bi = buf_append_str(buf, bi, rec_name); bi = buf_append_str(buf, bi, ".ptr, i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, chain_name); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_cdaga_attest(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ", i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i8* null)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 3;
+  }
+
+  if (io_str_eq(lit, "cdaga_verify")) {
+    const char* rec_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "rec";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [512 x i8], [512 x i8]* %"); bi = buf_append_str(buf, bi, rec_name); bi = buf_append_str(buf, bi, ".ptr, i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_cdaga_verify(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i8* null)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "corrupt_cdaga")) {
+    const char* rec_name = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "rec";
+    const char* off_str = "20";
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "\xe2\x86\xa6") /* ↦ */ && scan + 1 < g_token_count) {
+        off_str = g_tokens[scan + 1].literal;
+      }
+      scan++;
+    }
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [512 x i8], [512 x i8]* %"); bi = buf_append_str(buf, bi, rec_name); bi = buf_append_str(buf, bi, ".ptr, i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_cdaga_corrupt(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 ");
+    bi = buf_append_str(buf, bi, off_str); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
   }
 
   return temp_counter;

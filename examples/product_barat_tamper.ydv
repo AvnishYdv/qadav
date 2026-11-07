@@ -1,0 +1,24 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary auth ⟦
+        rule execution_safety ↦ 1.0 ·
+    ⟧
+
+    reasoning_chain training_log with auth ⟦ capacity ↦ 20 · ⟧
+
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w0 ↦ tensor⟬⟬0.01⸴ 0.02⟭⸴ ⟬0.03⸴ 0.04⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w1 ↦ tensor⟬⟬0.02⸴ 0.02⟭⸴ ⟬0.02⸴ 0.02⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w2 ↦ tensor⟬⟬0.015⸴ 0.025⟭⸴ ⟬0.03⸴ 0.03⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w3 ↦ tensor⟬⟬100.0⸴ 100.0⟭⸴ ⟬100.0⸴ 100.0⟭⟭ ·
+
+    barat_submit 0 into barat_grp with grad_w0 ·
+    barat_submit 1 into barat_grp with grad_w1 ·
+    barat_submit 2 into barat_grp with grad_w2 ·
+    barat_submit 3 into barat_grp with grad_w3 ·
+
+    barat_aggregate barat_grp into agg_grad cert into b_cert ·
+    corrupt_barat b_cert at ↦ 16 ·
+    barat_verify b_cert into is_valid ·
+
+    emit "UNREACHABLE" ·
+    yield 0 ·
+⟧

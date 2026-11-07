@@ -1,10 +1,44 @@
 #include "qadav_cdaga.h"
 #include "qadav_qeeh.h"
 #include "qadav_sha3.h"
+#include "qadav_tensor.h"
+
+extern void qadav_write_raw(const char* s, unsigned long long len);
 
 #ifdef _WIN32
 __declspec(dllimport) void __stdcall ExitProcess(unsigned int uExitCode);
 #endif
+
+static void cdaga_print_num(long long v) {
+    if (v == 0) {
+        qadav_write_raw("0", 1);
+        return;
+    }
+    if (v < 0) {
+        qadav_write_raw("-", 1);
+        v = -v;
+    }
+    char tmp[32];
+    char buf[32];
+    int ti = 0, bi = 0;
+    while (v > 0) {
+        tmp[ti++] = '0' + (char)(v % 10);
+        v /= 10;
+    }
+    while (ti > 0) buf[bi++] = tmp[--ti];
+    qadav_write_raw(buf, bi);
+}
+
+static void cdaga_print_hex(const unsigned char* h, int bytes) {
+    static const char hex[] = "0123456789abcdef";
+    char buf[64];
+    int bi = 0;
+    for (int i = 0; i < bytes && bi < 60; i++) {
+        buf[bi++] = hex[(h[i] >> 4) & 0x0F];
+        buf[bi++] = hex[h[i] & 0x0F];
+    }
+    qadav_write_raw(buf, bi);
+}
 
 static inline unsigned long long cdaga_rdtsc(void) {
 #if defined(__x86_64__) || defined(_M_X64)
@@ -113,8 +147,17 @@ int qadav_cdaga_record_aggregation_with_uuids(
     cdaga_memset(raw_digests, 0, sizeof(raw_digests));
 
     for (int i = 0; i < count; i++) {
-        if (gradient_buffers && gradient_sizes && gradient_buffers[i] && gradient_sizes[i] > 0) {
-            qadav_sha3_256((const unsigned char*)gradient_buffers[i], gradient_sizes[i], raw_digests[i]);
+        const void* buf = gradient_buffers ? gradient_buffers[i] : 0;
+        unsigned long long sz = gradient_sizes ? gradient_sizes[i] : 0;
+        if (buf) {
+            const qadav_tensor* t = (const qadav_tensor*)buf;
+            if (t && t->data && (t->elem_size == 8 || t->elem_size == 4) && t->total_size > 0) {
+                buf = t->data;
+                sz = (unsigned long long)t->total_size * t->elem_size;
+            }
+        }
+        if (buf && sz > 0) {
+            qadav_sha3_256((const unsigned char*)buf, sz, raw_digests[i]);
         } else {
             unsigned char dummy_grad[16];
             for (int k = 0; k < 16; k++) dummy_grad[k] = (unsigned char)(i * 17 + k + 1);
@@ -218,6 +261,21 @@ int qadav_cdaga_record_aggregation(
         qadav_multigpu_shutdown(local_ctx);
     }
 
+    if (res == 0 && out) {
+        qadav_write_raw("--- CDAGA CROSS-DEVICE AGGREGATION RECORDED ---\n", 48);
+        qadav_write_raw("Step: ", 6);
+        cdaga_print_num((long long)out->step_index);
+        qadav_write_raw(" | Devices: ", 12);
+        cdaga_print_num(out->device_count);
+        qadav_write_raw(" (lexicographically ordered by UUID)\n", 37);
+        qadav_write_raw("Aggregation Digest: ", 20);
+        cdaga_print_hex(out->aggregation_digest, 8);
+        qadav_write_raw("\nRecord Hash: ", 14);
+        cdaga_print_hex(out->record_hash, 8);
+        qadav_write_raw("\nStatus: CDAGA_RECORDED\n", 24);
+        qadav_write_raw("-----------------------------------------------\n", 48);
+    }
+
     return res;
 }
 
@@ -265,6 +323,13 @@ int qadav_cdaga_verify(
             return 0;
         }
     }
+
+    qadav_write_raw("--- CDAGA INTEGRITY VERIFIED ---\n", 33);
+    qadav_write_raw("Canonical Topology Digest: VERIFIED\n", 36);
+    qadav_write_raw("Cert Hash: ", 11);
+    cdaga_print_hex(record->record_hash, 8);
+    qadav_write_raw(" | Status: CDAGA_VERIFIED\n", 26);
+    qadav_write_raw("--------------------------------\n", 33);
 
     return 1;
 }
