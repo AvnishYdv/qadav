@@ -43,6 +43,12 @@ variant CoreAst ⟦
     | Call3Decl(name ↦ text ⸴ a1 ↦ CoreAst ⸴ a2 ↦ CoreAst ⸴ a3 ↦ CoreAst) ·
     | Call4Decl(name ↦ text ⸴ a1 ↦ CoreAst ⸴ a2 ↦ CoreAst ⸴ a3 ↦ CoreAst ⸴ a4 ↦ CoreAst) ·
     | Call5Decl(name ↦ text ⸴ a1 ↦ CoreAst ⸴ a2 ↦ CoreAst ⸴ a3 ↦ CoreAst ⸴ a4 ↦ CoreAst ⸴ a5 ↦ CoreAst) ·
+    | CustomStmtDecl(start_idx ↦ int64) ·
+⟧
+
+process ast_custom_stmt⦅int64 idx⦆ → CoreAst ⟦
+    CoreAst n ↦ variant_init CoreAst ⦅CustomStmtDecl ↦ idx⦆ ·
+    yield n ·
 ⟧
 
 process ast_int_lit⦅int64 v⦆ → CoreAst ⟦
@@ -554,6 +560,10 @@ process find_stmt_end⦅int64 start_idx ⸴ int64 max_idx⦆ → int64 ⟦
         ⟧
         when c_code ≡ 21 ⟦
             depth ← depth ⊖ 1 ·
+            when depth ≡ 0 ⟦
+                cur ← cur ⊕ 1 ·
+                yield cur ·
+            ⟧
         ⟧
         when c_code ≡ 24 ∧ depth ≡ 0 ⟦
             cur ← cur ⊕ 1 ·
@@ -672,6 +682,10 @@ process parse_match⦅int64 cur_idx⦆ → CoreAst ⟦
 ⟧
 
 process parse_statement⦅int64 cur_idx⦆ → CoreAst ⟦
+    int64 is_cust ↦ is_custom_statement⦅cur_idx⦆ ·
+    when is_cust ≡ 1 ⟦
+        yield ast_custom_stmt⦅cur_idx⦆ ·
+    ⟧
     int64 kcode ↦ token_kind_code⦅cur_idx⦆ ·
 
     // WHEN
@@ -1534,6 +1548,9 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             set_call_arg_extra_2⦅reg_c5_5⦆ ·
             int64 res_c5 ↦ emit_call_5_sub⦅name ⸴ t_c5_5 ⸴ reg_c5_1 ⸴ reg_c5_2 ⸴ reg_c5_3⦆ ·
             yield res_c5 ·
+        | CustomStmtDecl(start_idx) ⟹
+            int64 next_t_cust ↦ emit_custom_stmt⦅start_idx ⸴ temp_counter⦆ ·
+            yield next_t_cust ·
     ⟧
     yield temp_counter ·
 ⟧
@@ -1661,6 +1678,7 @@ process emit_common_decls_2⦅⦆ → logic ⟦
     emit "declare void @qadav_procedure_free(i8*)" ·
     emit "declare i8* @qadav_qeeh_create(i32, double*)" ·
     emit "declare void @qadav_qeeh_set_rule_name(i8*, i32, i8*)" ·
+    emit "declare void @qadav_qeeh_set_rule_code(i8*, i32, i64)" ·
     emit "declare i32 @qadav_qeeh_boundary_hash(i8*, i8*)" ·
     emit "declare i32 @qadav_qeeh_evaluate(i8*, double*)" ·
     emit "declare i32 @qadav_qeeh_evaluate_action(i8*, i8*)" ·
@@ -1887,5 +1905,6 @@ process main⦅⦆ → int64 ⟦
     logic prefix_ok ↦ emit_common_prefix⦅⦆ ·
     CoreAst ast ↦ parse_to_core_ast⦅target_file⦆ ·
     int64 res ↦ walk_core_ast⦅ast ⸴ 1⦆ ·
+    int64 fin ↦ finalize_codegen⦅0⦆ ·
     yield 0 ·
 ⟧

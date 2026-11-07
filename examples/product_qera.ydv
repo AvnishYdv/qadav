@@ -1,0 +1,15 @@
+process main⦅⦆ → int64 ⟦
+    ethical_boundary logic_auth ⟦
+        rule logical_consistency ↦ 1.0 ·
+        rule no_hallucination ↦ 1.0 ·
+    ⟧
+    reasoning_chain clinical with logic_auth ⟦ capacity ↦ 100 · ⟧
+    reason deduce from "patient has fever" to "possible infection" with 0.92 ·
+    reason deduce from "possible infection" to "order blood test" with 0.88 ·
+    reason deduce from "order blood test" to "confirm diagnosis" with 0.85 ·
+    verify_chain clinical ·
+    emit "CHAIN_VERIFIED" ·
+    audit_reasoning clinical ·
+    yield 0 ·
+⟧
+

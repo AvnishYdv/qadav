@@ -140,7 +140,41 @@ void qadav_file_close(void *h) {
 
 #if defined(_WIN32)
 __declspec(dllimport) char *__stdcall GetCommandLineA(void);
+__declspec(dllimport) void *__stdcall CreateFileA(const char*, unsigned long, unsigned long, void*, unsigned long, unsigned long, void*);
+__declspec(dllimport) int __stdcall CloseHandle(void*);
+__declspec(dllimport) void __stdcall ExitProcess(unsigned int);
+__declspec(dllimport) void *__stdcall GetModuleHandleA(const char*);
+__declspec(dllimport) void *__stdcall GetProcAddress(void*, const char*);
+
+struct qadav_training_cert;
+typedef struct qadav_training_cert qadav_training_cert;
+extern qadav_training_cert* qadav_mctp_load(const char* filepath);
+extern int qadav_mctp_verify(qadav_training_cert* c, void* final_weights, long long size);
+extern void qadav_mctp_free(qadav_training_cert* c);
+extern void qadav_set_out_handle(void* h);
+extern void qadav_write_raw(const char* s, unsigned long long len);
+
+static int g_build_mode = 0;
+static char g_out_exe_path[260] = {0};
+static void* g_build_file_handle = (void*)0;
 #endif
+
+extern unsigned long long strlen(const char* s);
+
+static const char* io_strstr(const char* s, const char* sub) {
+  if (!s || !sub) return (void*)0;
+  if (!*sub) return s;
+  for (; *s; s++) {
+    const char *h = s, *n = sub;
+    while (*h && *n && *h == *n) { h++; n++; }
+    if (!*n) return s;
+  }
+  return (void*)0;
+}
+
+static int io_str_contains(const char* s, const char* sub) {
+  return io_strstr(s, sub) != (void*)0;
+}
 
 const char *qadav_get_input_path(void) {
   static char path[260];
@@ -148,6 +182,59 @@ const char *qadav_get_input_path(void) {
   const char *cmd = GetCommandLineA();
   if (!cmd)
     return "";
+
+  // 1. Check verify-training
+  if (io_str_contains(cmd, "verify-training")) {
+    char mpath[260];
+    int mlen = 0;
+    const char *p = io_strstr(cmd, ".mctp");
+    if (p) {
+      const char *start = p;
+      while (start > cmd && *(start - 1) != ' ' && *(start - 1) != '\t' && *(start - 1) != '"')
+        start--;
+      const char *end = p + 5;
+      while (start < end && mlen < 255) {
+        mpath[mlen++] = *start++;
+      }
+      mpath[mlen] = '\0';
+    } else {
+      mpath[0] = '\0';
+    }
+    qadav_training_cert *c = qadav_mctp_load(mpath);
+    if (!c) {
+      qadav_write_raw("INTEGRITY TAMPERED\r\n", 20);
+      ExitProcess(1);
+    }
+    int ok = qadav_mctp_verify(c, (void*)0, 0);
+    qadav_mctp_free(c);
+    if (ok) {
+      qadav_write_raw("INTEGRITY OK\r\n", 14);
+      ExitProcess(0);
+    } else {
+      qadav_write_raw("INTEGRITY TAMPERED\r\n", 20);
+      ExitProcess(1);
+    }
+  }
+
+  // 2. Check build ... -o ...
+  if (io_str_contains(cmd, "build ") && io_str_contains(cmd, " -o ")) {
+    const char *p_o = io_strstr(cmd, " -o ");
+    if (p_o) {
+      p_o += 4;
+      while (*p_o == ' ' || *p_o == '\t') p_o++;
+      int oi = 0;
+      while (*p_o && *p_o != ' ' && *p_o != '\t' && *p_o != '"' && oi < 255) {
+        g_out_exe_path[oi++] = *p_o++;
+      }
+      g_out_exe_path[oi] = '\0';
+      g_build_mode = 1;
+      void *hOut = CreateFileA("TMP\\_build_temp.ll", 0x40000000L, 0, (void*)0, 2, 0x80, (void*)0);
+      if (hOut != (void*)-1) {
+        g_build_file_handle = hOut;
+        qadav_set_out_handle(hOut);
+      }
+    }
+  }
   int pi = 0;
   int in_arg = 0;
   int in_quote = 0;
@@ -2003,7 +2090,8 @@ long long qadav_is_text_type(const char *typ) {
 }
 
 long long qadav_is_tensor_type(const char *typ) {
-  return io_str_eq(typ, "tensor") ? 1 : 0;
+  if (!typ) return 0;
+  return (io_str_eq(typ, "tensor") || io_str_starts_with(typ, "tensor")) ? 1 : 0;
 }
 
 long long qadav_is_float_type(const char *typ) {
@@ -3105,28 +3193,14 @@ const char *qadav_format_call_i64(const char *callee, long long res_temp,
       io_str_eq(callee, "is_logic_returning_proc") ||
       io_str_eq(callee, "get_string_byte_len") ||
       io_str_eq(callee, "register_string") ||
+      io_str_eq(callee, "str_table_add") ||
+      io_str_eq(callee, "is_affirm_ident") ||
+      io_str_eq(callee, "is_deny_ident") ||
+      io_str_eq(callee, "get_var_type_code") ||
+      io_str_eq(callee, "is_void_call_proc") ||
       io_str_eq(callee, "scan_if_else")) {
     lt_ret = "i64";
     lt_arg = "i8*";
-  } else if (io_str_eq(callee, "token_kind") ||
-             io_str_eq(callee, "token_literal") ||
-             io_str_eq(callee, "str_table_def") ||
-             io_str_eq(callee, "str_table_gep") ||
-             io_str_eq(callee, "str_table_get") ||
-             io_str_eq(callee, "dynamic_io_decl_get") ||
-             io_str_eq(callee, "get_tensor_val_str") ||
-             io_str_eq(callee, "format_trunc_line_id") ||
-             io_str_eq(callee, "format_ret_line_id") ||
-             io_str_eq(callee, "format_ret_text") ||
-             io_str_eq(callee, "format_ret_double") ||
-             io_str_eq(callee, "format_ret_i32")) {
-    lt_ret = "i8*";
-    lt_arg = "i64";
-  } else if (io_str_eq(callee, "token_line") ||
-             io_str_eq(callee, "token_col") ||
-             io_str_eq(callee, "token_int_val")) {
-    lt_ret = "i64";
-    lt_arg = "i64";
   } else if (io_str_eq(callee, "classify_keyword") ||
              io_str_eq(callee, "classify_operator") ||
              io_str_eq(callee, "classify_annotation") ||
@@ -3146,6 +3220,15 @@ const char *qadav_format_call_i64(const char *callee, long long res_temp,
              io_str_eq(callee, "get_if_cond_op")) {
     lt_ret = "i8*";
     lt_arg = "i8*";
+  } else if (io_str_eq(callee, "token_kind") ||
+             io_str_eq(callee, "token_literal") ||
+             io_str_starts_with(callee, "str_table_") ||
+             io_str_starts_with(callee, "format_") ||
+             io_str_eq(callee, "dynamic_io_decl_get") ||
+             io_str_eq(callee, "get_tensor_val_str") ||
+             io_str_eq(callee, "stmt_name")) {
+    lt_ret = "i8*";
+    lt_arg = "i64";
   } else if (io_str_eq(callee, "qadav_variant_get_tag") ||
              io_str_eq(callee, "variant_get_tag")) {
     lt_ret = "i32";
@@ -3985,7 +4068,9 @@ const char *qadav_format_call_i64_imm(const char *callee, long long res_temp,
     lt_a1 = "i8*";
     lt_a2 = "i64";
   } else if (io_str_eq(callee, "variant_get_field_ptr_wrap") ||
-             io_str_eq(callee, "qadav_variant_get_field_ptr_wrap")) {
+             io_str_eq(callee, "qadav_variant_get_field_ptr_wrap") ||
+             io_str_eq(callee, "format_call_0args") ||
+             io_str_eq(callee, "qadav_format_call_0args")) {
     lt_ret = "i8*";
     lt_a1 = "i8*";
     lt_a2 = "i64";
@@ -4103,7 +4188,9 @@ const char *qadav_format_call_i64_2args(const char *callee, long long res_temp,
     lt_a1 = "i8*";
     lt_a2 = "i64";
   } else if (io_str_eq(callee, "variant_get_field_ptr_wrap") ||
-             io_str_eq(callee, "qadav_variant_get_field_ptr_wrap")) {
+             io_str_eq(callee, "qadav_variant_get_field_ptr_wrap") ||
+             io_str_eq(callee, "format_call_0args") ||
+             io_str_eq(callee, "qadav_format_call_0args")) {
     lt_ret = "i8*";
     lt_a1 = "i8*";
     lt_a2 = "i64";
@@ -4346,6 +4433,9 @@ const char *qadav_format_ret_text(long long reg_id) {
 
 static const char *const g_dynamic_io_decls[] = {
     "declare i8* @get_input_path()",
+    "declare i64 @is_custom_statement(i64)",
+    "declare i64 @emit_custom_stmt(i64, i64)",
+    "declare i64 @finalize_codegen(i64)",
     "declare i64 @extract_yield_number(i8*)",
     "declare i8* @format_trunc_line(i64)",
     "declare i8* @format_icmp_eq_ptr(i64, i64, i64)",
@@ -5401,9 +5491,7 @@ static long long qadav_emit_call_generic(const char *callee, long long res_temp,
     }
   }
   if (io_str_starts_with(callee, "format_") ||
-      io_str_starts_with(callee, "str_table_get") ||
-      io_str_starts_with(callee, "str_table_def") ||
-      io_str_starts_with(callee, "str_table_gep")) {
+      (io_str_starts_with(callee, "str_table_") && !io_str_eq(callee, "str_table_add"))) {
     lt_ret = "i8*";
   }
   const char *p1 = "  %t";
@@ -5442,8 +5530,11 @@ static long long qadav_emit_call_generic(const char *callee, long long res_temp,
       lt_p = (p == 0 || p == 1) ? "i8*" : "i64";
     } else if (io_str_eq(callee, "format_binop") ||
                io_str_eq(callee, "format_binop_imm") ||
-               io_str_eq(callee, "format_icmp_imm")) {
+               io_str_eq(callee, "format_icmp_imm") ||
+               io_str_starts_with(callee, "format_call_")) {
       lt_p = (p == 0) ? "i8*" : "i64";
+    } else if (io_str_eq(callee, "is_void_call_proc")) {
+      lt_p = "i8*";
     } else if (io_str_eq(callee, "emit_variant_init")) {
       lt_p = (p == 0 || p == 1) ? "i8*" : "i64";
     }
@@ -6014,6 +6105,8 @@ long long qadav_is_variant_field_ptr(const char *case_name,
     return 0;
   if (io_str_eq(case_name, "IntLitDecl") && field_idx == 0)
     return 0;
+  if (io_str_eq(case_name, "CustomStmtDecl") && field_idx == 0)
+    return 0;
   if (io_str_eq(case_name, "TensorDecl") && (field_idx == 0 || field_idx == 1))
     return 0;
   if ((io_str_eq(case_name, "RecordDeclStmt") ||
@@ -6021,7 +6114,9 @@ long long qadav_is_variant_field_ptr(const char *case_name,
        io_str_eq(case_name, "RecordInitExpr")) &&
       field_idx == 1)
     return 0;
-  if (io_str_starts_with(case_name, "Variant") ||
+  if ((io_str_starts_with(case_name, "Variant") &&
+       !io_str_eq(case_name, "VariantInitExpr") &&
+       !io_str_eq(case_name, "VariantDeclStmt")) ||
       io_str_eq(case_name, "Number") || io_str_eq(case_name, "Integer"))
     return 0;
   return 1;
@@ -6066,6 +6161,10 @@ long long qadav_is_text_returning_proc(const char *name) {
       io_str_eq(name, "format_token") || io_str_eq(name, "token_kind") ||
       io_str_eq(name, "token_literal") || io_str_eq(name, "str_table_def") ||
       io_str_eq(name, "str_table_gep") || io_str_eq(name, "str_table_get") ||
+      io_str_eq(name, "str_table_emit") ||
+      io_str_eq(name, "format_emit_float_call") ||
+      io_str_eq(name, "format_emit_int_call") ||
+      io_str_eq(name, "format_ret_i64") ||
       io_str_eq(name, "dynamic_io_decl_get") ||
       io_str_eq(name, "get_tensor_val_str") ||
       io_str_eq(name, "format_store_imm_i1") ||
@@ -6179,3 +6278,429 @@ long long qadav_prealloc_match_bindings(const char *subject) {
   }
   return 1;
 }
+
+static int buf_append_str(char *buf, int bi, const char *s) {
+  if (!s) return bi;
+  while (*s && bi < 1020) buf[bi++] = *s++;
+  buf[bi] = '\0';
+  return bi;
+}
+
+static int buf_append_i64(char *buf, int bi, long long v) {
+  char temp[32];
+  int ti = 0;
+  if (v == 0) {
+    if (bi < 1020) buf[bi++] = '0';
+    buf[bi] = '\0';
+    return bi;
+  }
+  if (v < 0) {
+    if (bi < 1020) buf[bi++] = '-';
+    v = -v;
+  }
+  while (v > 0) {
+    temp[ti++] = '0' + (char)(v % 10);
+    v /= 10;
+  }
+  while (ti > 0 && bi < 1020) {
+    buf[bi++] = temp[--ti];
+  }
+  buf[bi] = '\0';
+  return bi;
+}
+
+long long qadav_finalize_codegen(long long dummy) {
+  (void)dummy;
+#if defined(_WIN32)
+  if (g_build_mode && g_build_file_handle) {
+    CloseHandle(g_build_file_handle);
+    g_build_file_handle = (void*)0;
+    qadav_set_out_handle((void*)0);
+
+    void *hK32 = GetModuleHandleA("kernel32.dll");
+    if (hK32) {
+      typedef int (__stdcall *LPFN_CP)(const char*, char*, void*, void*, int, unsigned long, void*, const char*, void*, void*);
+      typedef unsigned long (__stdcall *LPFN_WFSO)(void*, unsigned long);
+      LPFN_CP fnCP = (LPFN_CP)GetProcAddress(hK32, "CreateProcessA");
+      LPFN_WFSO fnWFSO = (LPFN_WFSO)GetProcAddress(hK32, "WaitForSingleObject");
+      if (fnCP && fnWFSO) {
+        char cmdline[2048];
+        int ci = 0;
+        ci = buf_append_str(cmdline, ci, "cmd.exe /c clang -O2 TMP\\_build_temp.ll TMP\\runtime_objs\\*.o -nostdlib -fuse-ld=lld -Wl,-entry:qadav_start -Wl,-subsystem:console C:\\Users\\avnis\\.qadav\\runtime\\kernel32.lib -o ");
+        ci = buf_append_str(cmdline, ci, g_out_exe_path);
+
+        char si[104];
+        char pi[24];
+        for (int i = 0; i < 104; i++) si[i] = 0;
+        for (int i = 0; i < 24; i++) pi[i] = 0;
+        *(unsigned long*)si = 104;
+
+        if (fnCP((void*)0, cmdline, (void*)0, (void*)0, 0, 0, (void*)0, (void*)0, si, pi)) {
+          void* hProcess = *(void**)pi;
+          void* hThread = *(void**)(pi + sizeof(void*));
+          fnWFSO(hProcess, 60000);
+          CloseHandle(hProcess);
+          CloseHandle(hThread);
+        }
+      }
+    }
+    ExitProcess(0);
+  }
+#endif
+  return 0;
+}
+
+long long qadav_is_custom_statement(long long idx) {
+  if (idx < 0 || idx >= g_token_count) return 0;
+  const char* lit = g_tokens[idx].literal;
+  if (io_str_eq(lit, "ethical_boundary") ||
+      io_str_eq(lit, "vault") ||
+      io_str_eq(lit, "seal") ||
+      io_str_eq(lit, "unseal") ||
+      io_str_eq(lit, "wipe") ||
+      io_str_eq(lit, "reasoning_chain") ||
+      io_str_eq(lit, "reason") ||
+      io_str_eq(lit, "verify_chain") ||
+      io_str_eq(lit, "audit_reasoning") ||
+      io_str_eq(lit, "corrupt_reasoning_step") ||
+      io_str_eq(lit, "provenance") ||
+      io_str_eq(lit, "learn") ||
+      io_str_eq(lit, "certify")) {
+    return 1;
+  }
+  return 0;
+}
+
+long long qadav_emit_custom_stmt(long long start_idx, long long temp_counter) {
+  if (start_idx < 0 || start_idx >= g_token_count) return temp_counter;
+  const char* lit = g_tokens[start_idx].literal;
+  char buf[512];
+
+  if (io_str_eq(lit, "ethical_boundary")) {
+    const char* bname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "b";
+    const char* rname = "rule";
+    int scan = (int)start_idx + 2;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xe2\x9f\xa7") /* ⟧ */) {
+      if (io_str_eq(g_tokens[scan].literal, "rule") && scan + 1 < g_token_count) {
+        rname = g_tokens[scan + 1].literal;
+        break;
+      }
+      scan++;
+    }
+    unsigned long long rcode = fnv1a_hash(rname);
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = alloca [1 x double]");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = getelementptr inbounds [1 x double], [1 x double]* %t");
+    bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, ", i64 0, i64 0");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  store double 1.000000, double* %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, bi, " = bitcast [1 x double]* %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " to double*");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 3);
+    bi = buf_append_str(buf, bi, " = call i8* @qadav_qeeh_create(i32 1, double* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 2); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  call void @qadav_qeeh_set_rule_code(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 3); bi = buf_append_str(buf, bi, ", i32 0, i64 ");
+    bi = buf_append_i64(buf, bi, (long long)rcode); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, bname); bi = buf_append_str(buf, bi, ".ptr = alloca i8*");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter + 3);
+    bi = buf_append_str(buf, bi, ", i8** %"); bi = buf_append_str(buf, bi, bname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    return temp_counter + 4;
+  }
+
+  if (io_str_eq(lit, "vault")) {
+    const char* vname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "v";
+    const char* bname = "authorized";
+    int scan = (int)start_idx + 2;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "with") && scan + 1 < g_token_count) {
+        bname = g_tokens[scan + 1].literal;
+        break;
+      }
+      scan++;
+    }
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, bname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i8* @qadav_qemwv_create(i32 5, i32 3, i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, vname); bi = buf_append_str(buf, bi, ".ptr = alloca i8*");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, ", i8** %"); bi = buf_append_str(buf, bi, vname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "seal")) {
+    const char* vname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "v";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, vname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_qemwv_seal(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i8** null, i32 0)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "unseal")) {
+    const char* vname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "v";
+    const char* bname = "authorized";
+    int scan = (int)start_idx + 2;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "with") && scan + 1 < g_token_count) {
+        bname = g_tokens[scan + 1].literal;
+        break;
+      }
+      scan++;
+    }
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, vname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, bname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, bi, " = call i8** @qadav_qemwv_unseal(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 3;
+  }
+
+  if (io_str_eq(lit, "wipe")) {
+    const char* vname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "v";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, vname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  call void @qadav_qemwv_wipe(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 1;
+  }
+
+  if (io_str_eq(lit, "reasoning_chain")) {
+    const char* cname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "clinical";
+    const char* bname = "logic_auth";
+    int scan = (int)start_idx + 2;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xe2\x9f\xa6") /* ⟦ */) {
+      if (io_str_eq(g_tokens[scan].literal, "with") && scan + 1 < g_token_count) {
+        bname = g_tokens[scan + 1].literal;
+        break;
+      }
+      scan++;
+    }
+    long long sidx = qadav_str_table_add(cname);
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, bname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    const char* gep = qadav_str_table_gep(sidx, temp_counter + 1);
+    qadav_emit_text(gep);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, bi, " = call i8* @qadav_qera_create(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ", i32 100, i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr = alloca i8*");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter + 2);
+    bi = buf_append_str(buf, bi, ", i8** %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    return temp_counter + 3;
+  }
+
+  if (io_str_eq(lit, "reason")) {
+    const char* in_str = "in";
+    const char* out_str = "out";
+    const char* conf_str = "0.900000";
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xc2\xb7") /* · */) {
+      if (io_str_eq(g_tokens[scan].literal, "from") && scan + 1 < g_token_count) {
+        in_str = g_tokens[scan + 1].literal;
+      }
+      if (io_str_eq(g_tokens[scan].literal, "to") && scan + 1 < g_token_count) {
+        out_str = g_tokens[scan + 1].literal;
+      }
+      if (io_str_eq(g_tokens[scan].literal, "with") && scan + 1 < g_token_count) {
+        conf_str = g_tokens[scan + 1].literal;
+      }
+      scan++;
+    }
+    long long in_sidx = qadav_str_table_add(in_str);
+    long long out_sidx = qadav_str_table_add(out_str);
+    unsigned long long in_len = strlen(in_str);
+    unsigned long long out_len = strlen(out_str);
+
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %clinical.ptr");
+    qadav_emit_text(buf);
+
+    const char* gep_in = qadav_str_table_gep(in_sidx, temp_counter + 1);
+    qadav_emit_text(gep_in);
+    const char* gep_out = qadav_str_table_gep(out_sidx, temp_counter + 2);
+    qadav_emit_text(gep_out);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 3);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_qera_reason(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 1, i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 1); bi = buf_append_str(buf, bi, ", i64 ");
+    bi = buf_append_i64(buf, bi, in_len); bi = buf_append_str(buf, bi, ", i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter + 2); bi = buf_append_str(buf, bi, ", i64 ");
+    bi = buf_append_i64(buf, bi, out_len); bi = buf_append_str(buf, bi, ", i8* null, i64 0, double ");
+    bi = buf_append_str(buf, bi, conf_str); bi = buf_append_str(buf, bi, ", i8* null)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 4;
+  }
+
+  if (io_str_eq(lit, "verify_chain")) {
+    const char* cname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "clinical";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_certificate_verify_chain(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "audit_reasoning")) {
+    const char* cname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "clinical";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_qera_audit(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "corrupt_reasoning_step")) {
+    const char* cname = "clinical";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, cname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter + 1);
+    bi = buf_append_str(buf, bi, " = call i32 @qadav_qera_corrupt_step(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 0, i32 0)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 2;
+  }
+
+  if (io_str_eq(lit, "provenance")) {
+    const char* pname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "prov";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = call i8* @qadav_mctp_init(i32 1000)");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  %"); bi = buf_append_str(buf, bi, pname); bi = buf_append_str(buf, bi, ".ptr = alloca i8*");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  store i8* %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, ", i8** %"); bi = buf_append_str(buf, bi, pname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    return temp_counter + 1;
+  }
+
+  if (io_str_eq(lit, "learn")) {
+    int epochs = 10;
+    int scan = (int)start_idx + 1;
+    while (scan < g_token_count && !io_str_eq(g_tokens[scan].literal, "\xe2\x9f\xa7") /* ⟧ */) {
+      if (io_str_eq(g_tokens[scan].literal, "epochs") && scan + 2 < g_token_count) {
+        epochs = (int)io_parse_int(g_tokens[scan + 2].literal);
+        break;
+      }
+      scan++;
+    }
+    if (epochs <= 0) epochs = 10;
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %prov.ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  call void @qadav_mctp_record_epochs(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ", i32 ");
+    bi = buf_append_i64(buf, bi, epochs); bi = buf_append_str(buf, bi, ", i8* null, i64 0, i8* null, i64 0, double 0.050000)");
+    qadav_emit_text(buf);
+
+    return temp_counter + 1;
+  }
+
+  if (io_str_eq(lit, "certify")) {
+    const char* pname = (start_idx + 1 < g_token_count) ? g_tokens[start_idx + 1].literal : "prov";
+    int bi = 0;
+    bi = buf_append_str(buf, 0, "  %t"); bi = buf_append_i64(buf, bi, temp_counter);
+    bi = buf_append_str(buf, bi, " = load i8*, i8** %"); bi = buf_append_str(buf, bi, pname); bi = buf_append_str(buf, bi, ".ptr");
+    qadav_emit_text(buf);
+
+    bi = buf_append_str(buf, 0, "  call void @qadav_mctp_certify(i8* %t");
+    bi = buf_append_i64(buf, bi, temp_counter); bi = buf_append_str(buf, bi, ")");
+    qadav_emit_text(buf);
+
+    return temp_counter + 1;
+  }
+
+  return temp_counter;
+}
+
+long long is_custom_statement(long long idx) { return qadav_is_custom_statement(idx); }
+long long emit_custom_stmt(long long idx, long long tc) { return qadav_emit_custom_stmt(idx, tc); }
+long long finalize_codegen(long long d) { return qadav_finalize_codegen(d); }

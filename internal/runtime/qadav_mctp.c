@@ -198,6 +198,8 @@ void qadav_mctp_certify(qadav_training_cert* c) {
     // Save default sidecar file
     qadav_mctp_save(c, "model.mctp");
     qadav_mctp_save(c, "examples\\mctp_demo.mctp");
+    qadav_mctp_save(c, "TMP\\product_mctp.mctp");
+    qadav_mctp_save(c, "product_mctp.mctp");
 }
 
 int qadav_mctp_verify(qadav_training_cert* c, void* final_weights, long long size) {

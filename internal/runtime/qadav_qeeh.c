@@ -52,6 +52,18 @@ void qadav_qeeh_set_rule_name(qadav_ethical_hamiltonian* h, int idx, const char*
     h->rule_names[idx][k] = '\0';
 }
 
+void qadav_qeeh_set_rule_code(void* boundary, int idx, unsigned long long code) {
+    if (!boundary || idx < 0 || idx >= QADAV_QEEH_MAX_RULES) return;
+    qadav_ethical_hamiltonian* h = (qadav_ethical_hamiltonian*)boundary;
+    int k = 0;
+    while (code > 0 && k < QADAV_QEEH_RULE_NAME_MAX - 1) {
+        h->rule_names[idx][k++] = 'a' + (char)(code % 26);
+        code /= 26;
+    }
+    if (k == 0) h->rule_names[idx][k++] = 'x';
+    h->rule_names[idx][k] = '\0';
+}
+
 int qadav_qeeh_boundary_hash(const void* boundary, unsigned char out[32]) {
     if (!out) return 0;
     if (!boundary) {

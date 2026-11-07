@@ -1,0 +1,23 @@
+network DefenseModel ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary authorized ⟦
+        rule owner_access ↦ 1.0 ·
+    ⟧
+    vault vault_v with authorized ⟬ DefenseModel ⟭ threshold ↦ 3 ·
+    seal vault_v ·
+    emit "STAGE_1_SEALED" ·
+    unseal vault_v with authorized ·
+    emit "STAGE_2_UNSEALED" ·
+    tensor⟨float64⟩⟬2⟭ input ↦ tensor⟬0.5⸴ 0.5⟭ ·
+    tensor⟨float64⟩⟬1⟭ pred ↦ DefenseModel⦅input⦆ ·
+    emit "STAGE_3_INFERENCE_OK" ·
+    wipe vault_v ·
+    emit "STAGE_4_WIPED" ·
+    yield 0 ·
+⟧
+

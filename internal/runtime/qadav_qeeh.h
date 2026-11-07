@@ -31,6 +31,7 @@ qadav_ethical_hamiltonian* qadav_qeeh_create(int num_rules, const double* penalt
 
 // Sets the name of a specific rule
 void qadav_qeeh_set_rule_name(qadav_ethical_hamiltonian* h, int idx, const char* name);
+void qadav_qeeh_set_rule_code(void* boundary, int idx, unsigned long long code);
 
 // Computes a deterministic content-only SHA3-256 hash of the boundary (ASLR-free)
 // Hashes ONLY: num_rules (4 bytes LE) || for each rule: rule_name (null-terminated) || penalty (8 bytes double LE)

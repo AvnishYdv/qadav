@@ -465,17 +465,20 @@ void qadav_free(void* p) {
     }
 }
 
-static HANDLE out_handle(void) {
-    static HANDLE h = NULL;
-    if (!h) {
-        h = GetStdHandle(STD_OUTPUT_HANDLE);
-    }
-    return h;
+static HANDLE g_custom_out = NULL;
+
+void qadav_set_out_handle(HANDLE h) {
+    g_custom_out = h;
+}
+
+HANDLE qadav_get_out_handle(void) {
+    if (g_custom_out) return g_custom_out;
+    return GetStdHandle(STD_OUTPUT_HANDLE);
 }
 
 void qadav_write_raw(const char* s, unsigned long long len) {
     DWORD written;
-    WriteFile(out_handle(), s, (DWORD)len, &written, NULL);
+    WriteFile(qadav_get_out_handle(), s, (DWORD)len, &written, NULL);
 }
 
 static void write_raw(const char* s, DWORD len) {
@@ -599,6 +602,13 @@ void* memset(void* s, int c, unsigned long long n) {
         p[i] = (unsigned char)c;
     }
     return s;
+}
+
+unsigned long long strlen(const char* s) {
+    if (!s) return 0;
+    unsigned long long len = 0;
+    while (s[len]) len++;
+    return len;
 }
 
 // Windows stack probe stubs (zero-libc runtime)

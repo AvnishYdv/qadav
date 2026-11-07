@@ -1,0 +1,21 @@
+network DefenseModel ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    ethical_boundary authorized ⟦
+        rule owner_access ↦ 1.0 ·
+    ⟧
+    ethical_boundary attacker ⟦
+        rule unauthorized ↦ 1.0 ·
+    ⟧
+    vault vault_v with authorized ⟬ DefenseModel ⟭ threshold ↦ 3 ·
+    seal vault_v ·
+    emit "STAGE_1_SEALED" ·
+    unseal vault_v with attacker ·
+    emit "UNREACHABLE" ·
+    yield 0 ·
+⟧
+

@@ -1,0 +1,5 @@
+process main⦅⦆ → int64 ⟦
+    emit "MCTP_TAMPER_TEST" ·
+    yield 0 ·
+⟧
+
