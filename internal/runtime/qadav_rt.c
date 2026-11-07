@@ -165,6 +165,47 @@ const char* qadav_format_func_def_text_param(const char* name, const char* param
 const char* qadav_format_param_alloca_text(const char* param_name);
 const char* qadav_format_param_store_text(const char* param_name);
 const char* qadav_format_ret_text(long long reg_id);
+long long   qadav_has_dynamic_io(void);
+long long   qadav_dynamic_io_decl_count(void);
+const char* qadav_dynamic_io_decl_get(long long idx);
+long long qadav_emit_dynamic_io_decls(void);
+const char* qadav_format_proc_header(const char* name, const char* ret_type, const char* p1_name);
+const char* qadav_format_proc_header_2(const char* name, const char* ret_type, const char* p1_name, const char* p2_name);
+const char* qadav_format_br_cycle(long long cond_reg, long long body_id, long long end_id);
+const char* qadav_format_br_match(long long cmp_reg, long long arm_id, long long next_id);
+const char* qadav_format_icmp_eq_i32(long long res_reg, long long val_reg, long long tag);
+const char* qadav_format_store_imm_i1(const char* name, long long val);
+const char* qadav_format_ret_type(const char* typ, long long reg);
+const char* qadav_format_alloca_reg(long long reg);
+const char* qadav_format_store_reg_to_reg(long long val_reg, long long ptr_reg);
+const char* qadav_format_load_from_reg(long long res_reg, long long ptr_reg);
+long long qadav_is_logic_type(const char* t);
+long long   qadav_get_record_field_idx(const char* rec_name, const char* field_name);
+long long   qadav_is_record_field_ptr(const char* rec_name, const char* field_name);
+long long   qadav_get_variant_case_tag(const char* var_name, const char* case_name);
+const char* qadav_format_record_alloc(const char* rec_name, long long temp_id);
+const char* qadav_format_record_set_field_ptr(long long rec_reg, long long idx, long long val_reg);
+const char* qadav_format_record_set_field_i64(long long rec_reg, long long idx, long long val);
+const char* qadav_format_record_get_field_ptr(long long res_reg, long long obj_reg, long long idx);
+const char* qadav_format_record_get_field_i64(long long res_reg, long long obj_reg, long long idx);
+const char* qadav_format_variant_create_i64(const char* var_name, const char* case_name, long long val, long long temp_id);
+const char* qadav_format_variant_get_tag(long long res_reg, long long obj_reg);
+const char* qadav_format_variant_get_field_i64(long long res_reg, long long obj_reg, long long idx);
+long long   qadav_has_dynamic_io(void);
+long long   qadav_dynamic_io_decl_count(void);
+const char* qadav_dynamic_io_decl_get(long long idx);
+long long qadav_emit_dynamic_io_decls(void);
+long long   qadav_get_record_field_idx(const char* rec_name, const char* field_name);
+long long   qadav_is_record_field_ptr(const char* rec_name, const char* field_name);
+long long   qadav_get_variant_case_tag(const char* var_name, const char* case_name);
+const char* qadav_format_record_alloc(const char* rec_name, long long temp_id);
+const char* qadav_format_record_set_field_ptr(long long rec_reg, long long idx, long long val_reg);
+const char* qadav_format_record_set_field_i64(long long rec_reg, long long idx, long long val);
+const char* qadav_format_record_get_field_ptr(long long res_reg, long long obj_reg, long long idx);
+const char* qadav_format_record_get_field_i64(long long res_reg, long long obj_reg, long long idx);
+const char* qadav_format_variant_create_i64(const char* var_name, const char* case_name, long long val, long long temp_id);
+const char* qadav_format_variant_get_tag(long long res_reg, long long obj_reg);
+const char* qadav_format_variant_get_field_i64(long long res_reg, long long obj_reg, long long idx);
 
 const char* get_input_path(void) {
     return qadav_get_input_path();
@@ -374,6 +415,43 @@ const char* format_func_def_text_param(const char* name, const char* param_name)
 const char* format_param_alloca_text(const char* param_name) { return qadav_format_param_alloca_text(param_name); }
 const char* format_param_store_text(const char* param_name) { return qadav_format_param_store_text(param_name); }
 const char* format_ret_text(long long reg_id) { return qadav_format_ret_text(reg_id); }
+long long has_dynamic_io(void) { return qadav_has_dynamic_io(); }
+long long dynamic_io_decl_count(void) { return qadav_dynamic_io_decl_count(); }
+const char* dynamic_io_decl_get(long long idx) { return qadav_dynamic_io_decl_get(idx); }
+long long emit_dynamic_io_decls(void) { return qadav_emit_dynamic_io_decls(); }
+const char* format_proc_header(const char* name, const char* ret_type, const char* p1_name) { return qadav_format_proc_header(name, ret_type, p1_name); }
+const char* format_proc_header_2(const char* name, const char* ret_type, const char* p1_name, const char* p2_name) { return qadav_format_proc_header_2(name, ret_type, p1_name, p2_name); }
+const char* format_br_cycle(long long cond_reg, long long body_id, long long end_id) { return qadav_format_br_cycle(cond_reg, body_id, end_id); }
+const char* format_br_match(long long cmp_reg, long long arm_id, long long next_id) { return qadav_format_br_match(cmp_reg, arm_id, next_id); }
+const char* format_icmp_eq_i32(long long res_reg, long long val_reg, long long tag) { return qadav_format_icmp_eq_i32(res_reg, val_reg, tag); }
+const char* format_store_imm_i1(const char* name, long long val) { return qadav_format_store_imm_i1(name, val); }
+const char* format_ret_type(const char* typ, long long reg) { return qadav_format_ret_type(typ, reg); }
+const char* format_alloca_reg(long long reg) { return qadav_format_alloca_reg(reg); }
+const char* format_store_reg_to_reg(long long val_reg, long long ptr_reg) { return qadav_format_store_reg_to_reg(val_reg, ptr_reg); }
+const char* format_load_from_reg(long long res_reg, long long ptr_reg) { return qadav_format_load_from_reg(res_reg, ptr_reg); }
+long long is_logic_type(const char* t) { return qadav_is_logic_type(t); }
+long long get_record_field_idx(const char* rec_name, const char* field_name) { return qadav_get_record_field_idx(rec_name, field_name); }
+long long is_record_field_ptr(const char* rec_name, const char* field_name) { return qadav_is_record_field_ptr(rec_name, field_name); }
+long long get_variant_case_tag(const char* var_name, const char* case_name) { return qadav_get_variant_case_tag(var_name, case_name); }
+const char* format_record_alloc(const char* rec_name, long long temp_id) { return qadav_format_record_alloc(rec_name, temp_id); }
+const char* format_record_set_field_ptr(long long rec_reg, long long idx, long long val_reg) { return qadav_format_record_set_field_ptr(rec_reg, idx, val_reg); }
+const char* format_record_set_field_i64(long long rec_reg, long long idx, long long val) { return qadav_format_record_set_field_i64(rec_reg, idx, val); }
+const char* format_record_get_field_ptr(long long res_reg, long long obj_reg, long long idx) { return qadav_format_record_get_field_ptr(res_reg, obj_reg, idx); }
+const char* format_record_get_field_i64(long long res_reg, long long obj_reg, long long idx) { return qadav_format_record_get_field_i64(res_reg, obj_reg, idx); }
+const char* format_variant_create_i64(const char* var_name, const char* case_name, long long val, long long temp_id) { return qadav_format_variant_create_i64(var_name, case_name, val, temp_id); }
+const char* format_variant_get_tag(long long res_reg, long long obj_reg) { return qadav_format_variant_get_tag(res_reg, obj_reg); }
+const char* format_variant_get_field_i64(long long res_reg, long long obj_reg, long long idx) { return qadav_format_variant_get_field_i64(res_reg, obj_reg, idx); }
+
+long long qadav_str_eq(const char* a, const char* b);
+long long str_eq(const char* a, const char* b) { return qadav_str_eq(a, b); }
+long long qadav_is_affirm_ident(const char* name);
+long long is_affirm_ident(const char* name) { return qadav_is_affirm_ident(name); }
+long long qadav_is_deny_ident(const char* name);
+long long is_deny_ident(const char* name) { return qadav_is_deny_ident(name); }
+long long qadav_is_text_returning_proc(const char* name);
+long long is_text_returning_proc(const char* name) { return qadav_is_text_returning_proc(name); }
+long long qadav_is_logic_returning_proc(const char* name);
+long long is_logic_returning_proc(const char* name) { return qadav_is_logic_returning_proc(name); }
 
 void* qadav_alloc(unsigned long long size) {
     return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);
@@ -527,3 +605,24 @@ void _chkstk(void) {}
 
 
 #endif
+
+extern long long qadav_emit_record_init(long long t);
+extern long long qadav_emit_variant_init(long long t);
+extern long long qadav_emit_match_stmt(const char* s, long long t);
+long long emit_record_init(long long t) { return qadav_emit_record_init(t); }
+long long emit_variant_init(long long t) { return qadav_emit_variant_init(t); }
+long long emit_match_stmt(const char* s, long long t) { return qadav_emit_match_stmt(s, t); }
+
+extern long long qadav_emit_proc_header(const char* name, const char* ret_type, const char* p1_name);
+extern long long qadav_emit_proc_header_2(const char* name, const char* ret_type, const char* p1_name, const char* p2_name);
+extern long long qadav_emit_record_get_field(long long res_temp, long long obj_temp, long long idx, long long is_ptr);
+long long emit_proc_header(const char* name, const char* ret_type, const char* p1_name) { return qadav_emit_proc_header(name, ret_type, p1_name); }
+long long emit_proc_header_2(const char* name, const char* ret_type, const char* p1_name, const char* p2_name) { return qadav_emit_proc_header_2(name, ret_type, p1_name, p2_name); }
+long long emit_record_get_field(long long r, long long o, long long i, long long p) { return qadav_emit_record_get_field(r, o, i, p); }
+
+extern long long qadav_emit_call_3(const char* callee, long long res_temp, long long r1, long long r2, long long r3);
+extern long long qadav_emit_call_4(const char* callee, long long res_temp, long long r1, long long r2, long long r3, long long r4);
+extern long long qadav_emit_call_5(const char* callee, long long res_temp, long long r1, long long r2, long long r3, long long r4, long long r5);
+long long emit_call_3(const char* c, long long res, long long r1, long long r2, long long r3) { return qadav_emit_call_3(c, res, r1, r2, r3); }
+long long emit_call_4(const char* c, long long res, long long r1, long long r2, long long r3, long long r4) { return qadav_emit_call_4(c, res, r1, r2, r3, r4); }
+long long emit_call_5(const char* c, long long res, long long r1, long long r2, long long r3, long long r4, long long r5) { return qadav_emit_call_5(c, res, r1, r2, r3, r4, r5); }

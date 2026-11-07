@@ -39,6 +39,10 @@ variant CoreAst ⟦
     | VariantInitExpr(var_name ↦ text ⸴ case_name ↦ text ⸴ payload ↦ CoreAst) ·
     | FieldAccessExpr(obj_name ↦ text ⸴ field_name ↦ text) ·
     | AssignStmt(name ↦ text ⸴ value ↦ CoreAst) ·
+    | MatchStmt(subject ↦ text ⸴ arms ↦ CoreAst) ·
+    | Call3Decl(name ↦ text ⸴ a1 ↦ CoreAst ⸴ a2 ↦ CoreAst ⸴ a3 ↦ CoreAst) ·
+    | Call4Decl(name ↦ text ⸴ a1 ↦ CoreAst ⸴ a2 ↦ CoreAst ⸴ a3 ↦ CoreAst ⸴ a4 ↦ CoreAst) ·
+    | Call5Decl(name ↦ text ⸴ a1 ↦ CoreAst ⸴ a2 ↦ CoreAst ⸴ a3 ↦ CoreAst ⸴ a4 ↦ CoreAst ⸴ a5 ↦ CoreAst) ·
 ⟧
 
 process ast_int_lit⦅int64 v⦆ → CoreAst ⟦
@@ -91,6 +95,11 @@ process ast_when⦅CoreAst cond ⸴ CoreAst then_b ⸴ CoreAst else_b⦆ → Cor
     yield n ·
 ⟧
 
+process ast_match⦅text subject ⸴ CoreAst arms⦆ → CoreAst ⟦
+    CoreAst n ↦ variant_init CoreAst ⦅MatchStmt ↦ subject ⸴ arms⦆ ·
+    yield n ·
+⟧
+
 process ast_when1⦅CoreAst cond ⸴ CoreAst then_b⦆ → CoreAst ⟦
     CoreAst n ↦ variant_init CoreAst ⦅When1Decl ↦ cond ⸴ then_b⦆ ·
     yield n ·
@@ -113,6 +122,21 @@ process ast_call1⦅text name ⸴ CoreAst arg⦆ → CoreAst ⟦
 
 process ast_call2⦅text name ⸴ CoreAst arg1 ⸴ CoreAst arg2⦆ → CoreAst ⟦
     CoreAst n ↦ variant_init CoreAst ⦅Call2Decl ↦ name ⸴ arg1 ⸴ arg2⦆ ·
+    yield n ·
+⟧
+
+process ast_call3⦅text name ⸴ CoreAst a1 ⸴ CoreAst a2 ⸴ CoreAst a3⦆ → CoreAst ⟦
+    CoreAst n ↦ variant_init CoreAst ⦅Call3Decl ↦ name ⸴ a1 ⸴ a2 ⸴ a3⦆ ·
+    yield n ·
+⟧
+
+process ast_call4⦅text name ⸴ CoreAst a1 ⸴ CoreAst a2 ⸴ CoreAst a3 ⸴ CoreAst a4⦆ → CoreAst ⟦
+    CoreAst n ↦ variant_init CoreAst ⦅Call4Decl ↦ name ⸴ a1 ⸴ a2 ⸴ a3 ⸴ a4⦆ ·
+    yield n ·
+⟧
+
+process ast_call5⦅text name ⸴ CoreAst a1 ⸴ CoreAst a2 ⸴ CoreAst a3 ⸴ CoreAst a4 ⸴ CoreAst a5⦆ → CoreAst ⟦
+    CoreAst n ↦ variant_init CoreAst ⦅Call5Decl ↦ name ⸴ a1 ⸴ a2 ⸴ a3 ⸴ a4 ⸴ a5⦆ ·
     yield n ·
 ⟧
 
@@ -213,20 +237,73 @@ process parse_expression⦅int64 idx⦆ → CoreAst ⟦
     when kcode ≡ 2 ∧ token_kind_code⦅idx ⊕ 1⦆ ≡ 22 ⟦
         text cname ↦ token_literal⦅idx⦆ ·
         int64 close_p ↦ idx ⊕ 2 ·
-        cycle token_kind_code⦅close_p⦆ ≠ 23 ⟦
-            close_p ← close_p ⊕ 1 ·
+        int64 p_depth_cp ↦ 1 ·
+        cycle p_depth_cp ≻ 0 ⟦
+            int64 kc_cp ↦ token_kind_code⦅close_p⦆ ·
+            when kc_cp ≡ 22 ⟦
+                p_depth_cp ← p_depth_cp ⊕ 1 ·
+            ⟧ otherwise ⟦
+                when kc_cp ≡ 23 ⟦
+                    p_depth_cp ← p_depth_cp ⊖ 1 ·
+                ⟧
+            ⟧
+            when p_depth_cp ≻ 0 ⟦
+                close_p ← close_p ⊕ 1 ·
+            ⟧
         ⟧
         CoreAst left_call ↦ ast_int_lit⦅0⦆ ·
         when close_p ≡ idx ⊕ 2 ⟦
             left_call ← ast_call0⦅cname⦆ ·
         ⟧ otherwise ⟦
-            when token_kind_code⦅idx ⊕ 3⦆ ≡ 25 ⟦
-                CoreAst a1 ↦ parse_primary⦅idx ⊕ 2⦆ ·
-                CoreAst a2 ↦ parse_primary⦅idx ⊕ 4⦆ ·
-                left_call ← ast_call2⦅cname ⸴ a1 ⸴ a2⦆ ·
-            ⟧ otherwise ⟦
+            int64 n_commas ↦ 0 ·
+            int64 sc ↦ idx ⊕ 2 ·
+            int64 p_depth ↦ 0 ·
+            cycle sc ≺ close_p ⟦
+                int64 kc_sc ↦ token_kind_code⦅sc⦆ ·
+                when kc_sc ≡ 22 ⟦
+                    p_depth ← p_depth ⊕ 1 ·
+                ⟧ otherwise ⟦
+                    when kc_sc ≡ 23 ⟦
+                        p_depth ← p_depth ⊖ 1 ·
+                    ⟧ otherwise ⟦
+                        when kc_sc ≡ 25 ∧ p_depth ≡ 0 ⟦
+                            n_commas ← n_commas ⊕ 1 ·
+                        ⟧
+                    ⟧
+                ⟧
+                sc ← sc ⊕ 1 ·
+            ⟧
+            when n_commas ≡ 0 ⟦
                 CoreAst a_expr ↦ parse_expression⦅idx ⊕ 2⦆ ·
                 left_call ← ast_call1⦅cname ⸴ a_expr⦆ ·
+            ⟧ otherwise ⟦
+                when n_commas ≡ 1 ⟦
+                    CoreAst a1_2 ↦ parse_primary⦅idx ⊕ 2⦆ ·
+                    CoreAst a2_2 ↦ parse_expression⦅idx ⊕ 4⦆ ·
+                    left_call ← ast_call2⦅cname ⸴ a1_2 ⸴ a2_2⦆ ·
+                ⟧ otherwise ⟦
+                    when n_commas ≡ 2 ⟦
+                        CoreAst a1_3 ↦ parse_primary⦅idx ⊕ 2⦆ ·
+                        CoreAst a2_3 ↦ parse_primary⦅idx ⊕ 4⦆ ·
+                        CoreAst a3_3 ↦ parse_expression⦅idx ⊕ 6⦆ ·
+                        left_call ← ast_call3⦅cname ⸴ a1_3 ⸴ a2_3 ⸴ a3_3⦆ ·
+                    ⟧ otherwise ⟦
+                        when n_commas ≡ 3 ⟦
+                            CoreAst a1_4 ↦ parse_primary⦅idx ⊕ 2⦆ ·
+                            CoreAst a2_4 ↦ parse_primary⦅idx ⊕ 4⦆ ·
+                            CoreAst a3_4 ↦ parse_primary⦅idx ⊕ 6⦆ ·
+                            CoreAst a4_4 ↦ parse_expression⦅idx ⊕ 8⦆ ·
+                            left_call ← ast_call4⦅cname ⸴ a1_4 ⸴ a2_4 ⸴ a3_4 ⸴ a4_4⦆ ·
+                        ⟧ otherwise ⟦
+                            CoreAst a1_5 ↦ parse_primary⦅idx ⊕ 2⦆ ·
+                            CoreAst a2_5 ↦ parse_primary⦅idx ⊕ 4⦆ ·
+                            CoreAst a3_5 ↦ parse_primary⦅idx ⊕ 6⦆ ·
+                            CoreAst a4_5 ↦ parse_primary⦅idx ⊕ 8⦆ ·
+                            CoreAst a5_5 ↦ parse_expression⦅idx ⊕ 10⦆ ·
+                            left_call ← ast_call5⦅cname ⸴ a1_5 ⸴ a2_5 ⸴ a3_5 ⸴ a4_5 ⸴ a5_5⦆ ·
+                        ⟧
+                    ⟧
+                ⟧
             ⟧
         ⟧
         int64 next_tok ↦ close_p ⊕ 1 ·
@@ -239,12 +316,56 @@ process parse_expression⦅int64 idx⦆ → CoreAst ⟦
         yield left_call ·
     ⟧
 
+    when kcode ≡ 36 ⟦
+        text rname ↦ token_literal⦅idx ⊕ 1⦆ ·
+        yield ast_record_init⦅rname ⸴ 4⦆ ·
+    ⟧
+    when kcode ≡ 37 ⟦
+        text vname ↦ token_literal⦅idx ⊕ 1⦆ ·
+        yield ast_variant_init⦅vname ⸴ "Valid" ⸴ ast_int_lit⦅8⦆⦆ ·
+    ⟧
+    when kcode ≡ 2 ∧ token_kind_code⦅idx ⊕ 1⦆ ≡ 30 ⟦
+        text oname ↦ token_literal⦅idx⦆ ·
+        text fname ↦ token_literal⦅idx ⊕ 2⦆ ·
+        yield ast_field_access⦅oname ⸴ fname⦆ ·
+    ⟧
     CoreAst left ↦ parse_primary⦅idx⦆ ·
     int64 op_code ↦ token_kind_code⦅idx ⊕ 1⦆ ·
     when op_code ≡ 13 ∨ op_code ≡ 14 ∨ op_code ≡ 15 ∨ op_code ≡ 16 ∨ op_code ≡ 17 ∨ op_code ≡ 18 ∨ op_code ≡ 19 ⟦
         text op ↦ token_literal⦅idx ⊕ 1⦆ ·
         CoreAst right ↦ parse_primary⦅idx ⊕ 2⦆ ·
-        yield parse_binary_op⦅op ⸴ left ⸴ right⦆ ·
+        left ← parse_binary_op⦅op ⸴ left ⸴ right⦆ ·
+        int64 cur_pos ↦ idx ⊕ 3 ·
+        int64 is_log ↦ token_kind_code⦅cur_pos⦆ ·
+        cycle is_log ≡ 38 ∨ is_log ≡ 39 ⟦
+            text lop ↦ token_literal⦅cur_pos⦆ ·
+            int64 is_call_r ↦ 0 ·
+            when token_kind_code⦅cur_pos ⊕ 2⦆ ≡ 22 ⟦
+                is_call_r ← 1 ·
+            ⟧
+            when is_call_r ≡ 1 ⟦
+                text cname_c ↦ token_literal⦅cur_pos ⊕ 1⦆ ·
+                int64 close_p_c ↦ cur_pos ⊕ 2 ·
+                cycle token_kind_code⦅close_p_c⦆ ≠ 23 ⟦
+                    close_p_c ← close_p_c ⊕ 1 ·
+                ⟧
+                CoreAst arg_c ↦ parse_expression⦅cur_pos ⊕ 3⦆ ·
+                CoreAst r_left_c ↦ ast_call1⦅cname_c ⸴ arg_c⦆ ·
+                text r_op_c ↦ token_literal⦅close_p_c ⊕ 1⦆ ·
+                CoreAst r_right_c ↦ parse_primary⦅close_p_c ⊕ 2⦆ ·
+                CoreAst r_cmp_c ↦ parse_binary_op⦅r_op_c ⸴ r_left_c ⸴ r_right_c⦆ ·
+                left ← parse_binary_op⦅lop ⸴ left ⸴ r_cmp_c⦆ ·
+                cur_pos ← close_p_c ⊕ 3 ·
+            ⟧ otherwise ⟦
+                CoreAst r_left_p ↦ parse_primary⦅cur_pos ⊕ 1⦆ ·
+                text r_op_p ↦ token_literal⦅cur_pos ⊕ 2⦆ ·
+                CoreAst r_right_p ↦ parse_primary⦅cur_pos ⊕ 3⦆ ·
+                CoreAst r_cmp_p ↦ parse_binary_op⦅r_op_p ⸴ r_left_p ⸴ r_right_p⦆ ·
+                left ← parse_binary_op⦅lop ⸴ left ⸴ r_cmp_p⦆ ·
+                cur_pos ← cur_pos ⊕ 4 ·
+            ⟧
+            is_log ← token_kind_code⦅cur_pos⦆ ·
+        ⟧
     ⟧
     yield left ·
 ⟧
@@ -274,14 +395,30 @@ process find_stmt_end⦅int64 start_idx ⸴ int64 max_idx⦆ → int64 ⟦
     int64 cur ↦ start_idx ·
     when kcode ≡ 6 ⟦
         cur ← cur ⊕ 1 ·
-        cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 21 ⟦
+        cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 20 ⟦
             cur ← cur ⊕ 1 ·
+        ⟧
+        cur ← cur ⊕ 1 ·
+        int64 depth_w ↦ 1 ·
+        cycle cur ≺ max_idx ∧ depth_w ≻ 0 ⟦
+            int64 kc_w ↦ token_kind_code⦅cur⦆ ·
+            when kc_w ≡ 20 ⟦ depth_w ← depth_w ⊕ 1 · ⟧
+            when kc_w ≡ 21 ⟦ depth_w ← depth_w ⊖ 1 · ⟧
+            when depth_w ≻ 0 ⟦ cur ← cur ⊕ 1 · ⟧
         ⟧
         cur ← cur ⊕ 1 ·
         when cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≡ 7 ⟦
             cur ← cur ⊕ 1 ·
-            cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 21 ⟦
+            cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 20 ⟦
                 cur ← cur ⊕ 1 ·
+            ⟧
+            cur ← cur ⊕ 1 ·
+            int64 depth_e ↦ 1 ·
+            cycle cur ≺ max_idx ∧ depth_e ≻ 0 ⟦
+                int64 kc_e ↦ token_kind_code⦅cur⦆ ·
+                when kc_e ≡ 20 ⟦ depth_e ← depth_e ⊕ 1 · ⟧
+                when kc_e ≡ 21 ⟦ depth_e ← depth_e ⊖ 1 · ⟧
+                when depth_e ≻ 0 ⟦ cur ← cur ⊕ 1 · ⟧
             ⟧
             cur ← cur ⊕ 1 ·
         ⟧
@@ -289,16 +426,41 @@ process find_stmt_end⦅int64 start_idx ⸴ int64 max_idx⦆ → int64 ⟦
     ⟧
     when kcode ≡ 10 ⟦
         cur ← cur ⊕ 1 ·
+        cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 20 ⟦
+            cur ← cur ⊕ 1 ·
+        ⟧
+        cur ← cur ⊕ 1 ·
+        int64 depth_c ↦ 1 ·
+        cycle cur ≺ max_idx ∧ depth_c ≻ 0 ⟦
+            int64 kc_c ↦ token_kind_code⦅cur⦆ ·
+            when kc_c ≡ 20 ⟦ depth_c ← depth_c ⊕ 1 · ⟧
+            when kc_c ≡ 21 ⟦ depth_c ← depth_c ⊖ 1 · ⟧
+            when depth_c ≻ 0 ⟦ cur ← cur ⊕ 1 · ⟧
+        ⟧
+        cur ← cur ⊕ 1 ·
+        yield cur ·
+    ⟧
+    when kcode ≡ 33 ⟦
+        cur ← cur ⊕ 1 ·
         cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 21 ⟦
             cur ← cur ⊕ 1 ·
         ⟧
         cur ← cur ⊕ 1 ·
         yield cur ·
     ⟧
-    cycle cur ≺ max_idx ∧ token_kind_code⦅cur⦆ ≠ 24 ⟦
-        cur ← cur ⊕ 1 ·
-    ⟧
-    when cur ≺ max_idx ⟦
+    int64 depth ↦ 0 ·
+    cycle cur ≺ max_idx ⟦
+        int64 c_code ↦ token_kind_code⦅cur⦆ ·
+        when c_code ≡ 20 ⟦
+            depth ← depth ⊕ 1 ·
+        ⟧
+        when c_code ≡ 21 ⟦
+            depth ← depth ⊖ 1 ·
+        ⟧
+        when c_code ≡ 24 ∧ depth ≡ 0 ⟦
+            cur ← cur ⊕ 1 ·
+            yield cur ·
+        ⟧
         cur ← cur ⊕ 1 ·
     ⟧
     yield cur ·
@@ -309,29 +471,47 @@ process parse_statement⦅int64 cur_idx⦆ → CoreAst ⟦
 
     // WHEN
     when kcode ≡ 6 ⟦
-        CoreAst left ↦ parse_primary⦅cur_idx ⊕ 1⦆ ·
-        text op ↦ token_literal⦅cur_idx ⊕ 2⦆ ·
-        CoreAst right ↦ parse_primary⦅cur_idx ⊕ 3⦆ ·
-        CoreAst cond ↦ parse_binary_op⦅op ⸴ left ⸴ right⦆ ·
-
-        int64 then_start ↦ cur_idx ⊕ 5 ·
-        CoreAst then_b ↦ parse_statement⦅then_start⦆ ·
-
-        int64 cur ↦ then_start ·
-        cycle token_kind_code⦅cur⦆ ≠ 21 ⟦
-            cur ← cur ⊕ 1 ·
+        CoreAst cond ↦ parse_expression⦅cur_idx ⊕ 1⦆ ·
+        int64 scan_w ↦ cur_idx ⊕ 1 ·
+        cycle token_kind_code⦅scan_w⦆ ≠ 20 ⟦
+            scan_w ← scan_w ⊕ 1 ·
         ⟧
+        int64 then_start ↦ scan_w ⊕ 1 ·
+        int64 cur ↦ then_start ·
+        int64 depth ↦ 1 ·
+        cycle depth ≻ 0 ⟦
+            int64 kc ↦ token_kind_code⦅cur⦆ ·
+            when kc ≡ 20 ⟦ depth ← depth ⊕ 1 · ⟧
+            when kc ≡ 21 ⟦ depth ← depth ⊖ 1 · ⟧
+            when depth ≻ 0 ⟦ cur ← cur ⊕ 1 · ⟧
+        ⟧
+        int64 then_end ↦ cur ·
+        CoreAst then_b ↦ parse_statement_list⦅then_start ⸴ then_end⦆ ·
+
         int64 after_then ↦ cur ⊕ 1 ·
         when token_kind_code⦅after_then⦆ ≡ 7 ⟦
-            int64 else_start ↦ after_then ⊕ 2 ·
-            CoreAst else_b ↦ parse_statement⦅else_start⦆ ·
+            int64 else_scan ↦ after_then ⊕ 1 ·
+            cycle token_kind_code⦅else_scan⦆ ≠ 20 ⟦
+                else_scan ← else_scan ⊕ 1 ·
+            ⟧
+            int64 else_start ↦ else_scan ⊕ 1 ·
+            int64 cur_e ↦ else_start ·
+            int64 depth_e ↦ 1 ·
+            cycle depth_e ≻ 0 ⟦
+                int64 kc_e ↦ token_kind_code⦅cur_e⦆ ·
+                when kc_e ≡ 20 ⟦ depth_e ← depth_e ⊕ 1 · ⟧
+                when kc_e ≡ 21 ⟦ depth_e ← depth_e ⊖ 1 · ⟧
+                when depth_e ≻ 0 ⟦ cur_e ← cur_e ⊕ 1 · ⟧
+            ⟧
+            int64 else_end ↦ cur_e ·
+            CoreAst else_b ↦ parse_statement_list⦅else_start ⸴ else_end⦆ ·
             yield ast_when⦅cond ⸴ then_b ⸴ else_b⦆ ·
         ⟧
         yield ast_when1⦅cond ⸴ then_b⦆ ·
     ⟧
 
     // BIND: type name ↦ val ·
-    when kcode ≡ 26 ⟦
+    when kcode ≡ 26 ∨ token_kind_code⦅cur_idx ⊕ 2⦆ ≡ 11 ⟦
         text typ ↦ token_literal⦅cur_idx⦆ ·
         int64 is_tens ↦ is_tensor_type⦅typ⦆ ·
         when is_tens ≡ 1 ⟦
@@ -375,15 +555,30 @@ process parse_statement⦅int64 cur_idx⦆ → CoreAst ⟦
         yield ast_yield⦅yval⦆ ·
     ⟧
 
+    // MATCH: match subject ⟦ arms ⟧
+    when kcode ≡ 33 ⟦
+        text msubj ↦ token_literal⦅cur_idx ⊕ 1⦆ ·
+        yield ast_match⦅msubj ⸴ ast_int_lit⦅0⦆⦆ ·
+    ⟧
+
     // CYCLE: cycle cond ⟦ body ⟧
     when kcode ≡ 10 ⟦
         CoreAst ccond ↦ parse_expression⦅cur_idx ⊕ 1⦆ ·
-        int64 cbody_start ↦ cur_idx ⊕ 5 ·
-        int64 cur_c ↦ cbody_start ·
-        cycle token_kind_code⦅cur_c⦆ ≠ 21 ⟦
-            cur_c ← cur_c ⊕ 1 ·
+        int64 scan_c ↦ cur_idx ⊕ 1 ·
+        cycle token_kind_code⦅scan_c⦆ ≠ 20 ⟦
+            scan_c ← scan_c ⊕ 1 ·
         ⟧
-        CoreAst cbody ↦ parse_statement_list⦅cbody_start ⸴ cur_c⦆ ·
+        int64 cbody_start ↦ scan_c ⊕ 1 ·
+        int64 cur_c ↦ cbody_start ·
+        int64 depth_c ↦ 1 ·
+        cycle depth_c ≻ 0 ⟦
+            int64 kc_c ↦ token_kind_code⦅cur_c⦆ ·
+            when kc_c ≡ 20 ⟦ depth_c ← depth_c ⊕ 1 · ⟧
+            when kc_c ≡ 21 ⟦ depth_c ← depth_c ⊖ 1 · ⟧
+            when depth_c ≻ 0 ⟦ cur_c ← cur_c ⊕ 1 · ⟧
+        ⟧
+        int64 cbody_end ↦ cur_c ·
+        CoreAst cbody ↦ parse_statement_list⦅cbody_start ⸴ cbody_end⦆ ·
         yield ast_cycle⦅ccond ⸴ cbody⦆ ·
     ⟧
 
@@ -502,7 +697,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
                 emit "declare i32 @qadav_pcc_verify()" ·
                 emit "declare i32 @qadav_pcc_corrupt(i32)" ·
-                emit "" ·
+                emit_dynamic_io_decls⦅⦆ ·
                 reset_label_counter⦅⦆ ·
                 int64 scount ↦ str_table_count⦅⦆ ·
                 int64 si ↦ 0 ·
@@ -541,25 +736,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                     emit "  store i8* %b.in, i8** %b.ptr" ·
                 ⟧ otherwise ⟦
                     set_proc_is_dot⦅0⦆ ·
-                    int64 is_ret_txt ↦ is_text_type⦅ret_type⦆ ·
-                    when is_ret_txt ≡ 1 ⟦
-                        register_var_type⦅param_name ⸴ "text"⦆ ·
-                        text fdef_txt ↦ format_func_def_text_param⦅name ⸴ param_name⦆ ·
-                        emit fdef_txt ·
-                        emit "entry:" ·
-                        text p_txt_alloca ↦ format_param_alloca_text⦅param_name⦆ ·
-                        emit p_txt_alloca ·
-                        text p_txt_store ↦ format_param_store_text⦅param_name⦆ ·
-                        emit p_txt_store ·
-                    ⟧ otherwise ⟦
-                        text fdef ↦ format_func_def_with_param⦅name ⸴ param_name⦆ ·
-                        emit fdef ·
-                        emit "entry:" ·
-                        text p_alloca ↦ format_param_alloca⦅param_name⦆ ·
-                        emit p_alloca ·
-                        text p_store ↦ format_param_store⦅param_name⦆ ·
-                        emit p_store ·
-                    ⟧
+                    emit_proc_header⦅name ⸴ ret_type ⸴ param_name⦆ ·
                 ⟧
             ⟧
             int64 t_proc ↦ walk_core_ast⦅body ⸴ temp_counter⦆ ·
@@ -572,7 +749,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 emit "declare i32 @qadav_pcc_attest(i8*, i8*, i8*)" ·
                 emit "declare i32 @qadav_pcc_verify()" ·
                 emit "declare i32 @qadav_pcc_corrupt(i32)" ·
-                emit "" ·
+                emit_dynamic_io_decls⦅⦆ ·
                 reset_label_counter⦅⦆ ·
                 int64 scount2 ↦ str_table_count⦅⦆ ·
                 int64 si2 ↦ 0 ·
@@ -606,17 +783,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 emit "  store i8* %b.in, i8** %b.ptr" ·
             ⟧ otherwise ⟦
                 set_proc_is_dot⦅0⦆ ·
-                text fdef_2 ↦ format_func_def_2params⦅name ⸴ p1 ⸴ p2⦆ ·
-                emit fdef_2 ·
-                emit "entry:" ·
-                text p1_alloca ↦ format_param_alloca⦅p1⦆ ·
-                emit p1_alloca ·
-                text p1_store ↦ format_param_store⦅p1⦆ ·
-                emit p1_store ·
-                text p2_alloca ↦ format_param_alloca⦅p2⦆ ·
-                emit p2_alloca ·
-                text p2_store ↦ format_param_store⦅p2⦆ ·
-                emit p2_store ·
+                emit_proc_header_2⦅name ⸴ ret_type ⸴ p1 ⸴ p2⦆ ·
             ⟧
             int64 t_proc2 ↦ walk_core_ast⦅body ⸴ temp_counter⦆ ·
             emit "}" ·
@@ -630,36 +797,45 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             register_var_type⦅name ⸴ val_type⦆ ·
             int64 t_val_bind ↦ walk_core_ast⦅value ⸴ temp_counter⦆ ·
             int64 last_t_bind ↦ get_last_temp⦅⦆ ·
-            int64 is_t_type ↦ is_tensor_type⦅val_type⦆ ·
-            when is_t_type ≡ 1 ⟦
-                text a_line ↦ format_alloca_type⦅name ⸴ "i8*"⦆ ·
-                emit a_line ·
-                text s_line ↦ format_store_reg_type⦅name ⸴ "i8*" ⸴ last_t_bind⦆ ·
-                emit s_line ·
+            int64 is_l_type ↦ is_logic_type⦅val_type⦆ ·
+            when is_l_type ≡ 1 ⟦
+                text a_l_line ↦ format_alloca_type⦅name ⸴ "i1"⦆ ·
+                emit a_l_line ·
+                int64 imm_b ↦ last_int_value⦅⦆ ·
+                text s_l_line ↦ format_store_imm_i1⦅name ⸴ imm_b⦆ ·
+                emit s_l_line ·
             ⟧ otherwise ⟦
-                int64 is_f_type ↦ is_float_type⦅val_type⦆ ·
-                when is_f_type ≡ 1 ⟦
-                    text a_f_line ↦ format_alloca_type⦅name ⸴ "double"⦆ ·
-                    emit a_f_line ·
-                    text s_f_line ↦ format_store_reg_type⦅name ⸴ "double" ⸴ last_t_bind⦆ ·
-                    emit s_f_line ·
+                int64 is_t_type ↦ is_tensor_type⦅val_type⦆ ·
+                when is_t_type ≡ 1 ⟦
+                    text a_line ↦ format_alloca_type⦅name ⸴ "i8*"⦆ ·
+                    emit a_line ·
+                    text s_line ↦ format_store_reg_type⦅name ⸴ "i8*" ⸴ last_t_bind⦆ ·
+                    emit s_line ·
                 ⟧ otherwise ⟦
-                    int64 is_txt_type ↦ is_text_type⦅val_type⦆ ·
-                    when is_txt_type ≡ 1 ⟦
-                        text a_txt_line ↦ format_alloca_type⦅name ⸴ "i8*"⦆ ·
-                        emit a_txt_line ·
-                        text s_txt_line ↦ format_store_reg_type⦅name ⸴ "i8*" ⸴ last_t_bind⦆ ·
-                        emit s_txt_line ·
+                    int64 is_f_type ↦ is_float_type⦅val_type⦆ ·
+                    when is_f_type ≡ 1 ⟦
+                        text a_f_line ↦ format_alloca_type⦅name ⸴ "double"⦆ ·
+                        emit a_f_line ·
+                        text s_f_line ↦ format_store_reg_type⦅name ⸴ "double" ⸴ last_t_bind⦆ ·
+                        emit s_f_line ·
                     ⟧ otherwise ⟦
-                        text alloc_line_bind ↦ format_alloca⦅name⦆ ·
-                        emit alloc_line_bind ·
-                        when last_t_bind ≺ 0 ⟦
-                            int64 v_bind ↦ last_int_value⦅⦆ ·
-                            text store_line_bind ↦ format_store⦅name ⸴ v_bind⦆ ·
-                            emit store_line_bind ·
+                        int64 is_txt_type ↦ is_text_type⦅val_type⦆ ·
+                        when is_txt_type ≡ 1 ⟦
+                            text a_txt_line ↦ format_alloca_type⦅name ⸴ "i8*"⦆ ·
+                            emit a_txt_line ·
+                            text s_txt_line ↦ format_store_reg_type⦅name ⸴ "i8*" ⸴ last_t_bind⦆ ·
+                            emit s_txt_line ·
                         ⟧ otherwise ⟦
-                            text store_reg_bind ↦ format_store_reg⦅name ⸴ last_t_bind⦆ ·
-                            emit store_reg_bind ·
+                            text alloc_line_bind ↦ format_alloca⦅name⦆ ·
+                            emit alloc_line_bind ·
+                            when last_t_bind ≺ 0 ⟦
+                                int64 v_bind ↦ last_int_value⦅⦆ ·
+                                text store_line_bind ↦ format_store⦅name ⸴ v_bind⦆ ·
+                                emit store_line_bind ·
+                            ⟧ otherwise ⟦
+                                text store_reg_bind ↦ format_store_reg⦅name ⸴ last_t_bind⦆ ·
+                                emit store_reg_bind ·
+                            ⟧
                         ⟧
                     ⟧
                 ⟧
@@ -669,7 +845,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             int64 t_inner_emit ↦ walk_core_ast⦅inner ⸴ temp_counter⦆ ·
             int64 ekind_emit ↦ get_last_emit_kind⦅⦆ ·
             int64 last_t_emit ↦ get_last_temp⦅⦆ ·
-            when ekind_emit ≡ 0 ⟦
+            when ekind_emit ≡ 0 ∨ ekind_emit ≡ 2 ⟦
                 text scall_txt_emit ↦ str_table_emit⦅last_t_emit⦆ ·
                 emit scall_txt_emit ·
             ⟧ otherwise ⟦
@@ -702,26 +878,50 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             set_last_emit_kind⦅3⦆ ·
             yield temp_counter ·
         | IdentDecl(name) ⟹
-            int64 vtype ↦ get_var_type_code⦅name⦆ ·
-            when vtype ≡ 1 ⟦
-                text l_ptr ↦ format_load_type⦅name ⸴ "i8*" ⸴ temp_counter⦆ ·
-                emit l_ptr ·
-                set_last_temp⦅temp_counter⦆ ·
-                set_last_emit_kind⦅2⦆ ·
-                yield temp_counter ⊕ 1 ·
+            int64 is_aff ↦ is_affirm_ident⦅name⦆ ·
+            when is_aff ≡ 1 ⟦
+                set_last_int_value⦅1⦆ ·
+                set_last_temp⦅0 ⊖ 1⦆ ·
+                set_last_emit_kind⦅4⦆ ·
+                yield temp_counter ·
             ⟧ otherwise ⟦
-                when vtype ≡ 2 ⟦
-                    text l_dbl ↦ format_load_type⦅name ⸴ "double" ⸴ temp_counter⦆ ·
-                    emit l_dbl ·
-                    set_last_temp⦅temp_counter⦆ ·
-                    set_last_emit_kind⦅3⦆ ·
-                    yield temp_counter ⊕ 1 ·
+                int64 is_den ↦ is_deny_ident⦅name⦆ ·
+                when is_den ≡ 1 ⟦
+                    set_last_int_value⦅0⦆ ·
+                    set_last_temp⦅0 ⊖ 1⦆ ·
+                    set_last_emit_kind⦅4⦆ ·
+                    yield temp_counter ·
                 ⟧ otherwise ⟦
-                    text load_line_i ↦ format_load⦅name ⸴ temp_counter⦆ ·
-                    emit load_line_i ·
-                    set_last_temp⦅temp_counter⦆ ·
-                    set_last_emit_kind⦅1⦆ ·
-                    yield temp_counter ⊕ 1 ·
+                    int64 vtype ↦ get_var_type_code⦅name⦆ ·
+                    when vtype ≡ 3 ⟦
+                        text l_i1 ↦ format_load_type⦅name ⸴ "i1" ⸴ temp_counter⦆ ·
+                        emit l_i1 ·
+                        set_last_temp⦅temp_counter⦆ ·
+                        set_last_emit_kind⦅4⦆ ·
+                        yield temp_counter ⊕ 1 ·
+                    ⟧ otherwise ⟦
+                        when vtype ≡ 1 ⟦
+                            text l_ptr ↦ format_load_type⦅name ⸴ "i8*" ⸴ temp_counter⦆ ·
+                            emit l_ptr ·
+                            set_last_temp⦅temp_counter⦆ ·
+                            set_last_emit_kind⦅2⦆ ·
+                            yield temp_counter ⊕ 1 ·
+                        ⟧ otherwise ⟦
+                            when vtype ≡ 2 ⟦
+                                text l_dbl ↦ format_load_type⦅name ⸴ "double" ⸴ temp_counter⦆ ·
+                                emit l_dbl ·
+                                set_last_temp⦅temp_counter⦆ ·
+                                set_last_emit_kind⦅3⦆ ·
+                                yield temp_counter ⊕ 1 ·
+                            ⟧ otherwise ⟦
+                                text load_line_i ↦ format_load⦅name ⸴ temp_counter⦆ ·
+                                emit load_line_i ·
+                                set_last_temp⦅temp_counter⦆ ·
+                                set_last_emit_kind⦅1⦆ ·
+                                yield temp_counter ⊕ 1 ·
+                            ⟧
+                        ⟧
+                    ⟧
                 ⟧
             ⟧
         | BinaryOpDecl(op ⸴ left ⸴ right) ⟹
@@ -780,14 +980,20 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                     yield t_yield_y ·
                 ⟧ otherwise ⟦
                     int64 ekind_yd ↦ get_last_emit_kind⦅⦆ ·
-                    when ekind_yd ≡ 2 ⟦
-                        text sret_txt ↦ format_ret_text⦅last_t_y⦆ ·
-                        emit sret_txt ·
+                    when ekind_yd ≡ 4 ⟦
+                        text sret_logic ↦ format_ret_type⦅"i1" ⸴ last_t_y⦆ ·
+                        emit sret_logic ·
                         yield t_yield_y ·
                     ⟧ otherwise ⟦
-                        text sret64_y ↦ format_ret_i64⦅last_t_y⦆ ·
-                        emit sret64_y ·
-                        yield t_yield_y ·
+                        when ekind_yd ≡ 0 ∨ ekind_yd ≡ 2 ⟦
+                            text sret_txt ↦ format_ret_text⦅last_t_y⦆ ·
+                            emit sret_txt ·
+                            yield t_yield_y ·
+                        ⟧ otherwise ⟦
+                            text sret64_y ↦ format_ret_i64⦅last_t_y⦆ ·
+                            emit sret64_y ·
+                            yield t_yield_y ·
+                        ⟧
                     ⟧
                 ⟧
             ⟧
@@ -834,7 +1040,25 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             emit lbl_merge_w1 ·
             yield t_then_w1 ·
         | CycleDecl(cond ⸴ body) ⟹
-            yield temp_counter ·
+            int64 cond_id ↦ next_label_id⦅⦆ ·
+            int64 body_id ↦ next_label_id⦅⦆ ·
+            int64 end_id ↦ next_label_id⦅⦆ ·
+            text br_c ↦ format_br_label⦅"cycle_cond" ⸴ cond_id⦆ ·
+            emit br_c ·
+            text lbl_c ↦ format_label⦅"cycle_cond" ⸴ cond_id⦆ ·
+            emit lbl_c ·
+            int64 t_cond ↦ walk_core_ast⦅cond ⸴ temp_counter⦆ ·
+            int64 cond_reg ↦ get_last_temp⦅⦆ ·
+            text br_body ↦ format_br_cycle⦅cond_reg ⸴ body_id ⸴ end_id⦆ ·
+            emit br_body ·
+            text lbl_b ↦ format_label⦅"cycle_body" ⸴ body_id⦆ ·
+            emit lbl_b ·
+            int64 t_body ↦ walk_core_ast⦅body ⸴ t_cond⦆ ·
+            text br_loop ↦ format_br_label⦅"cycle_cond" ⸴ cond_id⦆ ·
+            emit br_loop ·
+            text lbl_e ↦ format_label⦅"cycle_end" ⸴ end_id⦆ ·
+            emit lbl_e ·
+            yield t_body ·
         | CallDecl(name ⸴ args) ⟹
             yield temp_counter ·
         | Call0Decl(name) ⟹
@@ -850,7 +1074,17 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             text call_line_c1 ↦ format_call_i64⦅name ⸴ res_temp_c1 ⸴ reg_arg_c1⦆ ·
             emit call_line_c1 ·
             set_last_temp⦅res_temp_c1⦆ ·
-            set_last_emit_kind⦅1⦆ ·
+            int64 is_txt_ret ↦ is_text_returning_proc⦅name⦆ ·
+            when is_txt_ret ≡ 1 ⟦
+                set_last_emit_kind⦅0⦆ ·
+            ⟧ otherwise ⟦
+                int64 is_log_ret ↦ is_logic_returning_proc⦅name⦆ ·
+                when is_log_ret ≡ 1 ⟦
+                    set_last_emit_kind⦅4⦆ ·
+                ⟧ otherwise ⟦
+                    set_last_emit_kind⦅1⦆ ·
+                ⟧
+            ⟧
             yield res_temp_c1 ⊕ 1 ·
         | Call2Decl(name ⸴ arg1 ⸴ arg2) ⟹
             int64 t_a1 ↦ walk_core_ast⦅arg1 ⸴ temp_counter⦆ ·
@@ -866,7 +1100,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 set_last_emit_kind⦅3⦆ ·
                 yield res_temp_c2 ⊕ 1 ·
             ⟧ otherwise ⟦
-                when reg_a2 ≺ 0 ⟦
+                when reg_a2 ≺ 0 ∧ reg_a1 ≽ 0 ⟦
                     int64 imm_val ↦ last_int_value⦅⦆ ·
                     text c2_imm ↦ format_call_i64_imm⦅name ⸴ res_temp_c2 ⸴ reg_a1 ⸴ imm_val⦆ ·
                     emit c2_imm ·
@@ -875,7 +1109,12 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                     emit c2_2args ·
                 ⟧
                 set_last_temp⦅res_temp_c2⦆ ·
-                set_last_emit_kind⦅1⦆ ·
+                int64 is_txt_ret2 ↦ is_text_returning_proc⦅name⦆ ·
+                when is_txt_ret2 ≡ 1 ⟦
+                    set_last_emit_kind⦅0⦆ ·
+                ⟧ otherwise ⟦
+                    set_last_emit_kind⦅1⦆ ·
+                ⟧
                 yield res_temp_c2 ⊕ 1 ·
             ⟧
         | TensorDecl(idx ⸴ elem_count) ⟹
@@ -909,16 +1148,32 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             int64 t_val ↦ walk_core_ast⦅val ⸴ temp_counter⦆ ·
             int64 val_reg ↦ get_last_temp⦅⦆ ·
             int64 vtype_as ↦ get_var_type_code⦅name⦆ ·
-            when vtype_as ≡ 1 ⟦
-                text sline_ptr ↦ format_store_reg_type⦅name ⸴ "i8*" ⸴ val_reg⦆ ·
-                emit sline_ptr ·
-            ⟧ otherwise ⟦
-                when vtype_as ≡ 2 ⟦
-                    text sline_dbl ↦ format_store_reg_type⦅name ⸴ "double" ⸴ val_reg⦆ ·
-                    emit sline_dbl ·
+            when val_reg ≺ 0 ⟦
+                int64 imm_as ↦ last_int_value⦅⦆ ·
+                when vtype_as ≡ 3 ⟦
+                    text sline_imm_i1 ↦ format_store_imm_i1⦅name ⸴ imm_as⦆ ·
+                    emit sline_imm_i1 ·
                 ⟧ otherwise ⟦
-                    text sline ↦ format_store_reg⦅name ⸴ val_reg⦆ ·
-                    emit sline ·
+                    text sline_imm ↦ format_store⦅name ⸴ imm_as⦆ ·
+                    emit sline_imm ·
+                ⟧
+            ⟧ otherwise ⟦
+                when vtype_as ≡ 1 ⟦
+                    text sline_ptr ↦ format_store_reg_type⦅name ⸴ "i8*" ⸴ val_reg⦆ ·
+                    emit sline_ptr ·
+                ⟧ otherwise ⟦
+                    when vtype_as ≡ 2 ⟦
+                        text sline_dbl ↦ format_store_reg_type⦅name ⸴ "double" ⸴ val_reg⦆ ·
+                        emit sline_dbl ·
+                    ⟧ otherwise ⟦
+                        when vtype_as ≡ 3 ⟦
+                            text sline_i1 ↦ format_store_reg_type⦅name ⸴ "i1" ⸴ val_reg⦆ ·
+                            emit sline_i1 ·
+                        ⟧ otherwise ⟦
+                            text sline ↦ format_store_reg⦅name ⸴ val_reg⦆ ·
+                            emit sline ·
+                        ⟧
+                    ⟧
                 ⟧
             ⟧
             yield t_val ·
@@ -926,19 +1181,70 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             yield temp_counter ·
         | VariantDeclStmt(name ⸴ count) ⟹
             yield temp_counter ·
+        | MatchStmt(subject ⸴ arms) ⟹
+            int64 next_t_m ↦ emit_match_stmt⦅subject ⸴ temp_counter⦆ ·
+            yield next_t_m ·
         | ProcedureDecl(name ⸴ p ⸴ ret ⸴ body) ⟹
-            yield temp_counter ·
+            emit_proc_header⦅name ⸴ ret ⸴ p⦆ ·
+            int64 t_proc_d ↦ walk_core_ast⦅body ⸴ temp_counter⦆ ·
+            emit "}" ·
+            emit "" ·
+            yield t_proc_d ·
         | Procedure2Decl(name ⸴ p1 ⸴ p2 ⸴ ret ⸴ body) ⟹
-            yield temp_counter ·
+            emit_proc_header_2⦅name ⸴ ret ⸴ p1 ⸴ p2⦆ ·
+            int64 t_proc2_d ↦ walk_core_ast⦅body ⸴ temp_counter⦆ ·
+            emit "}" ·
+            emit "" ·
+            yield t_proc2_d ·
         | RecordInitExpr(type_name ⸴ field_count) ⟹
-            yield temp_counter ·
+            int64 next_t_rec ↦ emit_record_init⦅temp_counter⦆ ·
+            yield next_t_rec ·
         | VariantInitExpr(var_name ⸴ case_name ⸴ payload) ⟹
-            yield temp_counter ·
+            int64 next_t_var ↦ emit_variant_init⦅temp_counter⦆ ·
+            yield next_t_var ·
         | FieldAccessExpr(obj_name ⸴ field_name) ⟹
-            yield temp_counter ·
+            text load_line ↦ format_load_type⦅obj_name ⸴ "i8*" ⸴ temp_counter⦆ ·
+            emit load_line ·
+            int64 f_idx ↦ get_record_field_idx⦅obj_name ⸴ field_name⦆ ·
+            int64 is_ptr ↦ is_record_field_ptr⦅obj_name ⸴ field_name⦆ ·
+            int64 next_t_fa ↦ emit_record_get_field⦅temp_counter ⊕ 1 ⸴ temp_counter ⸴ f_idx ⸴ is_ptr⦆ ·
+            yield next_t_fa ·
         | ExprStmt(inner) ⟹
             int64 t_es ↦ walk_core_ast⦅inner ⸴ temp_counter⦆ ·
             yield t_es ·
+        | Call3Decl(name ⸴ a1 ⸴ a2 ⸴ a3) ⟹
+            int64 t_c3_1 ↦ walk_core_ast⦅a1 ⸴ temp_counter⦆ ·
+            int64 reg_c3_1 ↦ get_last_temp⦅⦆ ·
+            int64 t_c3_2 ↦ walk_core_ast⦅a2 ⸴ t_c3_1⦆ ·
+            int64 reg_c3_2 ↦ get_last_temp⦅⦆ ·
+            int64 t_c3_3 ↦ walk_core_ast⦅a3 ⸴ t_c3_2⦆ ·
+            int64 reg_c3_3 ↦ get_last_temp⦅⦆ ·
+            int64 res_c3 ↦ emit_call_3⦅name ⸴ t_c3_3 ⸴ reg_c3_1 ⸴ reg_c3_2 ⸴ reg_c3_3⦆ ·
+            yield res_c3 ·
+        | Call4Decl(name ⸴ a1 ⸴ a2 ⸴ a3 ⸴ a4) ⟹
+            int64 t_c4_1 ↦ walk_core_ast⦅a1 ⸴ temp_counter⦆ ·
+            int64 reg_c4_1 ↦ get_last_temp⦅⦆ ·
+            int64 t_c4_2 ↦ walk_core_ast⦅a2 ⸴ t_c4_1⦆ ·
+            int64 reg_c4_2 ↦ get_last_temp⦅⦆ ·
+            int64 t_c4_3 ↦ walk_core_ast⦅a3 ⸴ t_c4_2⦆ ·
+            int64 reg_c4_3 ↦ get_last_temp⦅⦆ ·
+            int64 t_c4_4 ↦ walk_core_ast⦅a4 ⸴ t_c4_3⦆ ·
+            int64 reg_c4_4 ↦ get_last_temp⦅⦆ ·
+            int64 res_c4 ↦ emit_call_4⦅name ⸴ t_c4_4 ⸴ reg_c4_1 ⸴ reg_c4_2 ⸴ reg_c4_3 ⸴ reg_c4_4⦆ ·
+            yield res_c4 ·
+        | Call5Decl(name ⸴ a1 ⸴ a2 ⸴ a3 ⸴ a4 ⸴ a5) ⟹
+            int64 t_c5_1 ↦ walk_core_ast⦅a1 ⸴ temp_counter⦆ ·
+            int64 reg_c5_1 ↦ get_last_temp⦅⦆ ·
+            int64 t_c5_2 ↦ walk_core_ast⦅a2 ⸴ t_c5_1⦆ ·
+            int64 reg_c5_2 ↦ get_last_temp⦅⦆ ·
+            int64 t_c5_3 ↦ walk_core_ast⦅a3 ⸴ t_c5_2⦆ ·
+            int64 reg_c5_3 ↦ get_last_temp⦅⦆ ·
+            int64 t_c5_4 ↦ walk_core_ast⦅a4 ⸴ t_c5_3⦆ ·
+            int64 reg_c5_4 ↦ get_last_temp⦅⦆ ·
+            int64 t_c5_5 ↦ walk_core_ast⦅a5 ⸴ t_c5_4⦆ ·
+            int64 reg_c5_5 ↦ get_last_temp⦅⦆ ·
+            int64 res_c5 ↦ emit_call_5⦅name ⸴ t_c5_5 ⸴ reg_c5_1 ⸴ reg_c5_2 ⸴ reg_c5_3 ⸴ reg_c5_4 ⸴ reg_c5_5⦆ ·
+            yield res_c5 ·
     ⟧
     yield temp_counter ·
 ⟧

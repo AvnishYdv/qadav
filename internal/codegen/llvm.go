@@ -749,6 +749,86 @@ func (g *Generator) Generate(prog *ast.Program) (string, error) {
 		header.WriteString("declare i8* @qadav_get_tensor_val_str(i64)\n")
 		header.WriteString("declare void @set_current_tensor_walk_idx(i64)\n")
 		header.WriteString("declare void @qadav_set_current_tensor_walk_idx(i64)\n")
+		header.WriteString("declare i64 @has_dynamic_io()\n")
+		header.WriteString("declare i64 @qadav_has_dynamic_io()\n")
+		header.WriteString("declare i64 @dynamic_io_decl_count()\n")
+		header.WriteString("declare i64 @qadav_dynamic_io_decl_count()\n")
+		header.WriteString("declare i8* @dynamic_io_decl_get(i64)\n")
+		header.WriteString("declare i8* @qadav_dynamic_io_decl_get(i64)\n")
+		header.WriteString("declare i64 @emit_dynamic_io_decls()\n")
+		header.WriteString("declare i64 @qadav_emit_dynamic_io_decls()\n")
+		header.WriteString("declare i8* @format_proc_header(i8*, i8*, i8*)\n")
+		header.WriteString("declare i8* @qadav_format_proc_header(i8*, i8*, i8*)\n")
+		header.WriteString("declare i8* @format_proc_header_2(i8*, i8*, i8*, i8*)\n")
+		header.WriteString("declare i8* @qadav_format_proc_header_2(i8*, i8*, i8*, i8*)\n")
+		header.WriteString("declare i8* @format_br_cycle(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_br_cycle(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_br_match(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_br_match(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_icmp_eq_i32(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_icmp_eq_i32(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_store_imm_i1(i8*, i64)\n")
+		header.WriteString("declare i8* @qadav_format_store_imm_i1(i8*, i64)\n")
+		header.WriteString("declare i8* @format_ret_type(i8*, i64)\n")
+		header.WriteString("declare i8* @qadav_format_ret_type(i8*, i64)\n")
+		header.WriteString("declare i8* @format_alloca_reg(i64)\n")
+		header.WriteString("declare i8* @qadav_format_alloca_reg(i64)\n")
+		header.WriteString("declare i8* @format_store_reg_to_reg(i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_store_reg_to_reg(i64, i64)\n")
+		header.WriteString("declare i8* @format_load_from_reg(i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_load_from_reg(i64, i64)\n")
+		header.WriteString("declare i64 @is_logic_type(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_logic_type(i8*)\n")
+		header.WriteString("declare i8* @format_record_alloc(i8*, i64)\n")
+		header.WriteString("declare i8* @qadav_format_record_alloc(i8*, i64)\n")
+		header.WriteString("declare i8* @format_record_set_field_ptr(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_record_set_field_ptr(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_record_set_field_i64(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_record_set_field_i64(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_record_get_field_ptr(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_record_get_field_ptr(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_record_get_field_i64(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_record_get_field_i64(i64, i64, i64)\n")
+		header.WriteString("declare i8* @format_variant_create_i64(i8*, i8*, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_variant_create_i64(i8*, i8*, i64, i64)\n")
+		header.WriteString("declare i8* @format_variant_get_tag(i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_variant_get_tag(i64, i64)\n")
+		header.WriteString("declare i8* @format_variant_get_field_i64(i64, i64, i64)\n")
+		header.WriteString("declare i8* @qadav_format_variant_get_field_i64(i64, i64, i64)\n")
+		header.WriteString("declare i64 @get_record_field_idx(i8*, i8*)\n")
+		header.WriteString("declare i64 @qadav_get_record_field_idx(i8*, i8*)\n")
+		header.WriteString("declare i64 @is_record_field_ptr(i8*, i8*)\n")
+		header.WriteString("declare i64 @qadav_is_record_field_ptr(i8*, i8*)\n")
+		header.WriteString("declare i64 @get_variant_case_tag(i8*, i8*)\n")
+		header.WriteString("declare i64 @qadav_get_variant_case_tag(i8*, i8*)\n")
+		header.WriteString("declare i64 @emit_record_init(i64)\n")
+		header.WriteString("declare i64 @qadav_emit_record_init(i64)\n")
+		header.WriteString("declare i64 @emit_variant_init(i64)\n")
+		header.WriteString("declare i64 @qadav_emit_variant_init(i64)\n")
+		header.WriteString("declare i64 @emit_match_stmt(i8*, i64)\n")
+		header.WriteString("declare i64 @qadav_emit_match_stmt(i8*, i64)\n")
+		header.WriteString("declare i64 @emit_proc_header(i8*, i8*, i8*)\n")
+		header.WriteString("declare i64 @qadav_emit_proc_header(i8*, i8*, i8*)\n")
+		header.WriteString("declare i64 @emit_proc_header_2(i8*, i8*, i8*, i8*)\n")
+		header.WriteString("declare i64 @qadav_emit_proc_header_2(i8*, i8*, i8*, i8*)\n")
+		header.WriteString("declare i64 @emit_record_get_field(i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @qadav_emit_record_get_field(i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @str_eq(i8*, i8*)\n")
+		header.WriteString("declare i64 @qadav_str_eq(i8*, i8*)\n")
+		header.WriteString("declare i64 @is_affirm_ident(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_affirm_ident(i8*)\n")
+		header.WriteString("declare i64 @is_deny_ident(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_deny_ident(i8*)\n")
+		header.WriteString("declare i64 @is_text_returning_proc(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_text_returning_proc(i8*)\n")
+		header.WriteString("declare i64 @is_logic_returning_proc(i8*)\n")
+		header.WriteString("declare i64 @qadav_is_logic_returning_proc(i8*)\n")
+		header.WriteString("declare i64 @emit_call_3(i8*, i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @qadav_emit_call_3(i8*, i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @emit_call_4(i8*, i64, i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @qadav_emit_call_4(i8*, i64, i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @emit_call_5(i8*, i64, i64, i64, i64, i64, i64)\n")
+		header.WriteString("declare i64 @qadav_emit_call_5(i8*, i64, i64, i64, i64, i64, i64)\n")
 	}
 
 	// Quantum global state
@@ -1911,6 +1991,15 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "scan_tensors" || ident.Name == "get_tensor_name" || ident.Name == "get_tensor_size" ||
 				ident.Name == "get_tensor_int_val" || ident.Name == "format_shape_const" || ident.Name == "format_tensor_set" ||
 				ident.Name == "tokenize_file" || ident.Name == "token_count" ||
+				ident.Name == "has_dynamic_io" ||
+				ident.Name == "dynamic_io_decl_count" || ident.Name == "dynamic_io_decl_get" ||
+				ident.Name == "emit_dynamic_io_decls" ||
+				ident.Name == "format_record_alloc" || ident.Name == "format_record_set_field_ptr" ||
+				ident.Name == "format_record_set_field_i64" || ident.Name == "format_record_get_field_ptr" ||
+				ident.Name == "format_record_get_field_i64" || ident.Name == "format_variant_create_i64" ||
+				ident.Name == "format_variant_get_tag" || ident.Name == "format_variant_get_field_i64" ||
+				ident.Name == "get_record_field_idx" || ident.Name == "is_record_field_ptr" ||
+				ident.Name == "get_variant_case_tag" ||
 				ident.Name == "token_kind" || ident.Name == "token_kind_code" ||
 				ident.Name == "token_literal" || ident.Name == "token_int_val" ||
 				ident.Name == "token_is" ||
@@ -1984,7 +2073,10 @@ func (g *Generator) genExpr(expr ast.Expr) Value {
 				ident.Name == "format_func_def_dot" || ident.Name == "qadav_format_func_def_dot" ||
 				ident.Name == "format_ret_double" || ident.Name == "qadav_format_ret_double" ||
 				ident.Name == "format_ret_i32" || ident.Name == "qadav_format_ret_i32" ||
-				ident.Name == "format_emit_float_call" || ident.Name == "qadav_format_emit_float_call" {
+				ident.Name == "format_emit_float_call" || ident.Name == "qadav_format_emit_float_call" ||
+				ident.Name == "str_eq" || ident.Name == "is_affirm_ident" || ident.Name == "is_deny_ident" ||
+				ident.Name == "is_text_returning_proc" || ident.Name == "is_logic_returning_proc" ||
+				ident.Name == "emit_call_3" || ident.Name == "emit_call_4" || ident.Name == "emit_call_5" {
 				g.usesDynamicIO = true
 			}
 			if g.checker != nil && g.checker.Networks() != nil {

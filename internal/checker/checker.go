@@ -905,6 +905,473 @@ func New() *Checker {
 			},
 		})
 	}
+	for _, fnName := range []string{"has_dynamic_io", "qadav_has_dynamic_io"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"dynamic_io_decl_count", "qadav_dynamic_io_decl_count"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"dynamic_io_decl_get", "qadav_dynamic_io_decl_get"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_dynamic_io_decls", "qadav_emit_dynamic_io_decls"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"get_record_field_idx", "qadav_get_record_field_idx"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"is_record_field_ptr", "qadav_is_record_field_ptr"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"get_variant_case_tag", "qadav_get_variant_case_tag"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_record_alloc", "qadav_format_record_alloc"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_record_set_field_ptr", "qadav_format_record_set_field_ptr"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_record_set_field_i64", "qadav_format_record_set_field_i64"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_record_get_field_ptr", "qadav_format_record_get_field_ptr"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_record_get_field_i64", "qadav_format_record_get_field_i64"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_variant_create_i64", "qadav_format_variant_create_i64"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_variant_get_tag", "qadav_format_variant_get_tag"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_variant_get_field_i64", "qadav_format_variant_get_field_i64"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"has_dynamic_io", "qadav_has_dynamic_io"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"dynamic_io_decl_count", "qadav_dynamic_io_decl_count"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"dynamic_io_decl_get", "qadav_dynamic_io_decl_get"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_dynamic_io_decls", "qadav_emit_dynamic_io_decls"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_proc_header", "qadav_format_proc_header"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text, types.Text},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_proc_header_2", "qadav_format_proc_header_2"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text, types.Text, types.Text},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_br_cycle", "qadav_format_br_cycle", "format_br_match", "qadav_format_br_match", "format_icmp_eq_i32", "qadav_format_icmp_eq_i32"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_store_imm_i1", "qadav_format_store_imm_i1", "format_ret_type", "qadav_format_ret_type"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_alloca_reg", "qadav_format_alloca_reg"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_store_reg_to_reg", "qadav_format_store_reg_to_reg", "format_load_from_reg", "qadav_format_load_from_reg"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"is_logic_type", "qadav_is_logic_type"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"get_record_field_idx", "qadav_get_record_field_idx"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"is_record_field_ptr", "qadav_is_record_field_ptr"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"get_variant_case_tag", "qadav_get_variant_case_tag"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_record_alloc", "qadav_format_record_alloc"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_record_set_field_ptr", "qadav_format_record_set_field_ptr"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_record_set_field_i64", "qadav_format_record_set_field_i64"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_record_get_field_ptr", "qadav_format_record_get_field_ptr"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_record_get_field_i64", "qadav_format_record_get_field_i64"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_variant_create_i64", "qadav_format_variant_create_i64"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_variant_get_tag", "qadav_format_variant_get_tag"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+	for _, fnName := range []string{"format_variant_get_field_i64", "qadav_format_variant_get_field_i64"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Text},
+			},
+		})
+	}
+
+	for _, fnName := range []string{"emit_record_init", "qadav_emit_record_init", "emit_variant_init", "qadav_emit_variant_init"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_match_stmt", "qadav_emit_match_stmt"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+
+	for _, fnName := range []string{"emit_proc_header", "qadav_emit_proc_header"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text, types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_proc_header_2", "qadav_emit_proc_header_2"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text, types.Text, types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_call_3", "qadav_emit_call_3"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64, types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_call_4", "qadav_emit_call_4"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64, types.Int64, types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_call_5", "qadav_emit_call_5"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Int64, types.Int64, types.Int64, types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"emit_record_get_field", "qadav_emit_record_get_field"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Int64, types.Int64, types.Int64, types.Int64},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+
+	for _, fnName := range []string{"str_eq", "qadav_str_eq"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text, types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
+	for _, fnName := range []string{"is_affirm_ident", "qadav_is_affirm_ident", "is_deny_ident", "qadav_is_deny_ident", "is_text_returning_proc", "qadav_is_text_returning_proc", "is_logic_returning_proc", "qadav_is_logic_returning_proc"} {
+		_ = global.Define(&Symbol{
+			Name: fnName,
+			Type: &types.Type{
+				Kind:    types.KindProcess,
+				Params:  []*types.Type{types.Text},
+				Results: []*types.Type{types.Int64},
+			},
+		})
+	}
 
 	return &Checker{
 		globalScope:       global,
