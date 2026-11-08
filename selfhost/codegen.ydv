@@ -740,12 +740,12 @@ process parse_statement⦅int64 cur_idx⦆ → CoreAst ⟦
             ⟧
             text t_name ↦ token_literal⦅scan_b ⊖ 1⦆ ·
             register_var_type⦅t_name ⸴ "tensor"⦆ ·
-            int64 t_idx ↦ 0 ·
-            int64 is_y ↦ is_var_y⦅t_name⦆ ·
-            when is_y ≡ 1 ⟦
-                t_idx ← 1 ·
+            int64 t_idx ↦ get_tensor_index_by_name⦅t_name⦆ ·
+            int64 elem_cnt ↦ get_tensor_size⦅t_idx⦆ ·
+            when elem_cnt ≡ 0 ⟦
+                elem_cnt ← 3 ·
             ⟧
-            yield ast_bind⦅t_name ⸴ "tensor" ⸴ ast_tensor⦅t_idx ⸴ 3⦆⦆ ·
+            yield ast_bind⦅t_name ⸴ "tensor" ⸴ ast_tensor⦅t_idx ⸴ elem_cnt⦆⦆ ·
         ⟧
 
         text name ↦ token_literal⦅cur_idx ⊕ 1⦆ ·

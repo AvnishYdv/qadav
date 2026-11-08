@@ -123,23 +123,6 @@ int qadav_barat_submit(
         actual_data = t->data;
         actual_size = (unsigned long long)t->total_size * t->elem_size;
     }
-    if (worker_id == 0) {
-        static const double w0[4] = {0.01, 0.02, 0.03, 0.04};
-        actual_data = w0;
-        actual_size = sizeof(w0);
-    } else if (worker_id == 1) {
-        static const double w1[4] = {0.02, 0.02, 0.02, 0.02};
-        actual_data = w1;
-        actual_size = sizeof(w1);
-    } else if (worker_id == 2) {
-        static const double w2[4] = {0.015, 0.025, 0.03, 0.03};
-        actual_data = w2;
-        actual_size = sizeof(w2);
-    } else if (worker_id == 3) {
-        static const double w3[4] = {100.0, 100.0, 100.0, 100.0};
-        actual_data = w3;
-        actual_size = sizeof(w3);
-    }
     if (actual_size == 0 || actual_size > QADAV_BARAT_GRAD_MAX) {
         return -1;
     }

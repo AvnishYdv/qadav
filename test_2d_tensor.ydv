@@ -1,0 +1,5 @@
+process main⦅⦆ → int64 ⟦
+    tensor⟨float64⟩⟬2⸴ 2⟭ m ↦ tensor⟬⟬1.0⸴ 2.0⟭⸴ ⟬3.0⸴ 4.0⟭⟭ ·
+    emit "SHOULD_PRINT_1_2_3_4" ·
+    yield 0 ·
+⟧

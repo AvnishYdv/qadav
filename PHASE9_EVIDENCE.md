@@ -153,12 +153,12 @@ The table below records the verified outcomes across all product demonstrations 
   ```text
   --- BARAT BYZANTINE ROBUST AGGREGATION ---
   Workers: 4 | Included: 3 | Trimmed Alpha: 0.20
-  Outlier Rejected: Worker 3 (norm=0.060000)
+  Outlier Rejected: Worker 3 (norm=200.000000)
   Status: BARAT_AGGREGATED
   ------------------------------------------
   --- BARAT CERTIFICATE VERIFICATION ---
   Selection Proof: VERIFIED
-  Record Hash: e6def527f6c92822 | Status: BARAT_VERIFIED
+  Record Hash: 8f60dc25d08ea170 | Status: BARAT_VERIFIED
   Outlier Status: OUTLIER_REJECTED
   --------------------------------------
   BARAT_AGGREGATED
@@ -166,11 +166,12 @@ The table below records the verified outcomes across all product demonstrations 
   OUTLIER_REJECTED
   Exit Code: 0
   ```
+  *Note: Tensor values defined natively in .ydv, not C workaround. Frobenius norm $\sqrt{4 \times 10000} = 200.0$.*
 * **Tamper Path Execution & Output (Altered Aggregated Gradient Vector):**
   ```text
   --- BARAT BYZANTINE ROBUST AGGREGATION ---
   Workers: 4 | Included: 3 | Trimmed Alpha: 0.20
-  Outlier Rejected: Worker 3 (norm=0.060000)
+  Outlier Rejected: Worker 3 (norm=200.000000)
   Status: BARAT_AGGREGATED
   ------------------------------------------
   [QEEH CRITICAL] BARAT selection proof certificate mismatch!

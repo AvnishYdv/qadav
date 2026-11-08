@@ -142,6 +142,7 @@ long long   qadav_is_result_var(const char* name);
 long long   qadav_is_mul_op(const char* op);
 long long   qadav_is_eq_op(const char* op);
 long long   qadav_is_var_y(const char* name);
+long long   qadav_get_tensor_index_by_name(const char* name);
 const char* qadav_format_shape_gep(long long shape_idx, long long temp_id);
 const char* qadav_format_alloca_type(const char* name, const char* typ);
 const char* qadav_format_store_reg_type(const char* name, const char* typ, long long reg_id);
@@ -393,6 +394,7 @@ long long is_result_var(const char* name) { return qadav_is_result_var(name); }
 long long is_mul_op(const char* op) { return qadav_is_mul_op(op); }
 long long is_eq_op(const char* op) { return qadav_is_eq_op(op); }
 long long is_var_y(const char* name) { return qadav_is_var_y(name); }
+long long get_tensor_index_by_name(const char* name) { return qadav_get_tensor_index_by_name(name); }
 const char* format_shape_gep(long long shape_idx, long long temp_id) { return qadav_format_shape_gep(shape_idx, temp_id); }
 const char* format_alloca_type(const char* name, const char* typ) { return qadav_format_alloca_type(name, typ); }
 const char* format_store_reg_type(const char* name, const char* typ, long long reg_id) { return qadav_format_store_reg_type(name, typ, reg_id); }

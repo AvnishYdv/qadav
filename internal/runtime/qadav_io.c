@@ -559,11 +559,11 @@ static int g_proc_count = 0;
 typedef struct {
   char name[32];
   int size;
-  long long values[16];
-  char val_strs[16][32];
+  long long values[64];
+  char val_strs[64][32];
 } qadav_tensor_info_t;
 
-static qadav_tensor_info_t g_tensors[16];
+static qadav_tensor_info_t g_tensors[32];
 static int g_tensor_count = 0;
 static int g_current_tensor_walk_idx = 0;
 
@@ -700,6 +700,7 @@ long long qadav_tokenize_file(const char *path) {
         while (name_start >= 0 &&
                ((buf[name_start] >= 'a' && buf[name_start] <= 'z') ||
                 (buf[name_start] >= 'A' && buf[name_start] <= 'Z') ||
+                (buf[name_start] >= '0' && buf[name_start] <= '9') ||
                 buf[name_start] == '_'))
           name_start--;
         name_start++;
@@ -712,81 +713,116 @@ long long qadav_tokenize_file(const char *path) {
         g_tensors[g_tensor_count].size = 3;
 
         int ej = k + 3;
+        int depth = 1;
         int elem_idx = 0;
-        while (ej < n && elem_idx < 16) {
+        while (ej < n && depth > 0 && elem_idx < 64) {
           while (ej < n && (buf[ej] == ' ' || buf[ej] == '\t' ||
-                            buf[ej] == '\r' || buf[ej] == '\n' ||
-                            ((unsigned char)buf[ej] == 0xe2 &&
-                             (unsigned char)buf[ej + 1] == 0xb8 &&
-                             (unsigned char)buf[ej + 2] == 0xb4) ||
-                            ((unsigned char)buf[ej] == 0xe2 &&
-                             (unsigned char)buf[ej + 1] == 0x9f &&
-                             (unsigned char)buf[ej + 2] == 0xac) ||
-                            ((unsigned char)buf[ej] == 0xe2 &&
-                             (unsigned char)buf[ej + 1] == 0x9f &&
-                             (unsigned char)buf[ej + 2] == 0xad &&
-                             elem_idx > 0 && elem_idx < 15))) {
-            if ((unsigned char)buf[ej] == 0xe2)
-              ej += 3;
-            else
-              ej++;
-          }
-          if (ej + 3 <= n && (unsigned char)buf[ej] == 0xe2 &&
-              (unsigned char)buf[ej + 1] == 0x9f &&
-              (unsigned char)buf[ej + 2] == 0xad) {
-            break;
+                            buf[ej] == '\r' || buf[ej] == '\n')) {
+            ej++;
           }
           if (ej >= n)
             break;
+
+          // Comma ⸴ (\xe2\xb8\xb4) or ','
+          if (ej + 3 <= n && (unsigned char)buf[ej] == 0xe2 &&
+              (unsigned char)buf[ej + 1] == 0xb8 &&
+              (unsigned char)buf[ej + 2] == 0xb4) {
+            ej += 3;
+            continue;
+          }
+          if (buf[ej] == ',') {
+            ej++;
+            continue;
+          }
+
+          // Open bracket ⟬ (\xe2\x9f\xac) or '['
+          if (ej + 3 <= n && (unsigned char)buf[ej] == 0xe2 &&
+              (unsigned char)buf[ej + 1] == 0x9f &&
+              (unsigned char)buf[ej + 2] == 0xac) {
+            depth++;
+            ej += 3;
+            continue;
+          }
+          if (buf[ej] == '[') {
+            depth++;
+            ej++;
+            continue;
+          }
+
+          // Close bracket ⟭ (\xe2\x9f\xad) or ']'
+          if (ej + 3 <= n && (unsigned char)buf[ej] == 0xe2 &&
+              (unsigned char)buf[ej + 1] == 0x9f &&
+              (unsigned char)buf[ej + 2] == 0xad) {
+            depth--;
+            ej += 3;
+            if (depth <= 0)
+              break;
+            continue;
+          }
+          if (buf[ej] == ']') {
+            depth--;
+            ej++;
+            if (depth <= 0)
+              break;
+            continue;
+          }
+
           int neg = 0;
           if (buf[ej] == '-') {
             neg = 1;
             ej++;
-          }
-          long long ival = 0;
-          while (ej < n && (buf[ej] >= '0' && buf[ej] <= '9')) {
-            ival = ival * 10 + (buf[ej++] - '0');
-          }
-          char frac_buf[16];
-          int frac_len = 0;
-          if (ej < n && buf[ej] == '.') {
+          } else if (buf[ej] == '+') {
             ej++;
-            while (ej < n && (buf[ej] >= '0' && buf[ej] <= '9') &&
-                   frac_len < 15) {
-              frac_buf[frac_len++] = buf[ej++];
-            }
           }
-          g_tensors[g_tensor_count].values[elem_idx] = neg ? -ival : ival;
+          if (ej < n && (buf[ej] >= '0' && buf[ej] <= '9')) {
+            long long ival = 0;
+            while (ej < n && (buf[ej] >= '0' && buf[ej] <= '9')) {
+              ival = ival * 10 + (buf[ej++] - '0');
+            }
+            char frac_buf[16];
+            int frac_len = 0;
+            if (ej < n && buf[ej] == '.') {
+              ej++;
+              while (ej < n && (buf[ej] >= '0' && buf[ej] <= '9') &&
+                     frac_len < 15) {
+                frac_buf[frac_len++] = buf[ej++];
+              }
+            }
+            g_tensors[g_tensor_count].values[elem_idx] = neg ? -ival : ival;
 
-          char *vs = g_tensors[g_tensor_count].val_strs[elem_idx];
-          int vsi = 0;
-          if (neg)
-            vs[vsi++] = '-';
-          char itmp[32];
-          int iti = 0;
-          long long tv = ival;
-          if (tv == 0)
-            itmp[iti++] = '0';
-          else {
-            while (tv > 0) {
-              itmp[iti++] = '0' + (tv % 10);
-              tv /= 10;
+            char *vs = g_tensors[g_tensor_count].val_strs[elem_idx];
+            int vsi = 0;
+            if (neg)
+              vs[vsi++] = '-';
+            char itmp[32];
+            int iti = 0;
+            long long tv = ival;
+            if (tv == 0)
+              itmp[iti++] = '0';
+            else {
+              while (tv > 0) {
+                itmp[iti++] = '0' + (tv % 10);
+                tv /= 10;
+              }
             }
+            while (iti > 0)
+              vs[vsi++] = itmp[--iti];
+            vs[vsi++] = '.';
+            for (int fi = 0; fi < 6; fi++) {
+              if (fi < frac_len)
+                vs[vsi++] = frac_buf[fi];
+              else
+                vs[vsi++] = '0';
+            }
+            vs[vsi] = '\0';
+            elem_idx++;
+          } else {
+            ej++;
           }
-          while (iti > 0)
-            vs[vsi++] = itmp[--iti];
-          vs[vsi++] = '.';
-          for (int fi = 0; fi < 6; fi++) {
-            if (fi < frac_len)
-              vs[vsi++] = frac_buf[fi];
-            else
-              vs[vsi++] = '0';
-          }
-          vs[vsi] = '\0';
-          elem_idx++;
         }
+        g_tensors[g_tensor_count].size = elem_idx;
         g_tensor_count++;
-        if (g_tensor_count >= 16)
+        if (g_tensor_count >= 32)
           break;
       }
     }
@@ -2213,8 +2249,18 @@ long long qadav_get_tensor_size(long long idx) {
   return g_tensors[idx].size;
 }
 
+long long qadav_get_tensor_index_by_name(const char *name) {
+  if (!name)
+    return 0;
+  for (int i = 0; i < g_tensor_count; i++) {
+    if (io_str_eq(g_tensors[i].name, name))
+      return i;
+  }
+  return 0;
+}
+
 long long qadav_get_tensor_int_val(long long t_idx, long long e_idx) {
-  if (t_idx < 0 || t_idx >= g_tensor_count || e_idx < 0 || e_idx >= 16)
+  if (t_idx < 0 || t_idx >= g_tensor_count || e_idx < 0 || e_idx >= 64)
     return 0;
   return g_tensors[t_idx].values[e_idx];
 }
@@ -2314,7 +2360,7 @@ const char *qadav_format_tensor_set(long long t_temp, long long elem_idx,
     buf[bi++] = *p3++;
 
   int tidx = g_current_tensor_walk_idx;
-  if (tidx >= 0 && tidx < g_tensor_count && elem_idx >= 0 && elem_idx < 16) {
+  if (tidx >= 0 && tidx < g_tensor_count && elem_idx >= 0 && elem_idx < 64) {
     const char *fstr = g_tensors[tidx].val_strs[elem_idx];
     if (fstr && fstr[0] != '\0') {
       while (*fstr)
@@ -3205,6 +3251,8 @@ const char *qadav_format_call_i64(const char *callee, long long res_temp,
       io_str_eq(callee, "is_deny_ident") ||
       io_str_eq(callee, "get_var_type_code") ||
       io_str_eq(callee, "is_void_call_proc") ||
+      io_str_eq(callee, "prealloc_match_bindings") ||
+      io_str_eq(callee, "get_tensor_index_by_name") ||
       io_str_eq(callee, "scan_if_else")) {
     lt_ret = "i64";
     lt_arg = "i8*";
@@ -4086,6 +4134,8 @@ const char *qadav_format_call_i64_imm(const char *callee, long long res_temp,
     lt_a1 = "i64";
     lt_a2 = "i8*";
   } else if (io_str_eq(callee, "format_shape_const") ||
+             io_str_eq(callee, "format_shape_gep") ||
+             io_str_eq(callee, "format_tensor_reduce_sum_f64") ||
              io_str_eq(callee, "str_table_gep") ||
              io_str_eq(callee, "format_trunc_line_id") ||
              io_str_eq(callee, "format_trunc_line_reg")) {
@@ -4206,6 +4256,8 @@ const char *qadav_format_call_i64_2args(const char *callee, long long res_temp,
     lt_a1 = "i64";
     lt_a2 = "i8*";
   } else if (io_str_eq(callee, "format_shape_const") ||
+             io_str_eq(callee, "format_shape_gep") ||
+             io_str_eq(callee, "format_tensor_reduce_sum_f64") ||
              io_str_eq(callee, "str_table_gep") ||
              io_str_eq(callee, "format_trunc_line_id") ||
              io_str_eq(callee, "format_trunc_line_reg")) {
@@ -4314,6 +4366,9 @@ const char *qadav_format_call_0args(const char *callee, long long res_temp) {
       lt_ret = to_llvm_type(g_procs[i].ret_type);
       break;
     }
+  }
+  if (io_str_eq(callee, "get_input_path") || qadav_is_text_returning_proc(callee)) {
+    lt_ret = "i8*";
   }
   if (io_str_eq(lt_ret, "void") || io_str_eq(callee, "reset_label_counter")) {
     const char *s = "  call void @\"";
@@ -4605,6 +4660,8 @@ static const char *const g_dynamic_io_decls[] = {
     "declare i64 @qadav_is_eq_op(i8*)",
     "declare i64 @is_var_y(i8*)",
     "declare i64 @qadav_is_var_y(i8*)",
+    "declare i64 @get_tensor_index_by_name(i8*)",
+    "declare i64 @qadav_get_tensor_index_by_name(i8*)",
     "declare i8* @format_alloca_type(i8*, i8*)",
     "declare i8* @qadav_format_alloca_type(i8*, i8*)",
     "declare i8* @format_store_reg_type(i8*, i8*, i64)",
@@ -4721,8 +4778,16 @@ static const char *const g_dynamic_io_decls[] = {
     "declare i64 @qadav_emit_call_3(i8*, i64, i64, i64, i64)",
     "declare i64 @emit_call_4(i8*, i64, i64, i64, i64, i64)",
     "declare i64 @qadav_emit_call_4(i8*, i64, i64, i64, i64, i64)",
+    "declare i64 @emit_call_4_sub(i8*, i64, i64, i64, i64)",
+    "declare i64 @qadav_emit_call_4_sub(i8*, i64, i64, i64, i64)",
     "declare i64 @emit_call_5(i8*, i64, i64, i64, i64, i64, i64)",
     "declare i64 @qadav_emit_call_5(i8*, i64, i64, i64, i64, i64, i64)",
+    "declare i64 @emit_call_5_sub(i8*, i64, i64, i64, i64)",
+    "declare i64 @qadav_emit_call_5_sub(i8*, i64, i64, i64, i64)",
+    "declare void @set_call_arg_extra(i64)",
+    "declare void @qadav_set_call_arg_extra(i64)",
+    "declare void @set_call_arg_extra_2(i64)",
+    "declare void @qadav_set_call_arg_extra_2(i64)",
     "declare i64 @prealloc_match_bindings(i8*)",
     "declare i64 @qadav_prealloc_match_bindings(i8*)",
     "declare i64 @is_void_call_proc(i8*)",
@@ -5545,7 +5610,8 @@ static long long qadav_emit_call_generic(const char *callee, long long res_temp,
     } else if (io_str_eq(callee, "emit_variant_init")) {
       lt_p = (p == 0 || p == 1) ? "i8*" : "i64";
     } else if (io_str_eq(callee, "emit_record_init") ||
-               io_str_eq(callee, "prealloc_match_bindings")) {
+               io_str_eq(callee, "prealloc_match_bindings") ||
+               io_str_starts_with(callee, "emit_call_")) {
       lt_p = (p == 0) ? "i8*" : "i64";
     }
     s = lt_p;
@@ -6164,7 +6230,8 @@ long long qadav_is_deny_ident(const char *name) {
 long long qadav_is_text_returning_proc(const char *name) {
   if (!name)
     return 0;
-  if (io_str_eq(name, "classify_keyword") ||
+  if (io_str_eq(name, "get_input_path") ||
+      io_str_eq(name, "classify_keyword") ||
       io_str_eq(name, "classify_operator") ||
       io_str_eq(name, "classify_annotation") ||
       io_str_eq(name, "classify_delimiter") ||

@@ -732,9 +732,12 @@ process parse_statement⦅int64 cur_idx⦆ → CoreAst ⟦
                 CoreAst tr ↦ ast_ident⦅token_literal⦅val_start ⊕ 2⦆⦆ ·
                 yield ast_bind⦅name ⸴ typ ⸴ ast_binop⦅bop ⸴ tl ⸴ tr⦆⦆ ·
             ⟧
-            int64 tidx ↦ 0 ·
-            when name ≡ "y" ⟦ tidx ← 1 · ⟧
-            yield ast_bind⦅name ⸴ typ ⸴ ast_tensor⦅tidx ⸴ 3⦆⦆ ·
+            int64 tidx ↦ get_tensor_index_by_name⦅name⦆ ·
+            int64 elem_cnt ↦ get_tensor_size⦅tidx⦆ ·
+            when elem_cnt ≡ 0 ⟦
+                elem_cnt ← 3 ·
+            ⟧
+            yield ast_bind⦅name ⸴ typ ⸴ ast_tensor⦅tidx ⸴ elem_cnt⦆⦆ ·
         ⟧
 
         when vk ≡ 27 ⟦
