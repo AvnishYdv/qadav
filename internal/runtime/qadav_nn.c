@@ -1508,6 +1508,19 @@ int qadav_run_toy_training(const char* cmd, void* mctp_cert, int epochs) {
     }
     nn_seed_rng((unsigned long long)seed);
 
+    int total_steps = 500;
+    const char* st_pos = nn_strstr(cmd, "--steps");
+    if (st_pos) {
+        st_pos += 7;
+        while (*st_pos == ' ' || *st_pos == '=') st_pos++;
+        int val = 0;
+        while (*st_pos >= '0' && *st_pos <= '9') {
+            val = val * 10 + (*st_pos - '0');
+            st_pos++;
+        }
+        if (val > 0) total_steps = val;
+    }
+
     // Read dataset
     const char* path1 = "TMP\\shakespeare_subset.txt";
     const char* path2 = "shakespeare_subset.txt";
@@ -1558,11 +1571,12 @@ int qadav_run_toy_training(const char* cmd, void* mctp_cert, int epochs) {
     nn_print(" TOY TRAINING START] ===\n");
     nn_print("Parameters: "); nn_print_i64(param_count);
     nn_print(" | Seed: "); nn_print_i64(seed);
-    nn_print(" | Batch: 32 | Context: 64 | Steps: 500\n");
+    nn_print(" | Batch: 32 | Context: 64 | Steps: "); nn_print_i64(total_steps); nn_print("\n");
 
-    int log_steps[12];
-    double log_losses[12];
+    int log_steps[64];
+    double log_losses[64];
     int log_idx = 0;
+    int log_interval = (total_steps >= 2000) ? 100 : 50;
 
     DWORD t_start = nn_get_ticks();
 
@@ -1579,12 +1593,14 @@ int qadav_run_toy_training(const char* cmd, void* mctp_cert, int epochs) {
     log_losses[log_idx] = loss_0;
     log_idx++;
 
-    nn_print("["); nn_print(m_name); nn_print("] Step 0/500 | Loss: ");
+    nn_print("["); nn_print(m_name); nn_print("] Step 0/");
+    nn_print_i64(total_steps);
+    nn_print(" | Loss: ");
     nn_print_f64(loss_0, 4);
     nn_print(" | LR: 0.0030 | Time: 0.0s\n");
 
-    // Training loop: 1..500
-    for (int step = 1; step <= TOY_NUM_STEPS; step++) {
+    // Training loop: 1..total_steps
+    for (int step = 1; step <= total_steps; step++) {
         double step_loss = 0.0;
         if (model_kind == MODEL_KIND_TRANSFORMER) {
             step_loss = compute_transformer_batch(w, data_buf, train_len, 1);
@@ -1596,7 +1612,7 @@ int qadav_run_toy_training(const char* cmd, void* mctp_cert, int epochs) {
 
         toy_adam_step(w, 0.003, step);
 
-        if (step % 50 == 0) {
+        if (step % log_interval == 0 || step == total_steps) {
             log_steps[log_idx] = step;
             log_losses[log_idx] = step_loss;
             log_idx++;
@@ -1606,7 +1622,9 @@ int qadav_run_toy_training(const char* cmd, void* mctp_cert, int epochs) {
 
             nn_print("["); nn_print(m_name); nn_print("] Step ");
             nn_print_i64(step);
-            nn_print("/500 | Loss: ");
+            nn_print("/");
+            nn_print_i64(total_steps);
+            nn_print(" | Loss: ");
             nn_print_f64(step_loss, 4);
             nn_print(" | LR: 0.0030 | Time: ");
             nn_print_f64(elapsed_s, 1);
