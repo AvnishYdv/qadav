@@ -1,0 +1,18 @@
+// QNMF Ablation: No-P6 (ECRA Adaptive Compute Controller Disabled)
+// Base architecture with P1 State, P2 Memory, P3 Routing, P4 World Model
+// Dynamic complexity routing disabled; all queries evaluated at fixed maximum Level 3 compute
+
+network QNMFAblationP6 ⟦
+    dense ⟬128⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 2048⟭ ·
+    relu ·
+    dense ⟬2048⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "QNMF_ABLATION_P6_NO_ECRA_INITIALIZED" ·
+    yield 0 ·
+⟧

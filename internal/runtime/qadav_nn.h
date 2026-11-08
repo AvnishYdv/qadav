@@ -86,6 +86,9 @@ int qadav_run_v3_planning(const char* cmd);
 int qadav_run_ecra_train(const char* cmd);
 int qadav_run_ecra_eval(const char* cmd);
 
+// QNMF M9.15: Controlled Baselines + Ablation Study Engine
+int qadav_run_ablation_driver(const char* cmd);
+
 #endif // QADAV_NN_H
 
 

@@ -1,0 +1,18 @@
+// QNMF Ablation: No-P3 (Optimal Transport / Sparse Routing Disabled)
+// Base architecture with P1 State, P2 Memory, P4 World Model, P6 ECRA Controller
+// Top-k / Sinkhorn routing bypassed with dense uniform feedforward pass
+
+network QNMFAblationP3 ⟦
+    dense ⟬128⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 2048⟭ ·
+    relu ·
+    dense ⟬2048⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "QNMF_ABLATION_P3_NO_ROUTING_INITIALIZED" ·
+    yield 0 ·
+⟧

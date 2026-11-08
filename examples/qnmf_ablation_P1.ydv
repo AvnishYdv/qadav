@@ -1,0 +1,18 @@
+// QNMF Ablation: No-P1 (Continuous Recurrent Associative State S_t Disabled)
+// Base architecture with P2 Memory, P3 Routing, P4 World Model, P6 ECRA Controller
+// Recurrent state transition S_{t+1} = f_theta(S_t, x_t) replaced with stateless query
+
+network QNMFAblationP1 ⟦
+    dense ⟬128⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 2048⟭ ·
+    relu ·
+    dense ⟬2048⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "QNMF_ABLATION_P1_NO_STATE_INITIALIZED" ·
+    yield 0 ·
+⟧

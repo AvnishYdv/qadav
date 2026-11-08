@@ -1,0 +1,18 @@
+// QNMF Ablation: No-P4 (Predictive Latent World Model Disabled)
+// Base architecture with P1 State, P2 Memory, P3 Routing, P6 ECRA Controller
+// Latent transition model P_theta and reward predictor R_theta disabled
+
+network QNMFAblationP4 ⟦
+    dense ⟬128⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 2048⟭ ·
+    relu ·
+    dense ⟬2048⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "QNMF_ABLATION_P4_NO_WORLDMODEL_INITIALIZED" ·
+    yield 0 ·
+⟧

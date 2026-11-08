@@ -1,0 +1,18 @@
+// QNMF Ablation: No-P2 (Multi-Timescale Neural Memory Disabled)
+// Base architecture with P1 State, P3 Routing, P4 World Model, P6 ECRA Controller
+// Slotted memory matrices M_s, M_w, M_l and decay factors tau_f, tau_m, tau_s removed
+
+network QNMFAblationP2 ⟦
+    dense ⟬128⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 2048⟭ ·
+    relu ·
+    dense ⟬2048⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "QNMF_ABLATION_P2_NO_MEMORY_INITIALIZED" ·
+    yield 0 ·
+⟧

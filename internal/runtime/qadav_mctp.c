@@ -150,6 +150,10 @@ void qadav_mctp_record_epochs(qadav_training_cert* c, int epochs,
 #ifdef _WIN32
     const char* cmd = GetCommandLineA();
     if (cmd) {
+        if (mctp_strstr(cmd, "ablation_driver") || (mctp_strstr(cmd, "--model") && mctp_strstr(cmd, "--task"))) {
+            qadav_run_ablation_driver(cmd);
+            return;
+        }
         if (mctp_strstr(cmd, "train_ecra")) {
             qadav_run_ecra_train(cmd);
             return;
