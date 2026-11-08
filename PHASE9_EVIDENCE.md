@@ -321,27 +321,27 @@ The `product_integrated.exe` demonstration proves that all 8 inventions operate 
   S2_QEMWV_SEALED
   --- CDAGA CROSS-DEVICE AGGREGATION RECORDED ---
   Step: 1 | Devices: 2 (lexicographically ordered by UUID)
-  Aggregation Digest: 75002a89e7ce77e5
-  Record Hash: 364bef08661097e0
+  Aggregation Digest: a00ccd734ccd6eb3
+  Record Hash: 037fae2dd809d7f5
   Status: CDAGA_RECORDED
   -----------------------------------------------
   --- CDAGA INTEGRITY VERIFIED ---
   Canonical Topology Digest: VERIFIED
-  Cert Hash: 364bef08661097e0 | Status: CDAGA_VERIFIED
+  Cert Hash: 037fae2dd809d7f5 | Status: CDAGA_VERIFIED
   --------------------------------
   --- CDAGA INTEGRITY VERIFIED ---
   Canonical Topology Digest: VERIFIED
-  Cert Hash: 364bef08661097e0 | Status: CDAGA_VERIFIED
+  Cert Hash: 037fae2dd809d7f5 | Status: CDAGA_VERIFIED
   --------------------------------
   S3_CDAGA_RECORDED
   --- BARAT BYZANTINE ROBUST AGGREGATION ---
   Workers: 4 | Included: 3 | Trimmed Alpha: 0.20
-  Outlier Rejected: Worker 3 (norm=0.000000)
+  Outlier Rejected: Worker 3 (norm=200.000000)
   Status: BARAT_AGGREGATED
   ------------------------------------------
   --- BARAT CERTIFICATE VERIFICATION ---
   Selection Proof: VERIFIED
-  Record Hash: fb10383cf751ef4b | Status: BARAT_VERIFIED
+  Record Hash: 8f60dc25d08ea170 | Status: BARAT_VERIFIED
   Outlier Status: OUTLIER_REJECTED
   --------------------------------------
   S4_BARAT_AGGREGATED
@@ -350,9 +350,9 @@ The `product_integrated.exe` demonstration proves that all 8 inventions operate 
   --- QECMA MULTIMODAL EVIDENCE BUNDLE ---
   Modalities: 3
     [0] tag=0x43 (concept) len=8 digest=0e9f773fd261f810e373a285b193a2a5...
-    [1] tag=0x54 (tensor) len=32 digest=9e6291970cb44dd94008c79bcaf9d86f...
+    [1] tag=0x54 (tensor) len=32 digest=8ba99545ec995a86160046e4b84978e4...
     [2] tag=0x58 (text) len=30 digest=0c99e9b68f496d45cabecb3281b854e9...
-  Unified Root: 9c1f5a04da6a20172b1cab669a502873ef7e3f251951475b0f4183c6da5f827b
+  Unified Root: 81e2673dccc362097acb5d0cd46aea322cb5f53c98b2514599def2dab341f566
   ----------------------------------------
   QECMA_BUNDLED
   S7_QECMA_BUNDLED
@@ -362,6 +362,7 @@ The `product_integrated.exe` demonstration proves that all 8 inventions operate 
   FULL_CHAIN_VERIFIED
   Exit Code: 0 (Wall-clock: 87 ms)
   ```
+  *(Note on M9.7 / BARAT norm: Inherits M9.4a native 2D tensor literal emission and Frobenius norm fix: Worker 3 norm = 200.000000).*
 * **Tamper Path (Altering In-Memory Certificate Step 0):**
   ```text
   S1_MCTP_CERTIFIED
