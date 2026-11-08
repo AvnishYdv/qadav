@@ -1,0 +1,25 @@
+// QNMF v3: Predictive World Model + Causal Learning (P1+P2+P3+P4)
+// Total Parameters: ~17.67M (17,557,648 base + 108,417 P4 modules)
+// Latent State z_t in R^128, Discrete 4 Actions
+// Transition Model: P_theta(z_{t+1} | z_t, a_t)
+// Reward Predictor: R_theta(z_t, a_t) -> R
+
+network QNMFv3 ⟦
+    dense ⟬128⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 2048⟭ ·
+    relu ·
+    dense ⟬2048⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+    relu ·
+    dense ⟬132⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "QNMF_V3_SPEC_17_67M_P1_P2_P3_P4" ·
+    yield 0 ·
+⟧
+

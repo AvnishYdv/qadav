@@ -1,0 +1,12 @@
+// QNMF v3 Baseline: No Planning (Random Policy)
+network QNMFv3NoPlan ⟦
+    dense ⟬128⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "QNMF_V3_NOPLAN_BASELINE" ·
+    yield 0 ·
+⟧
+

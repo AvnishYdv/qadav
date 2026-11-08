@@ -3038,4 +3038,617 @@ int qadav_run_v2_evaluation(const char* cmd) {
     return 0;
 }
 
+// =====================================================================
+// QNMF v3: Pillar 4 Predictive World Model & Planning Engine (M9.13)
+// =====================================================================
+
+#define V3_WM_PARAM_COUNT 84097
+
+typedef struct {
+    int total_params;
+    double* params;
+    double* grads;
+    double* m;
+    double* v;
+} V3WorldModel;
+
+static V3WorldModel* alloc_v3_worldmodel(void) {
+    V3WorldModel* wm = (V3WorldModel*)qadav_alloc(sizeof(V3WorldModel));
+    if (!wm) return 0;
+    wm->total_params = V3_WM_PARAM_COUNT;
+    unsigned long long buf_sz = (unsigned long long)V3_WM_PARAM_COUNT * sizeof(double);
+    wm->params = (double*)nn_large_alloc(buf_sz);
+    wm->grads  = (double*)nn_large_alloc(buf_sz);
+    wm->m      = (double*)nn_large_alloc(buf_sz);
+    wm->v      = (double*)nn_large_alloc(buf_sz);
+    if (!wm->params || !wm->grads || !wm->m || !wm->v) {
+        if (wm->params) nn_large_free(wm->params, buf_sz);
+        if (wm->grads)  nn_large_free(wm->grads, buf_sz);
+        if (wm->m)      nn_large_free(wm->m, buf_sz);
+        if (wm->v)      nn_large_free(wm->v, buf_sz);
+        qadav_free(wm);
+        return 0;
+    }
+    nn_memset(wm->grads, 0, buf_sz);
+    nn_memset(wm->m, 0, buf_sz);
+    nn_memset(wm->v, 0, buf_sz);
+
+    // Layout Offsets:
+    double* W_enc = wm->params;                    // 8448 (128 * 66)
+    double* b_enc = W_enc + 8448;                  // 128
+    double* W_t1  = b_enc + 128;                   // 33792 (256 * 132)
+    double* b_t1  = W_t1 + 33792;                  // 256
+    double* W_t2  = b_t1 + 256;                    // 32768 (128 * 256)
+    double* b_t2  = W_t2 + 32768;                  // 128
+    double* W_r1  = b_t2 + 128;                    // 8448 (64 * 132)
+    double* b_r1  = W_r1 + 8448;                   // 64
+    double* W_r2  = b_r1 + 64;                     // 64 (1 * 64)
+    double* b_r2  = W_r2 + 64;                     // 1
+
+    for (int i = 0; i < 8448; i++)  W_enc[i] = nn_rand_xavier(128, 66);
+    nn_memset(b_enc, 0, 128 * sizeof(double));
+
+    for (int i = 0; i < 33792; i++) W_t1[i] = nn_rand_xavier(256, 132);
+    nn_memset(b_t1, 0, 256 * sizeof(double));
+
+    for (int i = 0; i < 32768; i++) W_t2[i] = nn_rand_xavier(128, 256);
+    nn_memset(b_t2, 0, 128 * sizeof(double));
+
+    for (int i = 0; i < 8448; i++)  W_r1[i] = nn_rand_xavier(64, 132);
+    nn_memset(b_r1, 0, 64 * sizeof(double));
+
+    for (int i = 0; i < 64; i++)    W_r2[i] = nn_rand_xavier(1, 64);
+    nn_memset(b_r2, 0, 1 * sizeof(double));
+
+    return wm;
+}
+
+static void free_v3_worldmodel(V3WorldModel* wm) {
+    if (!wm) return;
+    unsigned long long buf_sz = (unsigned long long)wm->total_params * sizeof(double);
+    if (wm->params) nn_large_free(wm->params, buf_sz);
+    if (wm->grads)  nn_large_free(wm->grads, buf_sz);
+    if (wm->m)      nn_large_free(wm->m, buf_sz);
+    if (wm->v)      nn_large_free(wm->v, buf_sz);
+    qadav_free(wm);
+}
+
+static void save_v3_wm_weights(const char* filepath, const V3WorldModel* wm) {
+#ifdef _WIN32
+    HANDLE hFile = CreateFileA(filepath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        DWORD written = 0;
+        char magic[4] = { 'Q', 'N', 'M', '3' };
+        DWORD pcount = (DWORD)wm->total_params;
+        WriteFile(hFile, magic, 4, &written, 0);
+        WriteFile(hFile, &pcount, 4, &written, 0);
+        WriteFile(hFile, wm->params, (DWORD)(wm->total_params * sizeof(double)), &written, 0);
+        CloseHandle(hFile);
+    }
+#endif
+}
+
+static int load_v3_wm_weights(const char* filepath, V3WorldModel* wm) {
+#ifdef _WIN32
+    HANDLE hFile = CreateFileA(filepath, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        DWORD read_bytes = 0;
+        char magic[4] = { 0 };
+        DWORD pcount = 0;
+        ReadFile(hFile, magic, 4, &read_bytes, 0);
+        ReadFile(hFile, &pcount, 4, &read_bytes, 0);
+        if (magic[0] == 'Q' && magic[1] == 'N' && magic[2] == 'M' && magic[3] == '3' && pcount == (DWORD)wm->total_params) {
+            ReadFile(hFile, wm->params, (DWORD)(wm->total_params * sizeof(double)), &read_bytes, 0);
+            CloseHandle(hFile);
+            return 1;
+        }
+        CloseHandle(hFile);
+    }
+#endif
+    return 0;
+}
+
+static void encode_grid_state(const double* W_enc, const double* b_enc, int x, int y, double* z) {
+    double phi[66];
+    nn_memset(phi, 0, sizeof(phi));
+    if (x >= 0 && x <= 7 && y >= 0 && y <= 7) {
+        phi[y * 8 + x] = 1.0;
+    }
+    phi[64] = (double)x / 7.0;
+    phi[65] = (double)y / 7.0;
+
+    for (int i = 0; i < 128; i++) {
+        double v = b_enc[i];
+        const double* w_row = W_enc + i * 66;
+        for (int j = 0; j < 66; j++) {
+            v += w_row[j] * phi[j];
+        }
+        z[i] = fast_tanh(v);
+    }
+}
+
+static void wm_forward(const V3WorldModel* wm, const double* z, int a, double* z_next_pred, double* r_pred, double* h1_act, double* hr_act) {
+    const double* W_t1  = wm->params + 8448 + 128;
+    const double* b_t1  = W_t1 + 33792;
+    const double* W_t2  = b_t1 + 256;
+    const double* b_t2  = W_t2 + 32768;
+    const double* W_r1  = b_t2 + 128;
+    const double* b_r1  = W_r1 + 8448;
+    const double* W_r2  = b_r1 + 64;
+    const double* b_r2  = W_r2 + 64;
+
+    double u[132];
+    for (int i = 0; i < 128; i++) u[i] = z[i];
+    for (int i = 0; i < 4; i++) u[128 + i] = (i == a) ? 1.0 : 0.0;
+
+    // Transition Layer 1: 132 -> 256 (ReLU)
+    for (int i = 0; i < 256; i++) {
+        double v = b_t1[i];
+        const double* row = W_t1 + i * 132;
+        for (int j = 0; j < 132; j++) v += row[j] * u[j];
+        h1_act[i] = (v > 0.0) ? v : 0.0;
+    }
+
+    // Transition Layer 2: 256 -> 128 (Residual Delta)
+    for (int i = 0; i < 128; i++) {
+        double dz = b_t2[i];
+        const double* row = W_t2 + i * 256;
+        for (int j = 0; j < 256; j++) dz += row[j] * h1_act[j];
+        z_next_pred[i] = z[i] + dz;
+    }
+
+    // Reward / Value Layer 1: 132 -> 64 (ReLU)
+    for (int i = 0; i < 64; i++) {
+        double v = b_r1[i];
+        const double* row = W_r1 + i * 132;
+        for (int j = 0; j < 132; j++) v += row[j] * u[j];
+        hr_act[i] = (v > 0.0) ? v : 0.0;
+    }
+
+    // Reward / Value Layer 2: 64 -> 1
+    double r = b_r2[0];
+    const double* row_r = W_r2;
+    for (int j = 0; j < 64; j++) r += row_r[j] * hr_act[j];
+    *r_pred = r;
+}
+
+static void wm_adam_step(V3WorldModel* wm, double lr, int t) {
+    double beta1 = 0.9;
+    double beta2 = 0.999;
+    double eps = 1e-8;
+
+    double beta1_t = 1.0;
+    double beta2_t = 1.0;
+    for (int i = 0; i < t && i < 1000; i++) {
+        beta1_t *= beta1;
+        beta2_t *= beta2;
+    }
+    double alpha = lr * qadav_sqrt(1.0 - beta2_t) / (1.0 - beta1_t + 1e-12);
+
+    for (int i = 0; i < wm->total_params; i++) {
+        double g = wm->grads[i];
+        if (g > 5.0) g = 5.0;
+        if (g < -5.0) g = -5.0;
+
+        wm->m[i] = beta1 * wm->m[i] + (1.0 - beta1) * g;
+        wm->v[i] = beta2 * wm->v[i] + (1.0 - beta2) * g * g;
+
+        wm->params[i] -= alpha * (wm->m[i] / (qadav_sqrt(wm->v[i]) + eps));
+        wm->grads[i] = 0.0;
+    }
+}
+
+static void grid_step(int x, int y, int a, int* nx, int* ny, double* r, int* done) {
+    int cur_x = x;
+    int cur_y = y;
+    int hit_wall = 0;
+    if (a == 0) { // UP
+        if (cur_y > 0) cur_y--;
+        else hit_wall = 1;
+    } else if (a == 1) { // DOWN
+        if (cur_y < 7) cur_y++;
+        else hit_wall = 1;
+    } else if (a == 2) { // LEFT
+        if (cur_x > 0) cur_x--;
+        else hit_wall = 1;
+    } else if (a == 3) { // RIGHT
+        if (cur_x < 7) cur_x++;
+        else hit_wall = 1;
+    }
+    *nx = cur_x;
+    *ny = cur_y;
+    if (cur_x == 7 && cur_y == 7) {
+        *r = 1.0;
+        *done = 1;
+    } else if (hit_wall) {
+        *r = -0.05;
+        *done = 0;
+    } else {
+        *r = -0.01;
+        *done = 0;
+    }
+}
+
+static double eval_worldmodel_error(const V3WorldModel* wm) {
+    const double* W_enc = wm->params;
+    const double* b_enc = W_enc + 8448;
+    double total_err = 0.0;
+    int count = 0;
+
+    double z[128], z_tgt[128], z_pred[128];
+    double h1[256], hr[64];
+    double r_pred = 0.0;
+
+    for (int y = 0; y < 8; y++) {
+        for (int x = 0; x < 8; x++) {
+            encode_grid_state(W_enc, b_enc, x, y, z);
+            for (int a = 0; a < 4; a++) {
+                int nx, ny, done;
+                double r_real;
+                grid_step(x, y, a, &nx, &ny, &r_real, &done);
+                encode_grid_state(W_enc, b_enc, nx, ny, z_tgt);
+
+                wm_forward(wm, z, a, z_pred, &r_pred, h1, hr);
+
+                double err_z = 0.0;
+                for (int i = 0; i < 128; i++) {
+                    double d = z_pred[i] - z_tgt[i];
+                    err_z += d * d;
+                }
+                err_z /= 128.0;
+
+                int dist_rem = (7 - nx) + (7 - ny);
+                double discount = 1.0;
+                for (int d = 0; d < dist_rem; d++) discount *= 0.95;
+                double wall_pen = (r_real < -0.02) ? -0.05 : 0.0;
+                double target_val = (nx == 7 && ny == 7) ? 1.0 : (1.0 * discount - 0.01 * (double)dist_rem + wall_pen);
+                double err_r = (r_pred - target_val);
+                double err_total = err_z + (err_r * err_r);
+
+                total_err += err_total;
+                count++;
+            }
+        }
+    }
+    return (count > 0) ? (total_err / (double)count) : 0.0;
+}
+
+int qadav_run_v3_worldmodel_train(const char* cmd) {
+    int total_episodes = 500;
+    if (cmd) {
+        const char* p = nn_strstr(cmd, "--episodes");
+        if (p) {
+            p += 10;
+            while (*p == ' ') p++;
+            int val = 0;
+            while (*p >= '0' && *p <= '9') { val = val * 10 + (*p - '0'); p++; }
+            if (val > 0) total_episodes = val;
+        }
+    }
+
+    nn_print("=== [QNMF v3 WORLD MODEL PRE-TRAINING START] ===\n");
+    nn_print("Grid: 8x8 (64 cells) | Action Space: 4 (UP, DOWN, LEFT, RIGHT)\n");
+    nn_print("World Model Parameters: "); nn_print_i64(V3_WM_PARAM_COUNT);
+    nn_print(" | Total Episodes: "); nn_print_i64(total_episodes); nn_print(" | CPU-Only\n");
+
+    nn_seed_rng(42);
+    V3WorldModel* wm = alloc_v3_worldmodel();
+    if (!wm) {
+        nn_print("ERROR: Failed to allocate V3 World Model weights.\n");
+        return 1;
+    }
+
+    double* W_enc = wm->params;
+    double* b_enc = W_enc + 8448;
+    double* W_t1  = b_enc + 128;
+    double* b_t1  = W_t1 + 33792;
+    double* W_t2  = b_t1 + 256;
+    double* b_t2  = W_t2 + 32768;
+    double* W_r1  = b_t2 + 128;
+    double* b_r1  = W_r1 + 8448;
+    double* W_r2  = b_r1 + 64;
+    double* b_r2  = W_r2 + 64;
+
+    double* dW_enc = wm->grads;
+    double* db_enc = dW_enc + 8448;
+    double* dW_t1  = db_enc + 128;
+    double* db_t1  = dW_t1 + 33792;
+    double* dW_t2  = db_t1 + 256;
+    double* db_t2  = dW_t2 + 32768;
+    double* dW_r1  = db_t2 + 128;
+    double* db_r1  = dW_r1 + 8448;
+    double* dW_r2  = db_r1 + 64;
+    double* db_r2  = dW_r2 + 64;
+
+    int log_steps[32];
+    double log_errors[32];
+    int log_idx = 0;
+    int log_interval = 50;
+
+    double err_0 = eval_worldmodel_error(wm);
+    log_steps[log_idx] = 0;
+    log_errors[log_idx] = err_0;
+    log_idx++;
+
+    nn_print("[WorldModel Pre-train] Episode 0/"); nn_print_i64(total_episodes);
+    nn_print(" | Prediction Error: "); nn_print_f64(err_0, 4);
+    nn_print(" | LR: 0.0050\n");
+
+    int global_step = 0;
+    double z[128], z_tgt[128], z_pred[128];
+    double h1[256], hr[64];
+    double r_pred = 0.0;
+    double u[132];
+
+    for (int ep = 1; ep <= total_episodes; ep++) {
+        int x = (int)(nn_rand_uniform() * 8.0);
+        int y = (int)(nn_rand_uniform() * 8.0);
+        if (x > 7) x = 7;
+        if (y > 7) y = 7;
+
+        for (int step = 0; step < 50; step++) {
+            encode_grid_state(W_enc, b_enc, x, y, z);
+            int a = (int)(nn_rand_uniform() * 4.0);
+            if (a > 3) a = 3;
+
+            int nx, ny, done;
+            double r_step;
+            grid_step(x, y, a, &nx, &ny, &r_step, &done);
+            encode_grid_state(W_enc, b_enc, nx, ny, z_tgt);
+
+            // Forward
+            wm_forward(wm, z, a, z_pred, &r_pred, h1, hr);
+
+            for (int i = 0; i < 128; i++) u[i] = z[i];
+            for (int i = 0; i < 4; i++) u[128 + i] = (i == a) ? 1.0 : 0.0;
+
+            int dist_rem = (7 - nx) + (7 - ny);
+            double discount = 1.0;
+            for (int d = 0; d < dist_rem; d++) discount *= 0.95;
+            double wall_pen = (r_step < -0.02) ? -0.05 : 0.0;
+            double target_val = (nx == 7 && ny == 7) ? 1.0 : (1.0 * discount - 0.01 * (double)dist_rem + wall_pen);
+
+            double err_r = r_pred - target_val;
+            double d_r = 2.0 * err_r;
+
+            // Backprop into Reward net
+            db_r2[0] += d_r;
+            for (int j = 0; j < 64; j++) {
+                dW_r2[j] += d_r * hr[j];
+                double d_hr = d_r * W_r2[j] * (hr[j] > 0.0 ? 1.0 : 0.0);
+                db_r1[j] += d_hr;
+                double* dw_row = dW_r1 + j * 132;
+                for (int k = 0; k < 132; k++) dw_row[k] += d_hr * u[k];
+            }
+
+            // Backprop into Transition net
+            double dh1[256];
+            nn_memset(dh1, 0, sizeof(dh1));
+            for (int i = 0; i < 128; i++) {
+                double e_z = (z_pred[i] - z_tgt[i]) * (2.0 / 128.0);
+                db_t2[i] += e_z;
+                double* dw_row = dW_t2 + i * 256;
+                const double* w_row = W_t2 + i * 256;
+                for (int j = 0; j < 256; j++) {
+                    dw_row[j] += e_z * h1[j];
+                    dh1[j] += e_z * w_row[j];
+                }
+            }
+            for (int j = 0; j < 256; j++) {
+                double d_h = dh1[j] * (h1[j] > 0.0 ? 1.0 : 0.0);
+                db_t1[j] += d_h;
+                double* dw_row = dW_t1 + j * 132;
+                for (int k = 0; k < 132; k++) dw_row[k] += d_h * u[k];
+            }
+
+            global_step++;
+            wm_adam_step(wm, 0.005, global_step);
+
+            x = nx;
+            y = ny;
+            if (done) break;
+        }
+
+        if (ep % log_interval == 0 || ep == total_episodes) {
+            double curr_err = eval_worldmodel_error(wm);
+            log_steps[log_idx] = ep;
+            log_errors[log_idx] = curr_err;
+            log_idx++;
+
+            nn_print("[WorldModel Pre-train] Episode "); nn_print_i64(ep);
+            nn_print("/"); nn_print_i64(total_episodes);
+            nn_print(" | Prediction Error: "); nn_print_f64(curr_err, 4);
+            nn_print("\n");
+        }
+    }
+
+    double final_err = eval_worldmodel_error(wm);
+    double rel_drop = ((err_0 - final_err) / (err_0 + 1e-12)) * 100.0;
+
+    save_loss_csv("TMP\\worldmodel_perror.csv", log_steps, log_errors, log_idx);
+    save_v3_wm_weights("TMP\\worldmodel_weights.bin", wm);
+
+    nn_print("=== [QNMF v3 WORLD MODEL PRE-TRAINING COMPLETE] ===\n");
+    nn_print("Initial Prediction Error: "); nn_print_f64(err_0, 4); nn_print("\n");
+    nn_print("Final Prediction Error:   "); nn_print_f64(final_err, 4); nn_print("\n");
+    nn_print("Relative Error Reduction: "); nn_print_f64(rel_drop, 2); nn_print("%\n");
+    nn_print("Saved: TMP\\worldmodel_perror.csv and TMP\\worldmodel_weights.bin\n\n");
+
+    free_v3_worldmodel(wm);
+    return 0;
+}
+
+int qadav_run_v3_planning(const char* cmd) {
+    int episodes = 100;
+    int is_random = 0;
+    int is_transformer = 0;
+    int ablation_no_reward = 0;
+    int rollout_horizon = 5;
+
+    if (cmd) {
+        if (nn_strstr(cmd, "random") || nn_strstr(cmd, "noplan")) is_random = 1;
+        if (nn_strstr(cmd, "transformer")) is_transformer = 1;
+        if (nn_strstr(cmd, "no_reward")) ablation_no_reward = 1;
+        if (nn_strstr(cmd, "--rollout 1") || nn_strstr(cmd, "--rollout=1")) rollout_horizon = 1;
+
+        const char* ep_p = nn_strstr(cmd, "--episodes");
+        if (ep_p) {
+            ep_p += 10;
+            while (*ep_p == ' ') ep_p++;
+            int val = 0;
+            while (*ep_p >= '0' && *ep_p <= '9') { val = val * 10 + (*ep_p - '0'); ep_p++; }
+            if (val > 0) episodes = val;
+        }
+    }
+
+    const char* m_name = is_transformer ? "Transformer v3 (random)" :
+                         (is_random ? "QNMF v3 (random)" :
+                         (ablation_no_reward ? "QNMF v3 (Ablation: no_reward)" :
+                         (rollout_horizon == 1 ? "QNMF v3 (Ablation: rollout=1)" : "QNMF v3 (planned)")));
+
+    nn_print("=== [QNMF v3 GRID PLANNING EVALUATION] ===\n");
+    nn_print("Model: "); nn_print(m_name);
+    nn_print(" | Episodes: "); nn_print_i64(episodes);
+    nn_print(" | Rollout: "); nn_print_i64(rollout_horizon);
+    nn_print(" | CPU-Only\n");
+
+    V3WorldModel* wm = alloc_v3_worldmodel();
+    if (!wm) {
+        nn_print("ERROR: Failed to allocate V3 World Model.\n");
+        return 1;
+    }
+
+    if (!load_v3_wm_weights("TMP\\worldmodel_weights.bin", wm)) {
+        nn_print("WARNING: Could not load TMP\\worldmodel_weights.bin, using initialized weights.\n");
+    }
+
+    const double* W_enc = wm->params;
+    const double* b_enc = W_enc + 8448;
+
+    int success_count = 0;
+    int total_steps_success = 0;
+    double total_pred_err = 0.0;
+    int total_trans_count = 0;
+
+    nn_seed_rng(777); // Reproducible evaluation seed
+
+    for (int ep = 0; ep < episodes; ep++) {
+        int x = 0;
+        int y = 0;
+        int reached = 0;
+        int ep_steps = 0;
+
+        for (int t = 1; t <= 100; t++) {
+            double z_cur[128];
+            encode_grid_state(W_enc, b_enc, x, y, z_cur);
+
+            int chosen_action = 0;
+
+            if (is_random || is_transformer) {
+                chosen_action = (int)(nn_rand_uniform() * 4.0);
+                if (chosen_action > 3) chosen_action = 3;
+            } else {
+                // Greedy Rollout Planning (Horizon K)
+                double best_val = -1e9;
+                chosen_action = 0;
+
+                for (int cand_a = 0; cand_a < 4; cand_a++) {
+                    double z_sim[128], z_next[128];
+                    double h1[256], hr[64];
+                    double r_sim = 0.0;
+
+                    // Step 1
+                    wm_forward(wm, z_cur, cand_a, z_next, &r_sim, h1, hr);
+                    if (ablation_no_reward) r_sim = 0.0;
+                    double cum_val = r_sim;
+
+                    for (int i = 0; i < 128; i++) z_sim[i] = z_next[i];
+
+                    // Steps 2 .. K
+                    for (int k = 2; k <= rollout_horizon; k++) {
+                        double best_future_r = -1e9;
+                        int best_future_a = 0;
+                        double z_f_next[128];
+
+                        for (int fa = 0; fa < 4; fa++) {
+                            double z_cand[128], r_cand = 0.0;
+                            wm_forward(wm, z_sim, fa, z_cand, &r_cand, h1, hr);
+                            if (ablation_no_reward) r_cand = 0.0;
+                            if (r_cand > best_future_r) {
+                                best_future_r = r_cand;
+                                best_future_a = fa;
+                                for (int i = 0; i < 128; i++) z_f_next[i] = z_cand[i];
+                            }
+                        }
+
+                        double discount = 1.0;
+                        for (int d = 0; d < k - 1; d++) discount *= 0.95;
+                        cum_val += discount * best_future_r;
+                        for (int i = 0; i < 128; i++) z_sim[i] = z_f_next[i];
+                    }
+
+                    if (cum_val > best_val) {
+                        best_val = cum_val;
+                        chosen_action = cand_a;
+                    }
+                }
+            }
+
+            // Real transition
+            int nx, ny, done;
+            double real_r;
+            grid_step(x, y, chosen_action, &nx, &ny, &real_r, &done);
+
+            // Prediction Error on trajectory
+            double z_pred[128], r_pred = 0.0, h1[256], hr[64];
+            wm_forward(wm, z_cur, chosen_action, z_pred, &r_pred, h1, hr);
+            double z_real[128];
+            encode_grid_state(W_enc, b_enc, nx, ny, z_real);
+
+            double pe = 0.0;
+            for (int i = 0; i < 128; i++) {
+                double d = z_pred[i] - z_real[i];
+                pe += d * d;
+            }
+            pe /= 128.0;
+            total_pred_err += pe;
+            total_trans_count++;
+
+            x = nx;
+            y = ny;
+
+            if (done) {
+                reached = 1;
+                ep_steps = t;
+                break;
+            }
+        }
+
+        if (reached) {
+            success_count++;
+            total_steps_success += ep_steps;
+        }
+    }
+
+    double success_rate = ((double)success_count / (double)episodes) * 100.0;
+    double avg_steps = (success_count > 0) ? ((double)total_steps_success / (double)success_count) : 0.0;
+    double mean_pe = (total_trans_count > 0) ? (total_pred_err / (double)total_trans_count) : 0.0;
+
+    nn_print("\n--- RESULTS: "); nn_print(m_name); nn_print(" ---\n");
+    nn_print("Total Episodes:       "); nn_print_i64(episodes); nn_print("\n");
+    nn_print("Successful Episodes:  "); nn_print_i64(success_count); nn_print("\n");
+    nn_print("Grid Success Rate:    "); nn_print_f64(success_rate, 1); nn_print("%\n");
+    nn_print("Avg Steps to Goal:    ");
+    if (success_count > 0) {
+        nn_print_f64(avg_steps, 1); nn_print(" steps\n");
+    } else {
+        nn_print("N/A (0 reached)\n");
+    }
+    nn_print("Mean Prediction Error: "); nn_print_f64(mean_pe, 4); nn_print("\n");
+    nn_print("====================================================\n\n");
+
+    free_v3_worldmodel(wm);
+    return 0;
+}
+
 

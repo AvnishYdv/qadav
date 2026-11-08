@@ -1,0 +1,16 @@
+// Qadav Grid World Environment (8x8)
+// 64 discrete states: (x, y) in [0, 7] x [0, 7]
+// Actions: 0=UP, 1=DOWN, 2=LEFT, 3=RIGHT
+// Reward: +1.0 on reaching goal (7, 7), -0.01 per step
+
+network EnvGridSpec ⟦
+    dense ⟬64⸴ 128⟭ ·
+    relu ·
+    dense ⟬128⸴ 4⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "ENV_GRID_8X8_INITIALIZED" ·
+    yield 0 ·
+⟧
+

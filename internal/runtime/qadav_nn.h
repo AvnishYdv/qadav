@@ -78,6 +78,10 @@ int qadav_run_toy_evaluation(const char* cmd);
 int qadav_run_v2_training(const char* cmd, void* mctp_cert, int epochs);
 int qadav_run_v2_evaluation(const char* cmd);
 
+// QNMF v3 Predictive World Model & Planning Engine for M9.13 (P1+P2+P3+P4)
+int qadav_run_v3_worldmodel_train(const char* cmd);
+int qadav_run_v3_planning(const char* cmd);
+
 #endif // QADAV_NN_H
 
 

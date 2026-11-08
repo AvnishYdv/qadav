@@ -1,0 +1,12 @@
+// Transformer Baseline: No Planning (Random Policy)
+network TransformerV3NoPlan ⟦
+    dense ⟬128⸴ 256⟭ ·
+    relu ·
+    dense ⟬256⸴ 128⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "TRANSFORMER_V3_NOPLAN_BASELINE" ·
+    yield 0 ·
+⟧
+

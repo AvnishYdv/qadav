@@ -150,6 +150,14 @@ void qadav_mctp_record_epochs(qadav_training_cert* c, int epochs,
 #ifdef _WIN32
     const char* cmd = GetCommandLineA();
     if (cmd) {
+        if (mctp_strstr(cmd, "plan_grid") || mctp_strstr(cmd, "--planning") || mctp_strstr(cmd, "--rollout")) {
+            qadav_run_v3_planning(cmd);
+            return;
+        }
+        if (mctp_strstr(cmd, "train_worldmodel") || mctp_strstr(cmd, "worldmodel")) {
+            qadav_run_v3_worldmodel_train(cmd);
+            return;
+        }
         if (mctp_strstr(cmd, "train_v2") || mctp_strstr(cmd, "qnmf_v2") || mctp_strstr(cmd, "transformer_v2")) {
             qadav_run_v2_training(cmd, (void*)c, epochs);
             return;
