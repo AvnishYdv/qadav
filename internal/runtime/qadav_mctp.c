@@ -150,6 +150,14 @@ void qadav_mctp_record_epochs(qadav_training_cert* c, int epochs,
 #ifdef _WIN32
     const char* cmd = GetCommandLineA();
     if (cmd) {
+        if (mctp_strstr(cmd, "train_ecra")) {
+            qadav_run_ecra_train(cmd);
+            return;
+        }
+        if (mctp_strstr(cmd, "eval_ecra") || mctp_strstr(cmd, "--strategy")) {
+            qadav_run_ecra_eval(cmd);
+            return;
+        }
         if (mctp_strstr(cmd, "plan_grid") || mctp_strstr(cmd, "--planning") || mctp_strstr(cmd, "--rollout")) {
             qadav_run_v3_planning(cmd);
             return;

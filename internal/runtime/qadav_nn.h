@@ -82,6 +82,10 @@ int qadav_run_v2_evaluation(const char* cmd);
 int qadav_run_v3_worldmodel_train(const char* cmd);
 int qadav_run_v3_planning(const char* cmd);
 
+// QNMF P6: ECRA Adaptive Compute Router & Verification Engine for M9.14
+int qadav_run_ecra_train(const char* cmd);
+int qadav_run_ecra_eval(const char* cmd);
+
 #endif // QADAV_NN_H
 
 

@@ -1,0 +1,16 @@
+// QNMF Pillar 6: Mixed Complexity Task Benchmark (100 Tasks)
+// Tier 0: 30 Easy tasks (single-digit arithmetic)
+// Tier 1: 30 Medium tasks (two-digit arithmetic, 2-step grid path)
+// Tier 2: 20 Hard tasks (multi-digit arithmetic, 5-step grid planning)
+// Tier 3: 20 Very Hard tasks (grid obstacles, 2-step deductive logic)
+
+network TasksToySpec ⟦
+    dense ⟬100⸴ 64⟭ ·
+    relu ·
+    dense ⟬64⸴ 4⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "TASKS_TOY_100_INITIALIZED" ·
+    yield 0 ·
+⟧

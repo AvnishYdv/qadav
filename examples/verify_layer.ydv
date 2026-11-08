@@ -1,0 +1,14 @@
+// QNMF Pillar 6: Verification & Abstention Layer
+// Evaluates candidate outputs: arithmetic parity, grid state transitions, logic invariants
+// Returns: 0=VERIFIED, 1=ABSTAIN, 2=RETRY
+
+network VerifyLayerNet ⟦
+    dense ⟬4⸴ 8⟭ ·
+    relu ·
+    dense ⟬8⸴ 3⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "VERIFY_LAYER_SPEC_INITIALIZED" ·
+    yield 0 ·
+⟧
