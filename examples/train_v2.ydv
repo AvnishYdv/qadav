@@ -1,3 +1,6 @@
+// NOTE: Architecture is defined in C (qadav_nn.c), not this file.
+// This .ydv is a stub — actual model dispatch via --model flag.
+
 network TrainNetV2 ⟦
     dense ⟬2⸴ 4⟭ ·
     relu ·

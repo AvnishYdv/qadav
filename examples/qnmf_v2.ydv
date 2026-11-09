@@ -1,3 +1,6 @@
+// NOTE: Architecture is defined in C (qadav_nn.c), not this file.
+// This .ydv is a stub — actual model dispatch via --model flag.
+
 network QNMFv2 ⟦
     dense ⟬128⸴ 256⟭ ·
     relu ·

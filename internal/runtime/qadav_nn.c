@@ -600,6 +600,7 @@ typedef int BOOL;
 #define GENERIC_WRITE   0x40000000
 #define CREATE_ALWAYS   2
 #define OPEN_EXISTING   3
+#define FILE_SHARE_READ 1
 #define FILE_ATTRIBUTE_NORMAL 0x80
 #define INVALID_HANDLE_VALUE ((HANDLE)(long long)-1)
 
@@ -1524,9 +1525,9 @@ int qadav_run_toy_training(const char* cmd, void* mctp_cert, int epochs) {
     // Read dataset
     const char* path1 = "TMP\\shakespeare_subset.txt";
     const char* path2 = "shakespeare_subset.txt";
-    HANDLE hFile = CreateFileA(path1, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    HANDLE hFile = CreateFileA(path1, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     if (hFile == INVALID_HANDLE_VALUE) {
-        hFile = CreateFileA(path2, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+        hFile = CreateFileA(path2, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     }
     if (hFile == INVALID_HANDLE_VALUE) {
         nn_print("[ERROR] Dataset TMP\\shakespeare_subset.txt not found!\n");
@@ -1691,9 +1692,9 @@ int qadav_run_toy_evaluation(const char* cmd) {
     nn_print("========================================================================================\n");
 
     // Load dataset validation split
-    HANDLE hFile = CreateFileA("TMP\\shakespeare_subset.txt", GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    HANDLE hFile = CreateFileA("TMP\\shakespeare_subset.txt", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     if (hFile == INVALID_HANDLE_VALUE) {
-        hFile = CreateFileA("shakespeare_subset.txt", GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+        hFile = CreateFileA("shakespeare_subset.txt", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     }
     if (hFile == INVALID_HANDLE_VALUE) {
         nn_print("[ERROR] Evaluation dataset TMP\\shakespeare_subset.txt missing!\n");
@@ -2681,9 +2682,9 @@ int qadav_run_v2_training(const char* cmd, void* mctp_cert, int epochs) {
     // Load dataset
     const char* path1 = "TMP\\shakespeare_subset.txt";
     const char* path2 = "shakespeare_subset.txt";
-    HANDLE hFile = CreateFileA(path1, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    HANDLE hFile = CreateFileA(path1, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     if (hFile == INVALID_HANDLE_VALUE) {
-        hFile = CreateFileA(path2, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+        hFile = CreateFileA(path2, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     }
     if (hFile == INVALID_HANDLE_VALUE) {
         nn_print("[ERROR] Dataset TMP\\shakespeare_subset.txt missing!\n");
@@ -2738,7 +2739,7 @@ int qadav_run_v2_training(const char* cmd, void* mctp_cert, int epochs) {
     int log_steps[256];
     double log_losses[256];
     int log_idx = 0;
-    int log_interval = total_steps >= 100 ? (total_steps / 10) : (total_steps >= 20 ? (total_steps / 10) : 2);
+    int log_interval = (total_steps >= 2000) ? 100 : (total_steps >= 100 ? (total_steps / 10) : (total_steps >= 20 ? (total_steps / 10) : 2));
     if (log_interval < 1) log_interval = 1;
 
     DWORD t_start = nn_get_ticks();
@@ -2854,9 +2855,9 @@ int qadav_run_v2_evaluation(const char* cmd) {
     nn_print("========================================================================================\n");
 
     // Load dataset validation split
-    HANDLE hFile = CreateFileA("TMP\\shakespeare_subset.txt", GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    HANDLE hFile = CreateFileA("TMP\\shakespeare_subset.txt", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     if (hFile == INVALID_HANDLE_VALUE) {
-        hFile = CreateFileA("shakespeare_subset.txt", GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+        hFile = CreateFileA("shakespeare_subset.txt", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     }
     if (hFile == INVALID_HANDLE_VALUE) {
         nn_print("[ERROR] Evaluation dataset TMP\\shakespeare_subset.txt missing!\n");
