@@ -1,3 +1,6 @@
+// NOTE: ECRA evaluation & verifier scoring execute in C (internal/runtime/qadav_nn.c).
+// Supports CLI flags: --strategy fixed_l3|ecra|ecra_abstain --verifier qnmf|transformer --ambiguous
+
 network EvalEcraNet ⟦
     dense ⟬2⸴ 4⟭ ·
     relu ·

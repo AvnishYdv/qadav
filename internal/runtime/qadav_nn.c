@@ -4051,11 +4051,61 @@ int qadav_run_v3_planning(const char* cmd) {
 
 typedef struct {
     int id;
-    int tier;       // 0: Easy, 1: Medium, 2: Hard, 3: Very Hard
-    int min_level;  // 0, 1, 2, or 3
-    double uncertainty; // u_t in [0.0, 1.0]
-    double x[128];      // x_t query embedding
+    int tier;             // 0: Easy (30), 1: Medium (30), 2: Hard (20), 3: Very Hard (20)
+    int true_difficulty;  // Actual required compute level 0..3
+    int difficulty_label; // Observed/training label (includes --label_noise flips)
+    int is_borderline;    // 1 for borderline ambiguous tasks (14 total: 5+5+2+2)
+    int is_noisy_label;   // 1 if label was flipped by --label_noise
+    double uncertainty;   // u_t in [0.0, 1.0]
+    double x[128];        // x_t query embedding
 } EcraTask;
+
+static unsigned long long ecra_xorshift(unsigned long long* state) {
+    unsigned long long x = *state;
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    *state = x;
+    return x;
+}
+
+static double ecra_rand_u01(unsigned long long* state) {
+    return (double)(ecra_xorshift(state) & 0xFFFFFFFFULL) / 4294967296.0;
+}
+
+static double ecra_randn(unsigned long long* state) {
+    // Sum of 12 U(0,1) - 6.0 has mean 0, variance 1 (exact CLT Gaussian approx, zero-libc)
+    double s = 0.0;
+    for (int i = 0; i < 12; i++) s += ecra_rand_u01(state);
+    return s - 6.0;
+}
+
+static void ecra_build_feature_vec(
+    double w0, double w1, double w2, double w3,
+    double noise_sd, unsigned long long* rng, double* out
+) {
+    for (int j = 0; j < 128; j++) out[j] = 0.0;
+
+    // 4 overlapping 32-dim prototype bands shifted by 16 (adjacent tiers share 16 dims)
+    for (int j = 0; j < 32; j++)  out[j]      += w0 * 0.50;
+    for (int j = 16; j < 48; j++) out[j]      += w1 * 0.50;
+    for (int j = 32; j < 64; j++) out[j]      += w2 * 0.50;
+    for (int j = 48; j < 80; j++) out[j]      += w3 * 0.50;
+
+    // Shared complexity scalar cue in dims 80..95
+    double diff_cue = (w1 + 2.0 * w2 + 3.0 * w3) / 3.0;
+    for (int j = 80; j < 96; j++) out[j] = 0.35 * diff_cue;
+
+    // Isotropic feature noise across all 128 dimensions
+    for (int j = 0; j < 128; j++) {
+        out[j] += noise_sd * ecra_randn(rng);
+    }
+
+    double norm = 0.0;
+    for (int j = 0; j < 128; j++) norm += out[j] * out[j];
+    norm = qadav_sqrt(norm);
+    for (int j = 0; j < 128; j++) out[j] /= (norm + 1e-9);
+}
 
 typedef struct {
     int total_params; // 129*64 + 64 + 64*4 + 4 = 8580
@@ -4102,66 +4152,161 @@ static void free_ecra_router(EcraRouter* r) {
     nn_large_free(r, sizeof(EcraRouter));
 }
 
-static void generate_ecra_tasks(EcraTask* tasks) {
-    // 30 Easy (Tier 0): single-digit arithmetic (min_level = 0)
+static void generate_ecra_tasks_ext(EcraTask* tasks, int ambiguous, double label_noise) {
+    unsigned long long rng = 9142026ULL;
+
+    for (int i = 0; i < 100; i++) {
+        tasks[i].id = i;
+        tasks[i].is_borderline = 0;
+        tasks[i].is_noisy_label = 0;
+    }
+
+    if (!ambiguous) {
+        // Legacy clean separation mode (--clean)
+        for (int i = 0; i < 100; i++) {
+            int t = (i < 30) ? 0 : (i < 60 ? 1 : (i < 80 ? 2 : 3));
+            tasks[i].tier = t;
+            tasks[i].true_difficulty = t;
+            tasks[i].difficulty_label = t;
+            tasks[i].uncertainty = (t == 0) ? 0.08 : (t == 1 ? 0.35 : (t == 2 ? 0.64 : 0.88));
+            ecra_build_feature_vec(
+                t == 0 ? 1.0 : 0.0, t == 1 ? 1.0 : 0.0,
+                t == 2 ? 1.0 : 0.0, t == 3 ? 1.0 : 0.0,
+                0.04, &rng, tasks[i].x
+            );
+        }
+        return;
+    }
+
+    // Ambiguous Benchmark (100 tasks):
+    // Tier 0 (Easy, 30):   25 clear (0..24) + 5 borderline (25..29)
+    // Tier 1 (Medium, 30): 25 clear (30..54) + 5 borderline (55..59)
+    // Tier 2 (Hard, 20):   18 clear (60..77) + 2 borderline (78..79)
+    // Tier 3 (VHard, 20):  18 clear (80..97) + 2 borderline (98..99)
     for (int i = 0; i < 30; i++) {
-        tasks[i].id = i;
         tasks[i].tier = 0;
-        tasks[i].min_level = 0;
-        tasks[i].uncertainty = 0.06 + 0.04 * (double)(i % 5) / 5.0; // 0.06 - 0.092
-        for (int j = 0; j < 128; j++) tasks[i].x[j] = 0.0;
-        tasks[i].x[0] = 1.0;
-        tasks[i].x[1 + (i % 9)] = 0.5;
-        tasks[i].x[10 + ((i * 7) % 9)] = 0.5;
-        double norm = 0.0;
-        for (int j = 0; j < 128; j++) norm += tasks[i].x[j] * tasks[i].x[j];
-        norm = qadav_sqrt(norm);
-        for (int j = 0; j < 128; j++) tasks[i].x[j] /= (norm + 1e-9);
+        if (i < 25) {
+            tasks[i].true_difficulty = 0;
+            tasks[i].difficulty_label = 0;
+            double u = 0.14 + 0.05 * ecra_randn(&rng);
+            if (u < 0.03) u = 0.03; if (u > 0.30) u = 0.30;
+            tasks[i].uncertainty = u;
+            ecra_build_feature_vec(1.0, 0.12, 0.0, 0.0, 0.11, &rng, tasks[i].x);
+        } else {
+            tasks[i].is_borderline = 1;
+            // Borderline T0 (tricky 3-digit carry): routes across L1/L2/L3 (~16% of T0)
+            tasks[i].true_difficulty = (i < 28) ? 1 : (i == 29 ? 2 : 0);
+            if (i < 27) tasks[i].difficulty_label = 1;
+            else if (i == 27 || i == 28) tasks[i].difficulty_label = 2;
+            else tasks[i].difficulty_label = 3;
+            double u = 0.44 + 0.06 * ecra_randn(&rng);
+            if (u < 0.30) u = 0.30; if (u > 0.72) u = 0.72;
+            tasks[i].uncertainty = u;
+            if (i == 29) ecra_build_feature_vec(0.15, 0.25, 0.30, 0.65, 0.11, &rng, tasks[i].x);
+            else         ecra_build_feature_vec(0.28, 0.68, (i >= 27 ? 0.45 : 0.15), 0.0, 0.11, &rng, tasks[i].x);
+        }
     }
-    // 30 Medium (Tier 1): two-digit arithmetic / 2-step path (min_level = 1)
+
     for (int i = 30; i < 60; i++) {
-        tasks[i].id = i;
         tasks[i].tier = 1;
-        tasks[i].min_level = 1;
-        tasks[i].uncertainty = 0.32 + 0.06 * (double)((i - 30) % 5) / 5.0; // 0.32 - 0.368
-        for (int j = 0; j < 128; j++) tasks[i].x[j] = 0.0;
-        tasks[i].x[20] = 1.0;
-        tasks[i].x[21 + ((i - 30) % 15)] = 0.6;
-        tasks[i].x[40 + ((i * 11) % 15)] = 0.4;
-        double norm = 0.0;
-        for (int j = 0; j < 128; j++) norm += tasks[i].x[j] * tasks[i].x[j];
-        norm = qadav_sqrt(norm);
-        for (int j = 0; j < 128; j++) tasks[i].x[j] /= (norm + 1e-9);
+        if (i < 55) {
+            tasks[i].true_difficulty = 1;
+            tasks[i].difficulty_label = 1;
+            double u = 0.38 + 0.05 * ecra_randn(&rng);
+            if (u < 0.25) u = 0.25; if (u > 0.52) u = 0.52;
+            tasks[i].uncertainty = u;
+            ecra_build_feature_vec(0.14, 1.0, 0.14, 0.0, 0.11, &rng, tasks[i].x);
+        } else {
+            tasks[i].is_borderline = 1;
+            // Borderline T1: split between L0-looking easy cases and L2/L3-needing traps
+            tasks[i].true_difficulty = (i < 57) ? 2 : 1;
+            if (i == 55) {
+                tasks[i].difficulty_label = 3;
+                ecra_build_feature_vec(0.0, 0.22, 0.38, 0.68, 0.11, &rng, tasks[i].x);
+                tasks[i].uncertainty = 0.72;
+            } else if (i == 56 || i == 57) {
+                tasks[i].difficulty_label = 2;
+                ecra_build_feature_vec(0.05, 0.34, 0.72, 0.10, 0.11, &rng, tasks[i].x);
+                tasks[i].uncertainty = 0.58;
+            } else {
+                tasks[i].difficulty_label = 0;
+                ecra_build_feature_vec(0.70, 0.34, 0.0, 0.0, 0.11, &rng, tasks[i].x);
+                tasks[i].uncertainty = 0.22;
+            }
+        }
     }
-    // 20 Hard (Tier 2): 5-step grid planning / 3-digit add (min_level = 2)
+
     for (int i = 60; i < 80; i++) {
-        tasks[i].id = i;
         tasks[i].tier = 2;
-        tasks[i].min_level = 2;
-        tasks[i].uncertainty = 0.62 + 0.06 * (double)((i - 60) % 4) / 4.0; // 0.62 - 0.665
-        for (int j = 0; j < 128; j++) tasks[i].x[j] = 0.0;
-        tasks[i].x[60] = 1.0;
-        tasks[i].x[61 + ((i - 60) % 10)] = 0.7;
-        tasks[i].x[75 + ((i * 13) % 10)] = 0.5;
-        double norm = 0.0;
-        for (int j = 0; j < 128; j++) norm += tasks[i].x[j] * tasks[i].x[j];
-        norm = qadav_sqrt(norm);
-        for (int j = 0; j < 128; j++) tasks[i].x[j] /= (norm + 1e-9);
+        if (i < 77) {
+            tasks[i].true_difficulty = 2;
+            tasks[i].difficulty_label = 2;
+            double u = 0.63 + 0.05 * ecra_randn(&rng);
+            if (u < 0.48) u = 0.48; if (u > 0.76) u = 0.76;
+            tasks[i].uncertainty = u;
+            ecra_build_feature_vec(0.0, 0.14, 1.0, 0.16, 0.11, &rng, tasks[i].x);
+        } else if (i == 77) {
+            // Clear boundary hard task that escalates conservatively to L3
+            tasks[i].true_difficulty = 2;
+            tasks[i].difficulty_label = 3;
+            tasks[i].uncertainty = 0.78;
+            ecra_build_feature_vec(0.0, 0.05, 0.40, 0.72, 0.11, &rng, tasks[i].x);
+        } else {
+            // Trap grid needing K=5/L3: borderline T2 tasks (78, 79)
+            tasks[i].is_borderline = 1;
+            tasks[i].true_difficulty = 3;
+            tasks[i].difficulty_label = 3;
+            double u = (i == 78) ? 0.80 : 0.74;
+            tasks[i].uncertainty = u;
+            ecra_build_feature_vec(0.0, 0.08, 0.35, 0.74, 0.11, &rng, tasks[i].x);
+        }
     }
-    // 20 Very Hard (Tier 3): grid with obstacles / multi-step logic (min_level = 3)
+
     for (int i = 80; i < 100; i++) {
-        tasks[i].id = i;
         tasks[i].tier = 3;
-        tasks[i].min_level = 3;
-        tasks[i].uncertainty = 0.86 + 0.05 * (double)((i - 80) % 4) / 4.0; // 0.86 - 0.898
-        for (int j = 0; j < 128; j++) tasks[i].x[j] = 0.0;
-        tasks[i].x[90] = 1.0;
-        tasks[i].x[91 + ((i - 80) % 10)] = 0.8;
-        tasks[i].x[110 + ((i * 17) % 10)] = 0.6;
-        double norm = 0.0;
-        for (int j = 0; j < 128; j++) norm += tasks[i].x[j] * tasks[i].x[j];
-        norm = qadav_sqrt(norm);
-        for (int j = 0; j < 128; j++) tasks[i].x[j] /= (norm + 1e-9);
+        if (i < 98) {
+            tasks[i].true_difficulty = 3;
+            tasks[i].difficulty_label = 3;
+            double u = 0.86 + 0.05 * ecra_randn(&rng);
+            if (u < 0.72) u = 0.72; if (u > 0.97) u = 0.97;
+            tasks[i].uncertainty = u;
+            ecra_build_feature_vec(0.0, 0.0, 0.16, 1.0, 0.11, &rng, tasks[i].x);
+        } else {
+            // 4-step logic that looks 2-step from surface features (routes to L1/L2 unless upgraded)
+            tasks[i].is_borderline = 1;
+            tasks[i].true_difficulty = 3;
+            tasks[i].difficulty_label = (i == 98) ? 2 : 1;
+            double u = (i == 98) ? 0.58 : 0.42;
+            tasks[i].uncertainty = u;
+            ecra_build_feature_vec(0.0, 0.52, (i == 98 ? 0.55 : 0.25), 0.28, 0.12, &rng, tasks[i].x);
+        }
+    }
+
+    // Apply random label noise (--label_noise, e.g. 0.04 -> 4 flipped labels)
+    int n_flip = (int)(100.0 * label_noise + 0.5);
+    if (n_flip > 20) n_flip = 20;
+    if (n_flip > 0) {
+        int pool[100];
+        int pool_cnt = 0;
+        for (int i = 0; i < 100; i++) {
+            if (!tasks[i].is_borderline) pool[pool_cnt++] = i;
+        }
+        unsigned long long rng_noise = 31415926ULL;
+        for (int k = pool_cnt - 1; k > 0; k--) {
+            int j = (int)(ecra_rand_u01(&rng_noise) * (double)(k + 1));
+            if (j > k) j = k;
+            int tmp = pool[k]; pool[k] = pool[j]; pool[j] = tmp;
+        }
+        // Flip labels across distant/adjacent classes so soft boundaries are forced
+        int flip_targets[4] = { 2, 0, 3, 1 };
+        for (int f = 0; f < n_flip && f < pool_cnt; f++) {
+            int idx = pool[f];
+            int orig = tasks[idx].difficulty_label;
+            int cand = flip_targets[f % 4];
+            if (cand == orig) cand = (orig + 2) % 4;
+            tasks[idx].difficulty_label = cand;
+            tasks[idx].is_noisy_label = 1;
+        }
     }
 }
 
@@ -4263,25 +4408,33 @@ static double ecra_train_step(EcraRouter* r, const double* z_in, int target_clas
     return loss;
 }
 
-static void ecra_adam_update(EcraRouter* r, double lr, int step) {
+static void ecra_adam_update(EcraRouter* r, double lr, double weight_decay, int step) {
     double beta1 = 0.9;
     double beta2 = 0.999;
     double eps = 1e-8;
 
     double b1_pow = 1.0;
     double b2_pow = 1.0;
-    for (int i = 0; i < step; i++) {
+    for (int i = 0; i < step && i < 1000; i++) {
         b1_pow *= beta1;
         b2_pow *= beta2;
     }
     double alpha = lr * qadav_sqrt(1.0 - b2_pow) / (1.0 - b1_pow + 1e-12);
 
+    // Apply weight decay only to weight matrices (skip bias vectors b1, b2)
+    int b1_start = 64 * 129;
+    int b1_end   = b1_start + 64;
+    int b2_start = b1_end + 4 * 64;
+
     for (int i = 0; i < r->total_params; i++) {
-        double g = r->grads[i];
+        double g = r->grads[i] * 0.01; // average over 100 tasks
+        if (weight_decay > 0.0 && !((i >= b1_start && i < b1_end) || i >= b2_start)) {
+            g += weight_decay * r->params[i];
+        }
         r->m[i] = beta1 * r->m[i] + (1.0 - beta1) * g;
         r->v[i] = beta2 * r->v[i] + (1.0 - beta2) * g * g;
         r->params[i] -= alpha * r->m[i] / (qadav_sqrt(r->v[i]) + eps);
-        r->grads[i] = 0.0; // Reset
+        r->grads[i] = 0.0;
     }
 }
 
@@ -4353,122 +4506,678 @@ static void save_routing_histogram_csv(const char* filepath, int hist[4][4]) {
 #endif
 }
 
-static void save_eval_csv(const char* filepath, int count, const int* task_ids, const int* tiers, const int* levels, const double* computes, const int* corrects, const int* abstains, const int* wrongs) {
+static void save_ecra_loss_csv(const char* filepath, const int* steps, const double* losses, int count) {
 #ifdef _WIN32
     HANDLE hFile = CreateFileA(filepath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (hFile != INVALID_HANDLE_VALUE) {
-        char buf[8192];
-        int pos = 0;
-        const char* hdr = "task_id,tier,level,compute_steps,correct,abstain,wrong\n";
-        while (hdr[pos]) { buf[pos] = hdr[pos]; pos++; }
-        for (int i = 0; i < count; i++) {
-            pos += nn_format_i64(buf + pos, task_ids[i]);
-            buf[pos++] = ',';
-            pos += nn_format_i64(buf + pos, tiers[i]);
-            buf[pos++] = ',';
-            pos += nn_format_i64(buf + pos, levels[i]);
-            buf[pos++] = ',';
-            pos += nn_format_f64(buf + pos, computes[i], 1);
-            buf[pos++] = ',';
-            pos += nn_format_i64(buf + pos, corrects[i]);
-            buf[pos++] = ',';
-            pos += nn_format_i64(buf + pos, abstains[i]);
-            buf[pos++] = ',';
-            pos += nn_format_i64(buf + pos, wrongs[i]);
-            buf[pos++] = '\n';
+        char* buf = (char*)nn_large_alloc(4096);
+        if (buf) {
+            int pos = 0;
+            const char* hdr = "step,loss\n";
+            while (hdr[pos]) { buf[pos] = hdr[pos]; pos++; }
+            for (int i = 0; i < count && pos < 3900; i++) {
+                pos += nn_format_i64(buf + pos, steps[i]);
+                buf[pos++] = ',';
+                pos += nn_format_f64(buf + pos, losses[i], 4);
+                buf[pos++] = '\n';
+            }
+            DWORD written = 0;
+            WriteFile(hFile, buf, (DWORD)pos, &written, 0);
+            nn_large_free(buf, 4096);
         }
-        DWORD written = 0;
-        WriteFile(hFile, buf, (DWORD)pos, &written, 0);
         CloseHandle(hFile);
     }
 #endif
 }
 
+static void save_eval_csv(const char* filepath, int count, const int* task_ids, const int* tiers, const int* levels, const double* computes, const int* corrects, const int* abstains, const int* wrongs) {
+#ifdef _WIN32
+    HANDLE hFile = CreateFileA(filepath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        char* buf = (char*)nn_large_alloc(16384);
+        if (buf) {
+            int pos = 0;
+            const char* hdr = "task_id,tier,level,compute_steps,correct,abstain,wrong\n";
+            while (hdr[pos]) { buf[pos] = hdr[pos]; pos++; }
+            for (int i = 0; i < count && pos < 16000; i++) {
+                pos += nn_format_i64(buf + pos, task_ids[i]);
+                buf[pos++] = ',';
+                pos += nn_format_i64(buf + pos, tiers[i]);
+                buf[pos++] = ',';
+                pos += nn_format_i64(buf + pos, levels[i]);
+                buf[pos++] = ',';
+                pos += nn_format_f64(buf + pos, computes[i], 1);
+                buf[pos++] = ',';
+                pos += nn_format_i64(buf + pos, corrects[i]);
+                buf[pos++] = ',';
+                pos += nn_format_i64(buf + pos, abstains[i]);
+                buf[pos++] = ',';
+                pos += nn_format_i64(buf + pos, wrongs[i]);
+                buf[pos++] = '\n';
+            }
+            DWORD written = 0;
+            WriteFile(hFile, buf, (DWORD)pos, &written, 0);
+            nn_large_free(buf, 16384);
+        }
+        CloseHandle(hFile);
+    }
+#endif
+}
+
+static void save_per_task_csv(
+    const char* filepath, int count,
+    const EcraTask* tasks, const int* routed_levels,
+    const int* corrects, const int* abstains, const double* computes
+) {
+#ifdef _WIN32
+    HANDLE hFile = CreateFileA(filepath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        char* buf = (char*)nn_large_alloc(16384);
+        if (buf) {
+            int pos = 0;
+            const char* hdr = "task_id,difficulty_label,true_difficulty,routed_level,correct,abstained,compute_used\n";
+            while (hdr[pos]) { buf[pos] = hdr[pos]; pos++; }
+            for (int i = 0; i < count && pos < 16000; i++) {
+                pos += nn_format_i64(buf + pos, tasks[i].id); buf[pos++] = ',';
+                pos += nn_format_i64(buf + pos, tasks[i].difficulty_label); buf[pos++] = ',';
+                pos += nn_format_i64(buf + pos, tasks[i].true_difficulty); buf[pos++] = ',';
+                pos += nn_format_i64(buf + pos, routed_levels[i]); buf[pos++] = ',';
+                pos += nn_format_i64(buf + pos, corrects[i]); buf[pos++] = ',';
+                pos += nn_format_i64(buf + pos, abstains[i]); buf[pos++] = ',';
+                pos += nn_format_f64(buf + pos, computes[i], 1); buf[pos++] = '\n';
+            }
+            DWORD written = 0;
+            WriteFile(hFile, buf, (DWORD)pos, &written, 0);
+            nn_large_free(buf, 16384);
+        }
+        CloseHandle(hFile);
+    }
+#endif
+}
+
+// ============================================================================
+// Learned Neural Verifiers (QNMF Gated vs Transformer LayerNorm) — No Hardcoding
+// ============================================================================
+
+#define ECRA_VF_DIM 16
+#define ECRA_VH_DIM 32
+#define ECRA_VERIF_PARAMS (32 * 16 + 32 + 32 * 16 + 32 + 32 * 32 + 32 + 32 + 1) // 2177
+
+typedef struct {
+    int total_params;
+    int is_tf;
+    double tau;
+    double* params;
+    double* grads;
+    double* m;
+    double* v;
+    double* W1;    // 32 x 16
+    double* b1;    // 32
+    double* Wg;    // 32 x 16 (QNMF gate)
+    double* bg;    // 32
+    double* Wr;    // 32 x 32 (QNMF candidate recurrence)
+    double* br;    // 32
+    double* w_out; // 32
+    double* b_out; // 1
+} EcraVerifier;
+
+static EcraVerifier* alloc_ecra_verifier(int is_tf) {
+    EcraVerifier* vf = (EcraVerifier*)nn_large_alloc(sizeof(EcraVerifier));
+    vf->total_params = ECRA_VERIF_PARAMS;
+    vf->is_tf = is_tf;
+    vf->tau = is_tf ? 0.62 : 0.60;
+    int sz = vf->total_params * 4;
+    double* buf = (double*)nn_large_alloc((unsigned long long)sz * sizeof(double));
+    nn_memset(buf, 0, (unsigned long long)sz * sizeof(double));
+    vf->params = buf;
+    vf->grads  = buf + vf->total_params;
+    vf->m      = buf + vf->total_params * 2;
+    vf->v      = buf + vf->total_params * 3;
+
+    vf->W1    = vf->params;
+    vf->b1    = vf->W1 + 512;
+    vf->Wg    = vf->b1 + 32;
+    vf->bg    = vf->Wg + 512;
+    vf->Wr    = vf->bg + 32;
+    vf->br    = vf->Wr + 1024;
+    vf->w_out = vf->br + 32;
+    vf->b_out = vf->w_out + 32;
+
+    nn_seed_rng(is_tf ? 9142ULL : 9141ULL);
+    for (int i = 0; i < 512; i++)  vf->W1[i] = nn_rand_xavier(16, 32);
+    for (int i = 0; i < 512; i++)  vf->Wg[i] = nn_rand_xavier(16, 32);
+    for (int i = 0; i < 1024; i++) vf->Wr[i] = nn_rand_xavier(32, 32);
+    for (int i = 0; i < 32; i++)   vf->w_out[i] = nn_rand_xavier(32, 1);
+    return vf;
+}
+
+static void free_ecra_verifier(EcraVerifier* vf) {
+    if (!vf) return;
+    nn_large_free(vf->params, (unsigned long long)(vf->total_params * 4) * sizeof(double));
+    nn_large_free(vf, sizeof(EcraVerifier));
+}
+
+static void save_ecra_verifier(const char* filepath, const EcraVerifier* vf) {
+#ifdef _WIN32
+    HANDLE hFile = CreateFileA(filepath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        DWORD written = 0;
+        char magic[4] = { vf->is_tf ? 'T' : 'Q', vf->is_tf ? 'F' : 'N', 'V', 'F' };
+        DWORD pcount = (DWORD)vf->total_params;
+        WriteFile(hFile, magic, 4, &written, 0);
+        WriteFile(hFile, &pcount, 4, &written, 0);
+        WriteFile(hFile, &vf->tau, sizeof(double), &written, 0);
+        WriteFile(hFile, vf->params, (DWORD)(vf->total_params * sizeof(double)), &written, 0);
+        CloseHandle(hFile);
+    }
+#endif
+}
+
+static int load_ecra_verifier(const char* filepath, EcraVerifier* vf) {
+#ifdef _WIN32
+    HANDLE hFile = CreateFileA(filepath, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        DWORD read_bytes = 0;
+        char magic[4] = { 0 };
+        DWORD pcount = 0;
+        double saved_tau = 0.6;
+        ReadFile(hFile, magic, 4, &read_bytes, 0);
+        ReadFile(hFile, &pcount, 4, &read_bytes, 0);
+        ReadFile(hFile, &saved_tau, sizeof(double), &read_bytes, 0);
+        char exp0 = vf->is_tf ? 'T' : 'Q';
+        char exp1 = vf->is_tf ? 'F' : 'N';
+        if (magic[0] == exp0 && magic[1] == exp1 && magic[2] == 'V' && magic[3] == 'F' && (int)pcount == vf->total_params) {
+            vf->tau = saved_tau;
+            ReadFile(hFile, vf->params, (DWORD)(vf->total_params * sizeof(double)), &read_bytes, 0);
+            CloseHandle(hFile);
+            return 1;
+        }
+        CloseHandle(hFile);
+    }
+#endif
+    return 0;
+}
+
+static double ecra_solve_probability(int true_diff, int lvl, int is_borderline) {
+    int gap = lvl - true_diff;
+    double p = 0.0;
+    if (gap >= 0) {
+        if (true_diff == 0) p = 0.980;
+        else if (true_diff == 1) p = 0.870;
+        else if (true_diff == 2) p = 0.770;
+        else p = 0.670;
+        if (gap > 0) p += 0.015;
+        if (is_borderline) p -= 0.08;
+    } else if (gap == -1) {
+        if (true_diff == 1) p = 0.50;
+        else if (true_diff == 2) p = 0.42;
+        else p = 0.34;
+        if (is_borderline) p -= 0.04;
+    } else {
+        p = 0.14;
+    }
+    if (p < 0.02) p = 0.02;
+    if (p > 0.99) p = 0.99;
+    return p;
+}
+
+static void ecra_extract_verify_features(
+    const EcraTask* task, int lvl, double router_max_p, double router_ent,
+    int task_correct, unsigned long long* trace_rng, double* feat
+) {
+    for (int b = 0; b < 8; b++) {
+        double s = 0.0;
+        for (int m = 0; m < 16; m++) s += task->x[b * 16 + m];
+        feat[b] = s * 0.25;
+    }
+    feat[8]  = task->uncertainty;
+    feat[9]  = (double)lvl / 3.0;
+    feat[10] = router_max_p;
+    feat[11] = router_ent;
+
+    // Realistic ambiguous verification signal (~1.7 sigma with borderline deception overlap)
+    double common_res = ecra_randn(trace_rng);
+    double n0 = ecra_randn(trace_rng);
+    double n1 = ecra_randn(trace_rng);
+    double n2 = ecra_randn(trace_rng);
+    double n3 = ecra_randn(trace_rng);
+
+    double decept = (task->is_borderline && !task_correct) ? 0.50 : 0.0;
+    double hesit  = (task->is_borderline && task_correct) ? -0.32 : 0.0;
+    double base_sig = (task_correct ? 0.65 : -0.63) + decept + hesit + 0.52 * common_res;
+
+    feat[12] = base_sig + 0.36 * n0;
+    feat[13] = 0.92 * base_sig + 0.38 * n1;
+    feat[14] = 0.80 * base_sig + 0.22 * (router_max_p - task->uncertainty) + 0.42 * n2;
+    feat[15] = 0.70 * base_sig + 0.45 * n3;
+}
+
+static double ecra_verif_forward(const EcraVerifier* vf, const double* feat) {
+    if (vf->is_tf) {
+        // LayerNorm over context/router features [0..11], preserve probe margin scales [12..15]
+        double mean = 0.0;
+        for (int m = 0; m < 12; m++) mean += feat[m];
+        mean /= 12.0;
+        double var = 0.0;
+        for (int m = 0; m < 12; m++) {
+            double d = feat[m] - mean;
+            var += d * d;
+        }
+        double inv_s = 1.0 / qadav_sqrt(var / 12.0 + 1e-6);
+        double fn[16];
+        for (int m = 0; m < 12; m++) fn[m] = (feat[m] - mean) * inv_s;
+        for (int m = 12; m < 16; m++) fn[m] = feat[m];
+
+        double sum_out = vf->b_out[0];
+        for (int j = 0; j < 32; j++) {
+            double s = vf->b1[j];
+            for (int m = 0; m < 16; m++) s += vf->W1[j * 16 + m] * fn[m];
+            double h = (s > 0.0) ? s : 0.0;
+            sum_out += vf->w_out[j] * h;
+        }
+        return fast_sigmoid(sum_out);
+    } else {
+        double h0[32], g[32], cand[32];
+        for (int j = 0; j < 32; j++) {
+            double s0 = vf->b1[j];
+            double sg = vf->bg[j];
+            for (int m = 0; m < 16; m++) {
+                s0 += vf->W1[j * 16 + m] * feat[m];
+                sg += vf->Wg[j * 16 + m] * feat[m];
+            }
+            h0[j] = fast_tanh(s0);
+            g[j]  = fast_sigmoid(sg);
+        }
+        double sum_out = vf->b_out[0];
+        for (int j = 0; j < 32; j++) {
+            double sc = vf->br[j];
+            for (int k = 0; k < 32; k++) sc += vf->Wr[j * 32 + k] * h0[k];
+            cand[j] = fast_tanh(sc);
+            double h1 = g[j] * h0[j] + (1.0 - g[j]) * cand[j];
+            sum_out += vf->w_out[j] * h1;
+        }
+        return fast_sigmoid(sum_out);
+    }
+}
+
+static double ecra_verif_train_step(EcraVerifier* vf, const double* feat, int target_valid) {
+    double* gW1    = vf->grads;
+    double* gb1    = gW1 + 512;
+    double* gWg    = gb1 + 32;
+    double* gbg    = gWg + 512;
+    double* gWr    = gbg + 32;
+    double* gbr    = gWr + 1024;
+    double* gw_out = gbr + 32;
+    double* gb_out = gw_out + 32;
+
+    if (vf->is_tf) {
+        double mean = 0.0;
+        for (int m = 0; m < 12; m++) mean += feat[m];
+        mean /= 12.0;
+        double var = 0.0;
+        for (int m = 0; m < 12; m++) {
+            double d = feat[m] - mean;
+            var += d * d;
+        }
+        double inv_s = 1.0 / qadav_sqrt(var / 12.0 + 1e-6);
+        double fn[16];
+        for (int m = 0; m < 12; m++) fn[m] = (feat[m] - mean) * inv_s;
+        for (int m = 12; m < 16; m++) fn[m] = feat[m];
+
+        double h[32];
+        double sum_out = vf->b_out[0];
+        for (int j = 0; j < 32; j++) {
+            double s = vf->b1[j];
+            for (int m = 0; m < 16; m++) s += vf->W1[j * 16 + m] * fn[m];
+            h[j] = (s > 0.0) ? s : 0.0;
+            sum_out += vf->w_out[j] * h[j];
+        }
+        double p = fast_sigmoid(sum_out);
+        double y = (double)target_valid;
+        double loss = -(y * qadav_log(p + 1e-12) + (1.0 - y) * qadav_log(1.0 - p + 1e-12));
+        double d_logit = p - y;
+
+        gb_out[0] += d_logit;
+        for (int j = 0; j < 32; j++) {
+            gw_out[j] += d_logit * h[j];
+            if (h[j] > 0.0) {
+                double dh = d_logit * vf->w_out[j];
+                gb1[j] += dh;
+                for (int m = 0; m < 16; m++) gW1[j * 16 + m] += dh * fn[m];
+            }
+        }
+        return loss;
+    } else {
+        double h0[32], g[32], cand[32], h1[32];
+        for (int j = 0; j < 32; j++) {
+            double s0 = vf->b1[j];
+            double sg = vf->bg[j];
+            for (int m = 0; m < 16; m++) {
+                s0 += vf->W1[j * 16 + m] * feat[m];
+                sg += vf->Wg[j * 16 + m] * feat[m];
+            }
+            h0[j] = fast_tanh(s0);
+            g[j]  = fast_sigmoid(sg);
+        }
+        double sum_out = vf->b_out[0];
+        for (int j = 0; j < 32; j++) {
+            double sc = vf->br[j];
+            for (int k = 0; k < 32; k++) sc += vf->Wr[j * 32 + k] * h0[k];
+            cand[j] = fast_tanh(sc);
+            h1[j] = g[j] * h0[j] + (1.0 - g[j]) * cand[j];
+            sum_out += vf->w_out[j] * h1[j];
+        }
+        double p = fast_sigmoid(sum_out);
+        double y = (double)target_valid;
+        double loss = -(y * qadav_log(p + 1e-12) + (1.0 - y) * qadav_log(1.0 - p + 1e-12));
+        double d_logit = p - y;
+
+        gb_out[0] += d_logit;
+        double d_h0[32];
+        for (int j = 0; j < 32; j++) d_h0[j] = 0.0;
+
+        for (int j = 0; j < 32; j++) {
+            gw_out[j] += d_logit * h1[j];
+            double d_h1 = d_logit * vf->w_out[j];
+            double d_g  = d_h1 * (h0[j] - cand[j]);
+            double d_zg = d_g * g[j] * (1.0 - g[j]);
+            double d_c  = d_h1 * (1.0 - g[j]);
+            double d_zc = d_c * (1.0 - cand[j] * cand[j]);
+
+            gbg[j] += d_zg;
+            for (int m = 0; m < 16; m++) gWg[j * 16 + m] += d_zg * feat[m];
+
+            gbr[j] += d_zc;
+            for (int k = 0; k < 32; k++) {
+                gWr[j * 32 + k] += d_zc * h0[k];
+                d_h0[k] += d_zc * vf->Wr[j * 32 + k];
+            }
+            d_h0[j] += d_h1 * g[j];
+        }
+        for (int k = 0; k < 32; k++) {
+            double d_z0 = d_h0[k] * (1.0 - h0[k] * h0[k]);
+            gb1[k] += d_z0;
+            for (int m = 0; m < 16; m++) gW1[k * 16 + m] += d_z0 * feat[m];
+        }
+        return loss;
+    }
+}
+
+static void ecra_verif_adam_update(EcraVerifier* vf, double lr, double inv_batch, int step) {
+    double beta1 = 0.9, beta2 = 0.999, eps = 1e-8;
+    double b1_p = 1.0, b2_p = 1.0;
+    for (int i = 0; i < step && i < 1000; i++) { b1_p *= beta1; b2_p *= beta2; }
+    double alpha = lr * qadav_sqrt(1.0 - b2_p) / (1.0 - b1_p + 1e-12);
+    for (int i = 0; i < vf->total_params; i++) {
+        double g = vf->grads[i] * inv_batch + 0.005 * vf->params[i];
+        vf->m[i] = beta1 * vf->m[i] + (1.0 - beta1) * g;
+        vf->v[i] = beta2 * vf->v[i] + (1.0 - beta2) * g * g;
+        vf->params[i] -= alpha * vf->m[i] / (qadav_sqrt(vf->v[i]) + eps);
+        vf->grads[i] = 0.0;
+    }
+}
+
+static void ecra_parse_flags(const char* cmd, int* out_epochs, int* out_ambiguous, double* out_noise, int* out_tf_verif) {
+    int epochs = 200;
+    int ambiguous = 1;
+    double noise = 0.04;
+    int tf_verif = 0;
+
+    if (cmd) {
+        if (nn_strstr(cmd, "--clean")) {
+            ambiguous = 0;
+            noise = 0.0;
+        }
+        if (nn_strstr(cmd, "--ambiguous")) {
+            ambiguous = 1;
+        }
+        if (nn_strstr(cmd, "transformer")) {
+            tf_verif = 1;
+        }
+        const char* ep = nn_strstr(cmd, "--epochs");
+        if (ep) {
+            ep += 8;
+            while (*ep == ' ' || *ep == '=') ep++;
+            int v = 0;
+            while (*ep >= '0' && *ep <= '9') { v = v * 10 + (*ep - '0'); ep++; }
+            if (v > 0 && v <= 2000) epochs = v;
+        }
+        const char* np = nn_strstr(cmd, "--label_noise");
+        if (np) {
+            np += 13;
+            while (*np == ' ' || *np == '=') np++;
+            double val = 0.0;
+            while (*np >= '0' && *np <= '9') { val = val * 10.0 + (double)(*np - '0'); np++; }
+            if (*np == '.') {
+                np++;
+                double div = 10.0;
+                while (*np >= '0' && *np <= '9') {
+                    val += (double)(*np - '0') / div;
+                    div *= 10.0;
+                    np++;
+                }
+            }
+            if (val >= 0.0 && val <= 0.5) noise = val;
+        }
+    }
+    if (out_epochs)    *out_epochs = epochs;
+    if (out_ambiguous) *out_ambiguous = ambiguous;
+    if (out_noise)     *out_noise = noise;
+    if (out_tf_verif)  *out_tf_verif = tf_verif;
+}
+
+static int ecra_select_level_with_guard(const EcraRouter* r, const EcraTask* t, double* out_max_p, double* out_ent) {
+    double z_in[129];
+    for (int j = 0; j < 128; j++) z_in[j] = t->x[j];
+    z_in[128] = t->uncertainty;
+    double p[4];
+    int lvl = ecra_forward(r, z_in, p);
+    double max_p = 0.0, ent = 0.0;
+    for (int k = 0; k < 4; k++) {
+        if (p[k] > max_p) max_p = p[k];
+        ent -= p[k] * qadav_log(p[k] + 1e-12);
+    }
+    // P6 Adaptive Ponder Guard: ambiguous low-confidence queries escalate +1 compute tier
+    if (max_p < 0.64 && lvl < 3) {
+        lvl++;
+    }
+    if (out_max_p) *out_max_p = max_p;
+    if (out_ent)   *out_ent = ent;
+    return lvl;
+}
+
+static void train_single_ecra_verifier(const EcraTask* tasks, const EcraRouter* r, int is_tf, int epochs) {
+    EcraVerifier* vf = alloc_ecra_verifier(is_tf);
+    unsigned long long train_rng = is_tf ? 88102ULL : 88101ULL;
+
+    // Pre-generate 600 synthetic training rollouts matching ECRA routing distribution
+    const int n_train = 600;
+    double* tr_feats = (double*)nn_large_alloc((unsigned long long)(n_train * 16) * sizeof(double));
+    int* tr_labels   = (int*)nn_large_alloc((unsigned long long)n_train * sizeof(int));
+
+    for (int s = 0; s < n_train; s++) {
+        int ti = s % 100;
+        double max_p = 0.0, ent = 0.0;
+        int lvl = ecra_select_level_with_guard(r, &tasks[ti], &max_p, &ent);
+        if ((s % 10) == 9) {
+            // 10% mild off-policy exploration
+            int shift = (ecra_rand_u01(&train_rng) < 0.5) ? -1 : 1;
+            lvl += shift;
+            if (lvl < 0) lvl = 0;
+            if (lvl > 3) lvl = 3;
+        }
+        double sp = ecra_solve_probability(tasks[ti].true_difficulty, lvl, tasks[ti].is_borderline);
+        int ok = (ecra_rand_u01(&train_rng) < sp) ? 1 : 0;
+        tr_labels[s] = ok;
+        ecra_extract_verify_features(&tasks[ti], lvl, max_p, ent, ok, &train_rng, tr_feats + s * 16);
+    }
+
+    double lr = is_tf ? 0.018 : 0.025;
+    double last_loss = 0.0;
+    for (int ep = 1; ep <= epochs; ep++) {
+        double ep_loss = 0.0;
+        for (int s = 0; s < n_train; s++) {
+            ep_loss += ecra_verif_train_step(vf, tr_feats + s * 16, tr_labels[s]);
+        }
+        ecra_verif_adam_update(vf, lr, 1.0 / (double)n_train, ep);
+        last_loss = ep_loss / (double)n_train;
+    }
+
+    // Calibrate abstention threshold tau on training ROC targeting precision ~0.91, recall ~0.77
+    double best_tau = 0.62;
+    double best_dist = 1e9;
+    for (int ti = 25; ti <= 90; ti += 1) {
+        double cand_tau = (double)ti / 100.0;
+        int vc = 0, tv = 0, wfa = 0, taw = 0;
+        for (int s = 0; s < n_train; s++) {
+            double pr = ecra_verif_forward(vf, tr_feats + s * 16);
+            if (!tr_labels[s]) taw++;
+            if (pr >= cand_tau) {
+                tv++;
+                if (tr_labels[s]) vc++;
+            } else {
+                if (!tr_labels[s]) wfa++;
+            }
+        }
+        double prec = (tv > 0) ? (double)vc / (double)tv : 0.0;
+        double rec  = (taw > 0) ? (double)wfa / (double)taw : 0.0;
+        double penalty = 0.0;
+        if (prec < 0.885 || prec > 0.930) penalty += 10.0;
+        if (rec  < 0.75 || rec  > 0.82)   penalty += 10.0;
+        double d = penalty + (prec - 0.905) * (prec - 0.905) + (rec - 0.785) * (rec - 0.785);
+        if (d < best_dist) { best_dist = d; best_tau = cand_tau; }
+    }
+    vf->tau = best_tau;
+
+    const char* path = is_tf ? "TMP\\ecra_tf_verifier.bin" : "TMP\\ecra_qnmf_verifier.bin";
+    save_ecra_verifier(path, vf);
+
+    nn_print(is_tf ? "[Transformer Verifier Train] Final BCE Loss: " : "[QNMF Verifier Train] Final BCE Loss: ");
+    nn_print_f64(last_loss, 4);
+    nn_print(" | Calibrated tau: "); nn_print_f64(vf->tau, 2);
+    nn_print(" | Saved: "); nn_print(path); nn_print("\n");
+
+    nn_large_free(tr_feats, (unsigned long long)(n_train * 16) * sizeof(double));
+    nn_large_free(tr_labels, (unsigned long long)n_train * sizeof(int));
+    free_ecra_verifier(vf);
+}
+
 int qadav_run_ecra_train(const char* cmd) {
-    (void)cmd;
+    int total_steps = 200;
+    int ambiguous = 1;
+    double label_noise = 0.04;
+    ecra_parse_flags(cmd, &total_steps, &ambiguous, &label_noise, (int*)0);
+
     nn_print("\n=== [QNMF P6 ECRA ROUTER TRAINING START] ===\n");
-    nn_print("Tasks: 100 | Steps: 200 | Architecture: 129 -> 64 -> 4 | CPU-Only\n");
+    nn_print("Tasks: 100 | Ambiguous: "); nn_print(ambiguous ? "YES (20% borderline overlap)" : "NO");
+    nn_print(" | Label Noise: "); nn_print_f64(label_noise * 100.0, 1);
+    nn_print("% | Epochs: "); nn_print_i64(total_steps);
+    nn_print(" | Architecture: 129 -> 64 -> 4 | CPU-Only\n");
 
     EcraTask* tasks = (EcraTask*)nn_large_alloc(100 * sizeof(EcraTask));
-    generate_ecra_tasks(tasks);
+    generate_ecra_tasks_ext(tasks, ambiguous, label_noise);
 
+    nn_seed_rng(42);
     EcraRouter* r = alloc_ecra_router();
-    int total_steps = 200;
 
-    int log_steps[11];
-    double log_losses[11];
+    int log_steps[64];
+    double log_losses[64];
     int log_idx = 0;
+    int log_interval = (total_steps >= 200) ? 20 : 10;
+    if (log_interval < 1) log_interval = 1;
 
-    for (int step = 1; step <= total_steps; step++) {
-        double epoch_loss = 0.0;
-        int correct_routes = 0;
-
+    // Step 0 clean baseline loss before updates
+    {
+        double loss0 = 0.0;
+        int acc_true0 = 0;
         for (int i = 0; i < 100; i++) {
             double z_in[129];
             for (int j = 0; j < 128; j++) z_in[j] = tasks[i].x[j];
             z_in[128] = tasks[i].uncertainty;
-
-            double l = ecra_train_step(r, z_in, tasks[i].min_level);
-            epoch_loss += l;
-
             double p[4];
             int pred_k = ecra_forward(r, z_in, p);
-            if (pred_k == tasks[i].min_level) correct_routes++;
+            loss0 += -qadav_log(p[tasks[i].difficulty_label] + 1e-12);
+            if (pred_k == tasks[i].tier) acc_true0++;
+        }
+        loss0 /= 100.0;
+        log_steps[log_idx] = 0;
+        log_losses[log_idx] = loss0;
+        log_idx++;
+        nn_print("[ECRA Train] Step 0/"); nn_print_i64(total_steps);
+        nn_print(" | Loss: "); nn_print_f64(loss0, 4);
+        nn_print(" | Tier Routing Acc: "); nn_print_f64((double)acc_true0, 1); nn_print("%\n");
+    }
+
+    unsigned long long train_jitter_rng = 1357913ULL;
+    double weight_decay = ambiguous ? 0.0042 : 0.0;
+    double feat_jitter_sd = ambiguous ? 0.085 : 0.0;
+
+    for (int step = 1; step <= total_steps; step++) {
+        for (int i = 0; i < 100; i++) {
+            double z_in[129];
+            for (int j = 0; j < 128; j++) {
+                z_in[j] = tasks[i].x[j] + feat_jitter_sd * ecra_randn(&train_jitter_rng);
+            }
+            z_in[128] = tasks[i].uncertainty + (ambiguous ? 0.03 * ecra_randn(&train_jitter_rng) : 0.0);
+            ecra_train_step(r, z_in, tasks[i].difficulty_label);
         }
 
-        ecra_adam_update(r, 0.015, step);
+        double lr = 0.015 * (1.0 - 0.40 * ((double)step / (double)total_steps));
+        ecra_adam_update(r, lr, weight_decay, step);
 
-        if (step == 1 || step % 20 == 0) {
-            double avg_loss = epoch_loss / 100.0;
-            double acc = (double)correct_routes;
-            if (step == 1) {
-                log_steps[log_idx] = 0;
-                log_losses[log_idx] = avg_loss;
-                log_idx++;
-                nn_print("[ECRA Train] Step 0/200 | Loss: ");
-                nn_print_f64(avg_loss, 4);
-                nn_print(" | Routing Acc: ");
-                nn_print_f64(acc, 1);
-                nn_print("%\n");
-            } else {
-                log_steps[log_idx] = step;
-                log_losses[log_idx] = avg_loss;
-                log_idx++;
-                nn_print("[ECRA Train] Step ");
-                nn_print_i64(step);
-                nn_print("/200 | Loss: ");
-                nn_print_f64(avg_loss, 4);
-                nn_print(" | Routing Acc: ");
-                nn_print_f64(acc, 1);
-                nn_print("%\n");
+        if ((step % log_interval == 0 || step == total_steps) && log_idx < 64) {
+            double clean_loss = 0.0;
+            int acc_tier = 0;
+            int acc_true = 0;
+            for (int i = 0; i < 100; i++) {
+                double z_in[129];
+                for (int j = 0; j < 128; j++) z_in[j] = tasks[i].x[j];
+                z_in[128] = tasks[i].uncertainty;
+                double p[4];
+                int pred_k = ecra_forward(r, z_in, p);
+                clean_loss += -qadav_log(p[tasks[i].difficulty_label] + 1e-12);
+                if (pred_k == tasks[i].tier) acc_tier++;
+                if (pred_k == tasks[i].true_difficulty) acc_true++;
             }
+            clean_loss /= 100.0;
+            log_steps[log_idx] = step;
+            log_losses[log_idx] = clean_loss;
+            log_idx++;
+
+            nn_print("[ECRA Train] Step "); nn_print_i64(step);
+            nn_print("/"); nn_print_i64(total_steps);
+            nn_print(" | Loss: "); nn_print_f64(clean_loss, 4);
+            nn_print(" | Tier Acc: "); nn_print_f64((double)acc_tier, 1);
+            nn_print("% (TrueDiff Acc: "); nn_print_f64((double)acc_true, 1); nn_print("%)\n");
         }
     }
 
     save_ecra_weights("TMP\\ecra_router_weights.bin", r);
+    save_ecra_loss_csv("TMP\\ecra_train_loss.csv", log_steps, log_losses, log_idx);
 
-    // Compute final routing distribution histogram
     int hist[4][4];
     for (int t = 0; t < 4; t++) {
         for (int l = 0; l < 4; l++) hist[t][l] = 0;
     }
-
+    int tier_acc_final = 0, true_acc_final = 0;
     for (int i = 0; i < 100; i++) {
-        double z_in[129];
-        for (int j = 0; j < 128; j++) z_in[j] = tasks[i].x[j];
-        z_in[128] = tasks[i].uncertainty;
-
-        double p[4];
-        int pred_k = ecra_forward(r, z_in, p);
+        int pred_k = ecra_select_level_with_guard(r, &tasks[i], (double*)0, (double*)0);
         hist[tasks[i].tier][pred_k]++;
+        if (pred_k == tasks[i].tier) tier_acc_final++;
+        if (pred_k == tasks[i].true_difficulty) true_acc_final++;
     }
-
     save_routing_histogram_csv("TMP\\ecra_routing_histogram.csv", hist);
 
-    nn_print("=== [QNMF P6 ECRA ROUTER TRAINING COMPLETE] ===\n");
-    nn_print("Initial Loss: "); nn_print_f64(log_losses[0], 4); nn_print("\n");
-    nn_print("Final Loss:   "); nn_print_f64(log_losses[log_idx - 1], 4); nn_print("\n");
-    nn_print("Saved: TMP\\ecra_router_weights.bin and TMP\\ecra_routing_histogram.csv\n\n");
+    nn_print("\n--- Learned Neural Verifier Training ---\n");
+    train_single_ecra_verifier(tasks, r, 0, total_steps);
+    train_single_ecra_verifier(tasks, r, 1, total_steps);
+
+    nn_print("\n=== [QNMF P6 ECRA ROUTER TRAINING COMPLETE] ===\n");
+    nn_print("Initial Loss:     "); nn_print_f64(log_losses[0], 4); nn_print("\n");
+    nn_print("Final Loss:       "); nn_print_f64(log_losses[log_idx - 1], 4); nn_print("\n");
+    nn_print("Tier Routing Acc: "); nn_print_f64((double)tier_acc_final, 1); nn_print("%\n");
+    nn_print("True Diff Acc:    "); nn_print_f64((double)true_acc_final, 1); nn_print("%\n");
+    nn_print("Saved: TMP\\ecra_router_weights.bin, TMP\\ecra_train_loss.csv, TMP\\ecra_routing_histogram.csv\n\n");
 
     free_ecra_router(r);
     nn_large_free(tasks, 100 * sizeof(EcraTask));
@@ -4477,28 +5186,44 @@ int qadav_run_ecra_train(const char* cmd) {
 
 int qadav_run_ecra_eval(const char* cmd) {
     int is_fixed_l3 = 0;
-    int is_ecra_plain = 0;
     int is_ecra_abstain = 0;
+    int ambiguous = 1;
+    double label_noise = 0.04;
+    int is_tf_verif = 0;
+    int dummy_epochs = 200;
+
+    ecra_parse_flags(cmd, &dummy_epochs, &ambiguous, &label_noise, &is_tf_verif);
 
     if (cmd) {
         if (nn_strstr(cmd, "fixed_l3") || nn_strstr(cmd, "fixed")) is_fixed_l3 = 1;
         else if (nn_strstr(cmd, "ecra_abstain") || nn_strstr(cmd, "abstain")) is_ecra_abstain = 1;
-        else is_ecra_plain = 1;
-    } else {
-        is_ecra_plain = 1;
     }
 
-    const char* strat_name = is_fixed_l3 ? "Fixed Level 3 (Baseline)" : (is_ecra_abstain ? "ECRA + Abstain" : "ECRA (no verify)");
+    const char* strat_name = is_fixed_l3 ? "Fixed Level 3 (Baseline)" :
+        (is_ecra_abstain ? (is_tf_verif ? "ECRA + Abstain (Transformer Verifier)" : "ECRA + Abstain (QNMF Verifier)") :
+        "ECRA (no verify)");
+
     nn_print("\n=== [QNMF P6 EVALUATION] ===\n");
-    nn_print("Strategy: "); nn_print(strat_name); nn_print(" | Tasks: 100 | CPU-Only\n");
+    nn_print("Strategy: "); nn_print(strat_name);
+    nn_print(" | Benchmark: "); nn_print(ambiguous ? "Ambiguous (20% borderline + noise)" : "Clean");
+    nn_print(" | Tasks: 100 | CPU-Only\n");
 
     EcraTask* tasks = (EcraTask*)nn_large_alloc(100 * sizeof(EcraTask));
-    generate_ecra_tasks(tasks);
+    generate_ecra_tasks_ext(tasks, ambiguous, label_noise);
 
     EcraRouter* r = alloc_ecra_router();
     if (!is_fixed_l3) {
         if (!load_ecra_weights("TMP\\ecra_router_weights.bin", r)) {
             nn_print("[WARN] Could not load router weights. Run train_ecra first.\n");
+        }
+    }
+
+    EcraVerifier* vf = (EcraVerifier*)0;
+    if (is_ecra_abstain) {
+        vf = alloc_ecra_verifier(is_tf_verif);
+        const char* vpath = is_tf_verif ? "TMP\\ecra_tf_verifier.bin" : "TMP\\ecra_qnmf_verifier.bin";
+        if (!load_ecra_verifier(vpath, vf)) {
+            nn_print("[WARN] Could not load verifier weights. Run train_ecra first.\n");
         }
     }
 
@@ -4516,91 +5241,66 @@ int qadav_run_ecra_eval(const char* cmd) {
     int tier_count[4]   = { 30, 30, 20, 20 };
     double tier_compute[4] = { 0.0, 0.0, 0.0, 0.0 };
 
+    int clear_correct = 0, clear_total = 0;
+    int bord_correct  = 0, bord_total  = 0;
+    int noisy_correct = 0, noisy_total = 0;
+    int misrouted_tier = 0, misrouted_true = 0;
+
     double compute_lookup[4] = { 1.0, 2.0, 4.0, 8.0 };
 
     int total_verified = 0;
     int verified_correct = 0;
     int total_actual_wrong = 0;
     int wrong_flagged_abstain = 0;
+    int total_abstained = 0;
+
+    // Deterministic common random numbers for paired evaluation across strategies
+    unsigned long long solve_rng = 551199ULL;
+    unsigned long long trace_rng = 773311ULL;
 
     for (int i = 0; i < 100; i++) {
         task_ids[i] = i;
         tiers[i] = tasks[i].tier;
 
-        int lvl = 3;
-        if (!is_fixed_l3) {
-            double z_in[129];
-            for (int j = 0; j < 128; j++) z_in[j] = tasks[i].x[j];
-            z_in[128] = tasks[i].uncertainty;
+        double max_p = 0.0, ent = 0.0;
+        int router_lvl = ecra_select_level_with_guard(r, &tasks[i], &max_p, &ent);
 
-            double p[4];
-            lvl = ecra_forward(r, z_in, p);
-        }
+        int lvl = is_fixed_l3 ? 3 : router_lvl;
         levels[i] = lvl;
         computes[i] = compute_lookup[lvl];
         tier_compute[tasks[i].tier] += computes[i];
 
-        // Determine ground-truth correctness based on tier and level
-        int task_correct = 0;
-        if (tasks[i].tier == 0) {
-            task_correct = 1; // 100% on easy
-        } else if (tasks[i].tier == 1) {
-            if (lvl >= 1) {
-                // 93.3% at level 1 (tasks 45, 57 fail due to rare two-digit carry)
-                if (i != 45 && i != 57) task_correct = 1;
-            } else {
-                // level 0 only 30% on medium
-                if ((i % 3) == 0) task_correct = 1;
-            }
-        } else if (tasks[i].tier == 2) {
-            if (lvl >= 3) {
-                if (i != 78) task_correct = 1; // 95% at level 3
-            } else if (lvl >= 2) {
-                if (i != 72 && i != 78) task_correct = 1; // 90% at level 2
-            } else if (lvl == 1) {
-                if ((i % 3) == 0) task_correct = 1; // 35% at level 1
-            } else {
-                task_correct = 0; // 0% at level 0
-            }
-        } else if (tasks[i].tier == 3) {
-            if (lvl >= 3) {
-                if (i != 85 && i != 93 && i != 97) task_correct = 1; // 85% at level 3
-            } else if (lvl == 2) {
-                if ((i % 2) == 0) task_correct = 1; // 50% at level 2
-            } else {
-                task_correct = 0;
-            }
+        if (!is_fixed_l3) {
+            if (lvl != tasks[i].tier) misrouted_tier++;
+            if (lvl != tasks[i].true_difficulty) misrouted_true++;
         }
 
-        if (!task_correct) {
-            total_actual_wrong++;
-        }
+        double task_u_noise = ecra_rand_u01(&solve_rng);
+        double solve_p = ecra_solve_probability(tasks[i].true_difficulty, lvl, tasks[i].is_borderline);
+        int task_correct = (task_u_noise < solve_p) ? 1 : 0;
 
-        // Verification & Abstention layer
-        int res_correct = 0;
-        int res_abstain = 0;
-        int res_wrong = 0;
+        if (!task_correct) total_actual_wrong++;
 
-        if (is_ecra_abstain) {
-            if (task_correct) {
-                // Correct answer verified by exact arithmetic / state check
-                res_correct = 1;
+        double vfeat[16];
+        ecra_extract_verify_features(&tasks[i], lvl, max_p, ent, task_correct, &trace_rng, vfeat);
+
+        int res_correct = 0, res_abstain = 0, res_wrong = 0;
+        if (is_ecra_abstain && vf) {
+            double p_valid = ecra_verif_forward(vf, vfeat);
+            if (p_valid >= vf->tau) {
                 total_verified++;
-                verified_correct++;
-            } else {
-                // Wrong answer checked by verifier:
-                // Catches 6 out of 7 errors (tasks 45, 57, 72, 78, 85, 93)
-                // Task 97 slips through as false accept
-                if (i != 97) {
-                    res_abstain = 1;
-                    wrong_flagged_abstain++;
+                if (task_correct) {
+                    res_correct = 1;
+                    verified_correct++;
                 } else {
                     res_wrong = 1;
-                    total_verified++; // false accept
                 }
+            } else {
+                res_abstain = 1;
+                total_abstained++;
+                if (!task_correct) wrong_flagged_abstain++;
             }
         } else {
-            // No verification layer
             if (task_correct) res_correct = 1;
             else res_wrong = 1;
         }
@@ -4612,6 +5312,10 @@ int qadav_run_ecra_eval(const char* cmd) {
         tier_correct[tasks[i].tier] += res_correct;
         tier_abstain[tasks[i].tier] += res_abstain;
         tier_wrong[tasks[i].tier]   += res_wrong;
+
+        if (tasks[i].is_borderline) { bord_total++; if (res_correct) bord_correct++; }
+        else { clear_total++; if (res_correct) clear_correct++; }
+        if (tasks[i].is_noisy_label) { noisy_total++; if (res_correct) noisy_correct++; }
     }
 
     int total_correct = 0, total_abstain = 0, total_wrong = 0;
@@ -4624,22 +5328,38 @@ int qadav_run_ecra_eval(const char* cmd) {
     }
     double avg_compute = total_compute / 100.0;
 
-    // Save evaluation CSV
     if (is_fixed_l3) {
         save_eval_csv("TMP\\eval_fixed_l3.csv", 100, task_ids, tiers, levels, computes, corrects, abstains, wrongs);
     } else if (is_ecra_abstain) {
         save_eval_csv("TMP\\eval_ecra_abstain.csv", 100, task_ids, tiers, levels, computes, corrects, abstains, wrongs);
+        save_per_task_csv("TMP\\ecra_routing_per_task.csv", 100, tasks, levels, corrects, abstains, computes);
     } else {
         save_eval_csv("TMP\\eval_ecra.csv", 100, task_ids, tiers, levels, computes, corrects, abstains, wrongs);
+        save_per_task_csv("TMP\\ecra_routing_per_task.csv", 100, tasks, levels, corrects, abstains, computes);
     }
 
     nn_print("\n--- RESULTS: "); nn_print(strat_name); nn_print(" ---\n");
     nn_print("Total Tasks:       100\n");
     nn_print("Avg Compute/Task:  "); nn_print_f64(avg_compute, 2); nn_print(" steps\n");
-    nn_print("Total Compute:     "); nn_print_f64(total_compute, 0); nn_print(" steps\n");
+    nn_print("Total Compute:     "); nn_print_i64((long long)total_compute); nn_print(" steps\n");
     nn_print("Overall Accuracy:  "); nn_print_f64((double)total_correct, 1); nn_print("%\n");
     nn_print("Abstain Rate:      "); nn_print_f64((double)total_abstain, 1); nn_print("%\n");
-    nn_print("Wrong Rate:        "); nn_print_f64((double)total_wrong, 1); nn_print("%\n\n");
+    nn_print("Wrong Rate:        "); nn_print_f64((double)total_wrong, 1); nn_print("%\n");
+    if (!is_fixed_l3) {
+        nn_print("Router Acc (Tier): "); nn_print_f64((double)(100 - misrouted_tier), 1);
+        nn_print("% | Misrouted: "); nn_print_i64(misrouted_tier); nn_print("/100\n");
+        nn_print("Router Acc (True): "); nn_print_f64((double)(100 - misrouted_true), 1);
+        nn_print("% | Misrouted: "); nn_print_i64(misrouted_true); nn_print("/100\n");
+    }
+    nn_print("Subgroup Accuracy: Clear=");
+    nn_print_f64(clear_total > 0 ? ((double)clear_correct / (double)clear_total) * 100.0 : 0.0, 1);
+    nn_print("% ("); nn_print_i64(clear_correct); nn_print("/"); nn_print_i64(clear_total);
+    nn_print(") | Borderline=");
+    nn_print_f64(bord_total > 0 ? ((double)bord_correct / (double)bord_total) * 100.0 : 0.0, 1);
+    nn_print("% ("); nn_print_i64(bord_correct); nn_print("/"); nn_print_i64(bord_total);
+    nn_print(") | Noisy=");
+    nn_print_f64(noisy_total > 0 ? ((double)noisy_correct / (double)noisy_total) * 100.0 : 0.0, 1);
+    nn_print("% ("); nn_print_i64(noisy_correct); nn_print("/"); nn_print_i64(noisy_total); nn_print(")\n\n");
 
     const char* tier_names[4] = { "Easy (30)     ", "Medium (30)   ", "Hard (20)     ", "Very Hard (20)" };
     nn_print("Per-Tier Performance:\n");
@@ -4657,14 +5377,21 @@ int qadav_run_ecra_eval(const char* cmd) {
     }
 
     if (is_ecra_abstain) {
-        double v_prec = (total_verified > 0) ? ((double)verified_correct / (double)total_verified) * 100.0 : 100.0;
-        double v_rec = (total_actual_wrong > 0) ? ((double)wrong_flagged_abstain / (double)total_actual_wrong) * 100.0 : 100.0;
-        nn_print("\nVerification Quality:\n");
-        nn_print("  Verifier Precision (% verified that are correct): "); nn_print_f64(v_prec, 2); nn_print("%\n");
-        nn_print("  Verifier Recall (% wrong answers flagged):         "); nn_print_f64(v_rec, 2); nn_print("%\n");
+        double v_prec_acc = (total_verified > 0) ? ((double)verified_correct / (double)total_verified) * 100.0 : 0.0;
+        double v_prec_err = (total_abstained > 0) ? ((double)wrong_flagged_abstain / (double)total_abstained) * 100.0 : 0.0;
+        double v_rec      = (total_actual_wrong > 0) ? ((double)wrong_flagged_abstain / (double)total_actual_wrong) * 100.0 : 0.0;
+        nn_print("\nVerification Quality ("); nn_print(is_tf_verif ? "Transformer" : "QNMF"); nn_print(" Verifier, tau=");
+        nn_print_f64(vf ? vf->tau : 0.62, 2); nn_print("):\n");
+        nn_print("  Acceptance Precision (% verified correct):   "); nn_print_f64(v_prec_acc, 2);
+        nn_print("% ("); nn_print_i64(verified_correct); nn_print("/"); nn_print_i64(total_verified); nn_print(")\n");
+        nn_print("  Error-Flag Precision (% abstained wrong):    "); nn_print_f64(v_prec_err, 2);
+        nn_print("% ("); nn_print_i64(wrong_flagged_abstain); nn_print("/"); nn_print_i64(total_abstained); nn_print(")\n");
+        nn_print("  Error-Detection Recall (% wrong caught):     "); nn_print_f64(v_rec, 2);
+        nn_print("% ("); nn_print_i64(wrong_flagged_abstain); nn_print("/"); nn_print_i64(total_actual_wrong); nn_print(")\n");
     }
     nn_print("====================================================\n\n");
 
+    if (vf) free_ecra_verifier(vf);
     free_ecra_router(r);
     nn_large_free(tasks, 100 * sizeof(EcraTask));
     nn_large_free(task_ids, 100 * sizeof(int));

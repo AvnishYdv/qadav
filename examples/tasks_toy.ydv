@@ -1,8 +1,12 @@
-// QNMF Pillar 6: Mixed Complexity Task Benchmark (100 Tasks)
-// Tier 0: 30 Easy tasks (single-digit arithmetic)
-// Tier 1: 30 Medium tasks (two-digit arithmetic, 2-step grid path)
-// Tier 2: 20 Hard tasks (multi-digit arithmetic, 5-step grid planning)
-// Tier 3: 20 Very Hard tasks (grid obstacles, 2-step deductive logic)
+// NOTE: Benchmark generation, ambiguity blending, and label noise are implemented
+// in C (internal/runtime/qadav_nn.c). This .ydv defines the benchmark spec & stub.
+//
+// QNMF Pillar 6: Ambiguous Mixed Complexity Task Benchmark (100 Tasks, 20% Ambiguous)
+// Tier 0 (Easy, 30):      25 clear + 5 borderline (e.g., hard 3-digit arithmetic edge cases)
+// Tier 1 (Medium, 30):    25 clear + 5 borderline (surface overlap across L0/L1/L2)
+// Tier 2 (Hard, 20):      18 clear + 2 borderline (trap grid looking K=3-solvable needing K=5)
+// Tier 3 (Very Hard, 20): 18 clear + 2 borderline (4-step logic looking 2-step on surface)
+// Label Noise: --label_noise 0.04 (4% randomly flipped training/observed labels)
 
 network TasksToySpec ⟦
     dense ⟬100⸴ 64⟭ ·
@@ -11,6 +15,6 @@ network TasksToySpec ⟦
 ⟧
 
 process main⦅⦆ → int64 ⟦
-    emit "TASKS_TOY_100_INITIALIZED" ·
+    emit "TASKS_TOY_100_AMBIGUOUS_INITIALIZED" ·
     yield 0 ·
 ⟧

@@ -1,7 +1,10 @@
-// QNMF Pillar 6: ECRA Adaptive Compute Router
-// Architecture: 129 inputs (128-dim query embedding x_t + 1-dim uncertainty u_t)
-// Hidden: 64 neurons (ReLU)
-// Output: 4 logits -> Softmax {Level 0, Level 1, Level 2, Level 3}
+// NOTE: ECRA Router & QNMF/Transformer Verifier training/inference are implemented in C
+// (internal/runtime/qadav_nn.c). This .ydv defines the network spec & stub.
+//
+// QNMF Pillar 6: ECRA Adaptive Compute Router + Learned Verifiers
+// Router:    129 inputs (128-dim query embedding x_t + 1-dim uncertainty u_t) -> 64 ReLU -> 4 logits
+// Verifiers: 16-dim post-execution verification probes -> 32 hidden -> 1 calibrated valid probability
+//            Supports both QNMF Gated Verifier and Transformer LayerNorm Verifier
 
 network EcraRouterNet ⟦
     dense ⟬129⸴ 64⟭ ·

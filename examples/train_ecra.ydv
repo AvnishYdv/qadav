@@ -1,3 +1,6 @@
+// NOTE: ECRA router & verifier training loop executes in C (internal/runtime/qadav_nn.c).
+// Supports CLI flags: --epochs N --ambiguous|--clean --label_noise F
+
 network TrainEcraNet ⟦
     dense ⟬2⸴ 4⟭ ·
     relu ·
