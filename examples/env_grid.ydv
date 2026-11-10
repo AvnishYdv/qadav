@@ -1,7 +1,17 @@
+// NOTE: Grid environment & physics are implemented in C (internal/runtime/qadav_nn.c).
+// This .ydv defines the specification & binary entry stub (--env open | --env hard).
+//
 // Qadav Grid World Environment (8x8)
 // 64 discrete states: (x, y) in [0, 7] x [0, 7]
 // Actions: 0=UP, 1=DOWN, 2=LEFT, 3=RIGHT
-// Reward: +1.0 on reaching goal (7, 7), -0.01 per step
+//
+// Hard Environment (--env hard): 4 U-shaped wall segments creating deceptive traps:
+//   - Trap 1 (Top-Left):     (2,0), (2,1), (2,2), (1,2)
+//   - Trap 2 (Bottom-Left):  (2,4), (2,5), (1,5), (0,5)
+//   - Trap 3 (Top-Right):    (6,0), (6,1), (6,2), (5,2), (4,2)
+//   - Trap 4 (Bottom-Right): (6,4), (6,5), (6,6), (5,6), (4,6)
+// Non-trivial start region (env hard): valid cells with Manhattan dist >= 6
+// Reward: +2.0 on reaching goal (7, 7), -0.25 wall collision, -0.02 per step
 
 network EnvGridSpec ⟦
     dense ⟬64⸴ 128⟭ ·
@@ -10,7 +20,6 @@ network EnvGridSpec ⟦
 ⟧
 
 process main⦅⦆ → int64 ⟦
-    emit "ENV_GRID_8X8_INITIALIZED" ·
+    emit "ENV_GRID_8X8_HARD_INITIALIZED" ·
     yield 0 ·
 ⟧
-

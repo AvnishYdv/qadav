@@ -1,3 +1,6 @@
+// NOTE: P4 World Model training loop is implemented in C (internal/runtime/qadav_nn.c).
+// This .ydv is a build entrypoint stub — supports --episodes, --steps, --env, --model flags.
+
 network TrainWorldModelNet ⟦
     dense ⟬2⸴ 4⟭ ·
     relu ·

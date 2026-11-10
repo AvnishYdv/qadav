@@ -1,4 +1,5 @@
-// Transformer Baseline: No Planning (Random Policy)
+// NOTE: Architecture & Transformer+P4 / random baseline are implemented in C (internal/runtime/qadav_nn.c).
+// Transformer v3 Baseline: supports both Random Policy and Transformer + P4 Rollout Planning
 network TransformerV3NoPlan ⟦
     dense ⟬128⸴ 256⟭ ·
     relu ·

@@ -1,3 +1,6 @@
+// NOTE: P4 planning loop & evaluation are implemented in C (internal/runtime/qadav_nn.c).
+// This .ydv is a build entrypoint stub — CLI flags dispatch model/horizon/env variants.
+
 network PlanGridNet ⟦
     dense ⟬2⸴ 4⟭ ·
     relu ·

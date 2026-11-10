@@ -1,3 +1,4 @@
+// NOTE: Architecture & random policy baseline are implemented in C (internal/runtime/qadav_nn.c).
 // QNMF v3 Baseline: No Planning (Random Policy)
 network QNMFv3NoPlan ⟦
     dense ⟬128⸴ 256⟭ ·
