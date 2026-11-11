@@ -852,6 +852,10 @@ void bpe_cli_start(void) {
     for (int i = 1; i < argc; i++) {
         if (bpe_streq(argv[i], "--encode-file")) mode = "encode_file";
         else if (bpe_streq(argv[i], "--eval-heldout")) mode = "eval_heldout";
+        else if (bpe_streq(argv[i], "--dump")) {
+            mode = "dump";
+            if (i + 1 < argc && argv[i + 1][0] != '-') vocab = argv[++i];
+        }
         else if (bpe_streq(argv[i], "--corpus") && i + 1 < argc) corpus = argv[++i];
         else if (bpe_streq(argv[i], "--vocab") && i + 1 < argc)  vocab  = argv[++i];
         else if (bpe_streq(argv[i], "--input") && i + 1 < argc)  input  = argv[++i];
@@ -861,7 +865,34 @@ void bpe_cli_start(void) {
     }
 
     bpe_i64 freq = bpe_qpf_hz();
-    if (bpe_streq(mode, "train")) {
+    if (bpe_streq(mode, "dump")) {
+        if (!vocab) { bpe_cli_print("USAGE: --dump <vocab.bin>\n"); ExitProcess(1); }
+        if (bpe_load(vocab) != 0) { bpe_cli_print("BPE_LOAD_FAILED\n"); ExitProcess(1); }
+        bpe_cli_print("BPE_DUMP_OK | vocab="); bpe_cli_print_i64(g_bpe.vocab_size);
+        bpe_cli_print(" | merges="); bpe_cli_print_i64(g_bpe.num_merges);
+        bpe_cli_print(" | total_tok_bytes="); bpe_cli_print_i64(g_bpe.total_tok_bytes);
+        bpe_cli_print("\n");
+        int sample_ids[12] = { 256, 257, 258, 259, 260, 500, 1000, 2000, 4000, 6000, g_bpe.vocab_size - 2, g_bpe.vocab_size - 1 };
+        for (int s = 0; s < 12; s++) {
+            int id = sample_ids[s];
+            if (id < 0 || id >= g_bpe.vocab_size) continue;
+            int len = (int)g_bpe.tok_lens[id];
+            bpe_u32 off = g_bpe.tok_offs[id];
+            bpe_cli_print("  tok["); bpe_cli_print_i64(id); bpe_cli_print("] (len=");
+            bpe_cli_print_i64(len); bpe_cli_print(") = \"");
+            char one[2]; one[1] = 0;
+            for (int j = 0; j < len; j++) {
+                bpe_u8 ch = g_bpe.tok_bytes[off + (bpe_u32)j];
+                if (ch == '\n') bpe_cli_print("\\n");
+                else if (ch == '\r') bpe_cli_print("\\r");
+                else if (ch >= 32 && ch <= 126) { one[0] = (char)ch; bpe_cli_print(one); }
+                else { bpe_cli_print("\\x"); }
+            }
+            bpe_cli_print("\"\n");
+        }
+        bpe_free();
+        ExitProcess(0);
+    } else if (bpe_streq(mode, "train")) {
         if (!corpus || !vocab) { bpe_cli_print("USAGE: --corpus <txt> --vocab <bin> --target <V>\n"); ExitProcess(1); }
         bpe_i64 t0 = bpe_qpc_now();
         int vs = bpe_train(corpus, vocab, target);
