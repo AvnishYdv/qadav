@@ -1,3 +1,9 @@
+// NOTE: M9.15 7-model / 3-task / 3-seed ablation engine is implemented in C
+// (internal/runtime/qadav_nn.c -> qadav_run_ablation_driver), loading real 2000-step
+// checkpoints (qnmf_v2.bin, transformer_v2.bin, qnmf_v2_no_mw.bin, worldmodel_*.bin,
+// ecra_router_weights.bin, ecra_*_verifier.bin) rather than native .ydv tensor AST.
+// Supports CLI flags: --model M --task lm|grid|ecra --seed 42|123|999 [--batch B] [--episodes E]
+
 network AblationDriverNet ⟦
     dense ⟬2⸴ 4⟭ ·
     relu ·

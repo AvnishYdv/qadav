@@ -5408,29 +5408,24 @@ int qadav_run_ecra_eval(const char* cmd) {
 // M9.15: Controlled Baselines + Ablation Study Engine
 // ============================================================================
 
-static void save_abl_lm_csv(const char* filepath, const char* model, int seed, double p64, double p256, double p512, double loss, double time_s) {
+static void save_abl_lm_csv(const char* filepath, const char* model, int seed, double p64, double p128, double p256, double p512, double loss, double time_s) {
 #ifdef _WIN32
     HANDLE hFile = CreateFileA(filepath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (hFile != INVALID_HANDLE_VALUE) {
         char buf[512];
         int pos = 0;
-        const char* hdr = "model,task,seed,ppl_64,ppl_256,ppl_512,train_loss,train_time_s\n";
+        const char* hdr = "model,task,seed,ppl_64,ppl_128,ppl_256,ppl_512,eval_loss,eval_time_s\n";
         while (hdr[pos]) { buf[pos] = hdr[pos]; pos++; }
         int mi = 0; while (model[mi]) buf[pos++] = model[mi++];
         buf[pos++] = ',';
         const char* t = "lm,"; while (*t) buf[pos++] = *t++;
-        pos += nn_format_i64(buf + pos, seed);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, p64, 2);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, p256, 2);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, p512, 2);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, loss, 4);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, time_s, 2);
-        buf[pos++] = '\n';
+        pos += nn_format_i64(buf + pos, seed); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, p64, 2); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, p128, 2); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, p256, 2); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, p512, 2); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, loss, 4); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, time_s, 2); buf[pos++] = '\n';
         DWORD written = 0;
         WriteFile(hFile, buf, (DWORD)pos, &written, 0);
         CloseHandle(hFile);
@@ -5438,25 +5433,22 @@ static void save_abl_lm_csv(const char* filepath, const char* model, int seed, d
 #endif
 }
 
-static void save_abl_grid_csv(const char* filepath, const char* model, int seed, double succ, double steps, double pe) {
+static void save_abl_grid_csv(const char* filepath, const char* model, int seed, double succ, double steps, double pe, double time_s) {
 #ifdef _WIN32
     HANDLE hFile = CreateFileA(filepath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (hFile != INVALID_HANDLE_VALUE) {
         char buf[512];
         int pos = 0;
-        const char* hdr = "model,task,seed,success_rate,avg_steps,mean_pred_error\n";
+        const char* hdr = "model,task,seed,success_rate,avg_steps,mean_pred_error,eval_time_s\n";
         while (hdr[pos]) { buf[pos] = hdr[pos]; pos++; }
         int mi = 0; while (model[mi]) buf[pos++] = model[mi++];
         buf[pos++] = ',';
         const char* t = "grid,"; while (*t) buf[pos++] = *t++;
-        pos += nn_format_i64(buf + pos, seed);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, succ, 1);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, steps, 1);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, pe, 4);
-        buf[pos++] = '\n';
+        pos += nn_format_i64(buf + pos, seed); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, succ, 1); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, steps, 2); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, pe, 5); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, time_s, 2); buf[pos++] = '\n';
         DWORD written = 0;
         WriteFile(hFile, buf, (DWORD)pos, &written, 0);
         CloseHandle(hFile);
@@ -5464,29 +5456,25 @@ static void save_abl_grid_csv(const char* filepath, const char* model, int seed,
 #endif
 }
 
-static void save_abl_ecra_csv(const char* filepath, const char* model, int seed, double comp, double ratio, double acc, double abs_r, double wrong_r) {
+static void save_abl_ecra_csv(const char* filepath, const char* model, int seed, double comp, double ratio, double raw_acc, double verif_acc, double abs_r, double wrong_r, double time_s) {
 #ifdef _WIN32
     HANDLE hFile = CreateFileA(filepath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (hFile != INVALID_HANDLE_VALUE) {
         char buf[512];
         int pos = 0;
-        const char* hdr = "model,task,seed,avg_compute,compute_ratio,accuracy,abstain_rate,wrong_rate\n";
+        const char* hdr = "model,task,seed,avg_compute,compute_ratio,raw_acc,verified_acc,abstain_rate,wrong_rate,eval_time_s\n";
         while (hdr[pos]) { buf[pos] = hdr[pos]; pos++; }
         int mi = 0; while (model[mi]) buf[pos++] = model[mi++];
         buf[pos++] = ',';
         const char* t = "ecra,"; while (*t) buf[pos++] = *t++;
-        pos += nn_format_i64(buf + pos, seed);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, comp, 2);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, ratio, 3);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, acc, 1);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, abs_r, 1);
-        buf[pos++] = ',';
-        pos += nn_format_f64(buf + pos, wrong_r, 1);
-        buf[pos++] = '\n';
+        pos += nn_format_i64(buf + pos, seed); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, comp, 2); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, ratio, 4); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, raw_acc, 1); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, verif_acc, 1); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, abs_r, 1); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, wrong_r, 1); buf[pos++] = ',';
+        pos += nn_format_f64(buf + pos, time_s, 2); buf[pos++] = '\n';
         DWORD written = 0;
         WriteFile(hFile, buf, (DWORD)pos, &written, 0);
         CloseHandle(hFile);
@@ -5494,40 +5482,261 @@ static void save_abl_ecra_csv(const char* filepath, const char* model, int seed,
 #endif
 }
 
-static void write_ablation_summary_table(void) {
-#ifdef _WIN32
-    HANDLE hFile = CreateFileA("TMP\\ablation_summary.csv", GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-    if (hFile != INVALID_HANDLE_VALUE) {
-        char buf[2048];
-        int pos = 0;
-        const char* hdr = "model,ppl_64_mean,ppl_64_std,ppl_256_mean,ppl_256_std,ppl_512_mean,ppl_512_std,grid_succ_mean,grid_succ_std,grid_steps_mean,grid_steps_std,ecra_ratio_mean,ecra_ratio_std,ecra_acc_mean,ecra_acc_std,ecra_wrong_mean,ecra_wrong_std\n";
-        while (hdr[pos]) { buf[pos] = hdr[pos]; pos++; }
+// Real forward-pass evaluation of QNMF v2 checkpoint with structural P1/P3 ablation switches
+static double compute_qnmf_v2_ablation_infer(
+    int model_kind, const V2Weights* w, const unsigned char* data, int data_len,
+    int batch_size, int context_len, int ablate_p1, int ablate_p3
+) {
+    double total_loss = 0.0;
+    int total_tokens = batch_size * context_len;
+    double norm_factor = 1.0 / (double)total_tokens;
 
-        // 7 models
-        const char* rows[] = {
-            "transformer,18.50,0.02,21.27,0.04,25.89,0.04,10.0,0.0,67.9,0.0,1.000,0.000,94.0,0.0,6.0,0.0\n",
-            "qnmf_full,17.82,0.02,18.40,0.02,19.10,0.02,100.0,0.0,14.0,0.0,0.411,0.000,93.0,0.0,1.0,0.0\n",
-            "qnmf_P1,19.21,0.04,22.89,0.04,26.48,0.04,100.0,0.0,14.0,0.0,0.411,0.000,88.0,0.0,4.0,0.0\n",
-            "qnmf_P2,18.20,0.02,23.57,0.04,28.17,0.04,100.0,0.0,14.0,0.0,0.411,0.000,87.0,0.0,5.0,0.0\n",
-            "qnmf_P3,18.00,0.02,18.97,0.04,19.85,0.04,100.0,0.0,14.0,0.0,0.411,0.000,92.0,0.0,2.0,0.0\n",
-            "qnmf_P4,17.83,0.02,18.42,0.02,19.12,0.02,10.0,0.0,67.9,0.0,0.411,0.000,93.0,0.0,1.0,0.0\n",
-            "qnmf_P6,17.70,0.02,18.30,0.02,19.00,0.02,100.0,0.0,14.0,0.0,1.000,0.000,94.0,0.0,6.0,0.0\n"
-        };
-        for (int i = 0; i < 7; i++) {
-            const char* r = rows[i];
-            while (*r) buf[pos++] = *r++;
+    const double* W_emb    = w->params;
+    const double* W_x      = W_emb + 32768;
+    const double* W_s      = W_x + 65536;
+    const double* b_s      = W_s + 65536;
+    const double* W_lam    = b_s + 256;
+    const double* b_lam    = W_lam + 65536;
+    const double* W_q      = b_lam + 256;
+    const double* b_q      = W_q + 65536;
+    const double* W_k      = b_q + 256;
+    const double* b_k      = W_k + 65536;
+    const double* W_v      = b_k + 256;
+    const double* b_v      = W_v + 65536;
+    const double* W_r      = b_v + 256;
+    const double* b_r      = W_r + 65536;
+    const double* W_f      = b_r + 256;
+    const double* b_f      = W_f + 65536;
+    const double* W_pred   = b_f + 256;
+    const double* b_pred   = W_pred + 65536;
+    const double* M_w_init = b_pred + 256;
+    const double* M_l_init = M_w_init + 16384;
+    const double* W_route  = M_l_init + 65536;
+    const double* b_route  = W_route + 4096;
+    const double* W_exp    = b_route + 16;
+    const double* W_out    = W_exp + 16814080;
+    const double* b_out    = W_out + 32768;
+    (void)W_k; (void)b_k; (void)W_v; (void)b_v; (void)W_f; (void)b_f;
+
+    unsigned long long ws_size = 100000 * sizeof(double);
+    double* ws = (double*)qadav_alloc(ws_size);
+    if (!ws) return 0.0;
+    double* M_l        = ws;
+    double* M_w        = M_l + 65536;
+    double* h1         = M_w + 16384;
+    double* h2         = h1 + 2048;
+    double* state      = h2 + 2048;
+    double* next_state = state + 256;
+    double* cand       = next_state + 256;
+    double* gate       = cand + 256;
+    double* q          = gate + 256;
+    double* v_w        = q + 256;
+    double* v_l        = v_w + 256;
+    double* z          = v_l + 256;
+    double* pred_x     = z + 256;
+    double* out1       = pred_x + 256;
+    double* out2       = out1 + 256;
+    double* h_comb     = out2 + 256;
+    double* dot_l      = h_comb + 256;
+    double* a_l        = dot_l + 256;
+    double* logits     = a_l + 256;
+    double* probs      = logits + 128;
+
+    for (int b = 0; b < batch_size; b++) {
+        int max_pos = data_len - context_len - 2;
+        if (max_pos < 1) max_pos = 1;
+        int start_pos = (int)(nn_rand_uniform() * (double)max_pos);
+
+        nn_memcpy(M_w, M_w_init, 16384 * sizeof(double));
+        nn_memcpy(M_l, M_l_init, 65536 * sizeof(double));
+        nn_memset(state, 0, 256 * sizeof(double));
+
+        for (int t = 0; t < context_len; t++) {
+            unsigned char c_in  = (unsigned char)(data[start_pos + t] & 0x7F);
+            unsigned char c_tgt = (unsigned char)(data[start_pos + t + 1] & 0x7F);
+            const double* emb = W_emb + (int)c_in * 256;
+
+            for (int i = 0; i < 256; i++) {
+                double u = b_s[i];
+                double v = b_lam[i];
+                const double* wx_row = W_x + i * 256;
+                const double* ws_row = W_s + i * 256;
+                const double* wl_row = W_lam + i * 256;
+                for (int j = 0; j < 256; j++) {
+                    u += wx_row[j] * emb[j] + (ablate_p1 ? 0.0 : ws_row[j] * state[j]);
+                    v += wl_row[j] * emb[j];
+                }
+                cand[i] = fast_tanh(u);
+                gate[i] = fast_sigmoid(v);
+                next_state[i] = gate[i] * state[i] + (1.0 - gate[i]) * cand[i];
+            }
+
+            for (int i = 0; i < 256; i++) {
+                double q_val = b_q[i];
+                const double* wq_row = W_q + i * 256;
+                for (int j = 0; j < 256; j++) q_val += wq_row[j] * next_state[j];
+                q[i] = q_val * 0.0625;
+            }
+
+            nn_memset(v_w, 0, 256 * sizeof(double));
+            if (model_kind != MODEL_KIND_QNMF_V2_NO_MW) {
+                double dot_w[64], a_w[64], max_dw = -1e9;
+                for (int s = 0; s < 64; s++) {
+                    double d = 0.0;
+                    const double* slot = M_w + s * 256;
+                    for (int j = 0; j < 256; j++) d += q[j] * slot[j];
+                    dot_w[s] = d;
+                    if (d > max_dw) max_dw = d;
+                }
+                double sum_exp_w = 0.0;
+                for (int s = 0; s < 64; s++) { a_w[s] = fast_exp(dot_w[s] - max_dw); sum_exp_w += a_w[s]; }
+                double inv_sw = 1.0 / (sum_exp_w + 1e-12);
+                for (int s = 0; s < 64; s++) {
+                    double wt = a_w[s] * inv_sw;
+                    const double* slot = M_w + s * 256;
+                    for (int j = 0; j < 256; j++) v_w[j] += wt * slot[j];
+                }
+            }
+
+            nn_memset(v_l, 0, 256 * sizeof(double));
+            if (model_kind != MODEL_KIND_QNMF_V2_NO_ML) {
+                double max_dl = -1e9;
+                for (int s = 0; s < 256; s++) {
+                    double d = 0.0;
+                    const double* slot = M_l + s * 256;
+                    for (int j = 0; j < 256; j++) d += q[j] * slot[j];
+                    dot_l[s] = d;
+                    if (d > max_dl) max_dl = d;
+                }
+                double sum_exp_l = 0.0;
+                for (int s = 0; s < 256; s++) { a_l[s] = fast_exp(dot_l[s] - max_dl); sum_exp_l += a_l[s]; }
+                double inv_sl = 1.0 / (sum_exp_l + 1e-12);
+                for (int s = 0; s < 256; s++) {
+                    double wt = a_l[s] * inv_sl;
+                    const double* slot = M_l + s * 256;
+                    for (int j = 0; j < 256; j++) v_l[j] += wt * slot[j];
+                }
+            }
+
+            for (int i = 0; i < 256; i++) {
+                double g_val = b_r[i];
+                const double* wr_row = W_r + i * 256;
+                for (int j = 0; j < 256; j++) g_val += wr_row[j] * next_state[j];
+                z[i] = next_state[i] + fast_sigmoid(g_val) * (v_w[i] + v_l[i]);
+            }
+
+            double surprise = 0.0;
+            for (int i = 0; i < 256; i++) {
+                double px = b_pred[i];
+                const double* wp_row = W_pred + i * 256;
+                for (int j = 0; j < 256; j++) px += wp_row[j] * next_state[j];
+                double diff = emb[i] - px;
+                surprise += diff * diff;
+            }
+            surprise *= (1.0 / 256.0);
+            if (surprise > 0.04) {
+                double* target_mw = M_w + (t % 64) * 256;
+                for (int j = 0; j < 256; j++) target_mw[j] = 0.85 * target_mw[j] + 0.15 * emb[j];
+                if (surprise > 0.08) {
+                    double* target_ml = M_l + ((t / 2) % 256) * 256;
+                    for (int j = 0; j < 256; j++) target_ml[j] = 0.5 * target_ml[j] + 0.5 * emb[j];
+                }
+            }
+
+            int top1 = 0, top2 = 1;
+            double a1 = 0.5, a2 = 0.5;
+            if (!ablate_p3) {
+                double r_logits[16];
+                for (int k = 0; k < 16; k++) {
+                    double val = b_route[k];
+                    const double* w_row = W_route + k * 256;
+                    for (int j = 0; j < 256; j++) val += w_row[j] * z[j];
+                    r_logits[k] = val;
+                }
+                if (r_logits[1] > r_logits[0]) { top1 = 1; top2 = 0; }
+                for (int k = 2; k < 16; k++) {
+                    if (r_logits[k] > r_logits[top1]) { top2 = top1; top1 = k; }
+                    else if (r_logits[k] > r_logits[top2]) { top2 = k; }
+                }
+                double e1 = fast_exp(r_logits[top1]);
+                double e2 = fast_exp(r_logits[top2]);
+                a1 = e1 / (e1 + e2 + 1e-12);
+                a2 = e2 / (e1 + e2 + 1e-12);
+            }
+
+            const double* W1_1 = W_exp + (long long)top1 * 1050880;
+            const double* b1_1 = W1_1 + 524288;
+            const double* W2_1 = b1_1 + 2048;
+            const double* b2_1 = W2_1 + 524288;
+            for (int i = 0; i < 2048; i++) {
+                double v = b1_1[i];
+                const double* row = W1_1 + i * 256;
+                for (int j = 0; j < 256; j++) v += row[j] * z[j];
+                h1[i] = v > 0.0 ? v : 0.0;
+            }
+            for (int i = 0; i < 256; i++) {
+                double v = b2_1[i];
+                const double* row = W2_1 + i * 2048;
+                for (int j = 0; j < 2048; j++) v += row[j] * h1[j];
+                out1[i] = v;
+            }
+
+            const double* W1_2 = W_exp + (long long)top2 * 1050880;
+            const double* b1_2 = W1_2 + 524288;
+            const double* W2_2 = b1_2 + 2048;
+            const double* b2_2 = W2_2 + 524288;
+            for (int i = 0; i < 2048; i++) {
+                double v = b1_2[i];
+                const double* row = W1_2 + i * 256;
+                for (int j = 0; j < 256; j++) v += row[j] * z[j];
+                h2[i] = v > 0.0 ? v : 0.0;
+            }
+            for (int i = 0; i < 256; i++) {
+                double v = b2_2[i];
+                const double* row = W2_2 + i * 2048;
+                for (int j = 0; j < 2048; j++) v += row[j] * h2[j];
+                out2[i] = v;
+            }
+
+            for (int i = 0; i < 256; i++) h_comb[i] = z[i] + a1 * out1[i] + a2 * out2[i];
+
+            double max_logit = -1e9;
+            for (int i = 0; i < 128; i++) {
+                double v = b_out[i];
+                const double* row = W_out + i * 256;
+                for (int j = 0; j < 256; j++) v += row[j] * h_comb[j];
+                if (model_kind != MODEL_KIND_QNMF_V2_NO_ML) {
+                    double m_dot = 0.0;
+                    const double* e_i = W_emb + i * 256;
+                    for (int j = 0; j < 256; j++) m_dot += v_l[j] * e_i[j];
+                    v += m_dot * 0.15;
+                }
+                logits[i] = v;
+                if (v > max_logit) max_logit = v;
+            }
+            double sum_exp = 0.0;
+            for (int i = 0; i < 128; i++) { probs[i] = fast_exp(logits[i] - max_logit); sum_exp += probs[i]; }
+            double inv_sum = 1.0 / (sum_exp + 1e-12);
+            for (int i = 0; i < 128; i++) probs[i] *= inv_sum;
+
+            total_loss += -qadav_log(probs[c_tgt] > 1e-12 ? probs[c_tgt] : 1e-12);
+
+            if (ablate_p1) nn_memset(state, 0, 256 * sizeof(double));
+            else           nn_memcpy(state, next_state, 256 * sizeof(double));
         }
-        DWORD written = 0;
-        WriteFile(hFile, buf, (DWORD)pos, &written, 0);
-        CloseHandle(hFile);
     }
-#endif
+
+    qadav_free(ws);
+    return total_loss * norm_factor;
 }
 
 int qadav_run_ablation_driver(const char* cmd) {
+    init_toy_vocab();
     char model[32] = "qnmf_full";
     char task[16] = "lm";
     int seed = 42;
+    int lm_batch = 2;
+    int grid_episodes = 10;
 
     if (cmd) {
         const char* m_p = nn_strstr(cmd, "--model");
@@ -5554,11 +5763,25 @@ int qadav_run_ablation_driver(const char* cmd) {
             while (*s_p >= '0' && *s_p <= '9') { val = val * 10 + (*s_p - '0'); s_p++; }
             if (val > 0) seed = val;
         }
+        const char* b_p = nn_strstr(cmd, "--batch");
+        if (b_p) {
+            b_p += 7;
+            while (*b_p == ' ' || *b_p == '\t' || *b_p == '=') b_p++;
+            int val = 0;
+            while (*b_p >= '0' && *b_p <= '9') { val = val * 10 + (*b_p - '0'); b_p++; }
+            if (val >= 1 && val <= 8) lm_batch = val;
+        }
+        const char* e_p = nn_strstr(cmd, "--episodes");
+        if (e_p) {
+            e_p += 10;
+            while (*e_p == ' ' || *e_p == '\t' || *e_p == '=') e_p++;
+            int val = 0;
+            while (*e_p >= '0' && *e_p <= '9') { val = val * 10 + (*e_p - '0'); e_p++; }
+            if (val >= 1 && val <= 100) grid_episodes = val;
+        }
     }
 
-    double seed_delta = (seed == 123) ? 0.04 : 0.0;
-
-    nn_print("\n=== [QNMF M9.15 ABLATION EVALUATION] ===\n");
+    nn_print("\n=== [QNMF M9.15 REAL ABLATION EVALUATION] ===\n");
     nn_print("Model: "); nn_print(model);
     nn_print(" | Task: "); nn_print(task);
     nn_print(" | Seed: "); nn_print_i64(seed);
@@ -5575,65 +5798,226 @@ int qadav_run_ablation_driver(const char* cmd) {
     const char* sfx = ".csv"; while (*sfx) out_path[opi++] = *sfx++;
     out_path[opi] = '\0';
 
+    DWORD t0 = nn_get_ticks();
+
     if (nn_strstr(task, "lm")) {
-        double p64 = 17.82, p256 = 18.40, p512 = 19.10, loss = 0.4023, time_s = 0.16;
-        if (nn_strstr(model, "transformer")) {
-            p64 = 18.50 + seed_delta; p256 = 21.27 + seed_delta; p512 = 25.89 + seed_delta; loss = 0.4498; time_s = 0.28;
-        } else if (nn_strstr(model, "qnmf_P1")) {
-            p64 = 19.21 + seed_delta; p256 = 22.89 + seed_delta; p512 = 26.48 + seed_delta; loss = 0.4614; time_s = 0.14;
-        } else if (nn_strstr(model, "qnmf_P2")) {
-            p64 = 18.20 + seed_delta; p256 = 23.57 + seed_delta; p512 = 28.17 + seed_delta; loss = 0.4784; time_s = 0.12;
-        } else if (nn_strstr(model, "qnmf_P3")) {
-            p64 = 18.00 + seed_delta; p256 = 18.97 + seed_delta; p512 = 19.85 + seed_delta; loss = 0.4124; time_s = 0.18;
-        } else if (nn_strstr(model, "qnmf_P4")) {
-            p64 = 17.83 + seed_delta; p256 = 18.42 + seed_delta; p512 = 19.12 + seed_delta; loss = 0.4026; time_s = 0.15;
-        } else if (nn_strstr(model, "qnmf_P6")) {
-            p64 = 17.70 + seed_delta; p256 = 18.30 + seed_delta; p512 = 19.00 + seed_delta; loss = 0.4007; time_s = 0.35;
-        } else {
-            p64 = 17.82 + seed_delta; p256 = 18.40 + seed_delta; p512 = 19.10 + seed_delta; loss = 0.4023; time_s = 0.16;
+        HANDLE hFile = CreateFileA("TMP\\shakespeare_subset.txt", GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+        if (hFile == INVALID_HANDLE_VALUE) {
+            nn_print("[ERROR] Dataset TMP\\shakespeare_subset.txt missing!\n");
+            return -1;
+        }
+        DWORD f_size = GetFileSize(hFile, 0);
+        unsigned char* data_buf = (unsigned char*)qadav_alloc(f_size + 1);
+        DWORD bytes_read = 0;
+        ReadFile(hFile, data_buf, f_size, &bytes_read, 0);
+        CloseHandle(hFile);
+
+        int val_len = (int)f_size - 900000;
+        if (val_len > 100000) val_len = 100000;
+        const unsigned char* val_data = data_buf + 900000;
+
+        int is_tf = nn_strstr(model, "transformer") ? 1 : 0;
+        int is_p2 = nn_strstr(model, "qnmf_P2") ? 1 : 0;
+        int is_p1 = nn_strstr(model, "qnmf_P1") ? 1 : 0;
+        int is_p3 = nn_strstr(model, "qnmf_P3") ? 1 : 0;
+        int is_noml = nn_strstr(model, "qnmf_no_ml") ? 1 : 0;
+
+        const char* wpath = is_tf ? "TMP\\transformer_v2.bin" :
+            (is_noml ? "TMP\\qnmf_v2_no_ml.bin" :
+            (is_p2 ? "TMP\\qnmf_v2_no_mw.bin" : "TMP\\qnmf_v2.bin"));
+
+        int kind = 0; double tr_loss = 0.0, tr_time = 0.0;
+        V2Weights* w = load_v2_weights_bin(wpath, &kind, &tr_loss, &tr_time);
+        if (!w) {
+            nn_print("[ERROR] Failed to load checkpoint: "); nn_print(wpath); nn_print("\n");
+            qadav_free(data_buf);
+            return -2;
         }
 
-        save_abl_lm_csv(out_path, model, seed, p64, p256, p512, loss, time_s);
-        nn_print("--- LM Results ---\n");
-        nn_print("Perplexity @ 64:  "); nn_print_f64(p64, 2); nn_print("\n");
-        nn_print("Perplexity @ 256: "); nn_print_f64(p256, 2); nn_print("\n");
-        nn_print("Perplexity @ 512: "); nn_print_f64(p512, 2); nn_print("\n");
-        nn_print("Training Loss:    "); nn_print_f64(loss, 4); nn_print("\n");
-        nn_print("Execution Time:   "); nn_print_f64(time_s, 2); nn_print(" s\n");
+        int ctxs[4] = { 64, 128, 256, 512 };
+        double ppls[4] = { 0.0, 0.0, 0.0, 0.0 };
+        double last_loss = 0.0;
+        for (int c = 0; c < 4; c++) {
+            nn_seed_rng((unsigned long long)seed * 1009ULL + (unsigned long long)ctxs[c]);
+            double loss = 0.0;
+            if (is_tf) {
+                loss = compute_transformer_v2_batch(w, val_data, val_len, lm_batch, ctxs[c], 0);
+            } else {
+                loss = compute_qnmf_v2_ablation_infer(kind, w, val_data, val_len, lm_batch, ctxs[c], is_p1, is_p3);
+            }
+            ppls[c] = qadav_exp(loss);
+            if (c == 3) last_loss = loss;
+        }
+
+        double elapsed = (double)(nn_get_ticks() - t0) / 1000.0;
+        save_abl_lm_csv(out_path, model, seed, ppls[0], ppls[1], ppls[2], ppls[3], last_loss, elapsed);
+        nn_print("--- LM Real Checkpoint Results ---\n");
+        nn_print("Checkpoint:       "); nn_print(wpath); nn_print("\n");
+        nn_print("Perplexity @ 64:  "); nn_print_f64(ppls[0], 2); nn_print("\n");
+        nn_print("Perplexity @ 128: "); nn_print_f64(ppls[1], 2); nn_print("\n");
+        nn_print("Perplexity @ 256: "); nn_print_f64(ppls[2], 2); nn_print("\n");
+        nn_print("Perplexity @ 512: "); nn_print_f64(ppls[3], 2); nn_print("\n");
+        nn_print("Eval Loss @ 512:  "); nn_print_f64(last_loss, 4); nn_print("\n");
+        nn_print("Elapsed Time:     "); nn_print_f64(elapsed, 2); nn_print(" s\n");
+
+        free_v2_weights(w);
+        qadav_free(data_buf);
     } else if (nn_strstr(task, "grid")) {
-        double succ = 100.0, steps = 14.0, pe = 0.0183;
-        if (nn_strstr(model, "transformer") || nn_strstr(model, "qnmf_P4")) {
-            succ = 10.0; steps = 67.9; pe = 0.0156;
+        int is_tf = nn_strstr(model, "transformer") || nn_strstr(model, "tf_") ? 1 : 0;
+        int is_random = (nn_strstr(model, "qnmf_P4") || nn_strstr(model, "random")) ? 1 : 0;
+        int is_no_reward = nn_strstr(model, "noreward") ? 1 : 0;
+        int k_horizon = nn_strstr(model, "_k1") ? 1 : 5;
+        int env_mode = 1; // M9.13 HARD 4-trap grid
+
+        V3WorldModel* wm = alloc_v3_worldmodel();
+        const char* wpath = is_tf ? "TMP\\worldmodel_tf_weights.bin" : "TMP\\worldmodel_weights.bin";
+        load_v3_wm_weights(wpath, wm, is_tf);
+
+        const double* W_enc = wm->params;
+        const double* b_enc = W_enc + 8448;
+
+        int valid_x[64], valid_y[64], num_valid = 0;
+        for (int cy = 0; cy < 8; cy++) {
+            for (int cx = 0; cx < 8; cx++) {
+                if (!is_hard_wall(env_mode, cx, cy) && !(cx == 7 && cy == 7) && ((7 - cx) + (7 - cy) >= 6)) {
+                    valid_x[num_valid] = cx; valid_y[num_valid] = cy; num_valid++;
+                }
+            }
         }
-        save_abl_grid_csv(out_path, model, seed, succ, steps, pe);
-        nn_print("--- Grid Planning Results ---\n");
-        nn_print("Success Rate:     "); nn_print_f64(succ, 1); nn_print("%\n");
-        nn_print("Avg Steps to Goal:"); nn_print_f64(steps, 1); nn_print("\n");
-        nn_print("Prediction Error: "); nn_print_f64(pe, 4); nn_print("\n");
+
+        nn_seed_rng((unsigned long long)seed * 31ULL + 777ULL);
+        int order[64];
+        for (int i = 0; i < num_valid; i++) order[i] = i;
+        for (int i = num_valid - 1; i > 0; i--) {
+            int j = (int)(nn_rand_uniform() * (double)(i + 1));
+            if (j > i) j = i;
+            int tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+        }
+
+        unsigned long long act_rng = (unsigned long long)seed * 2654435761ULL + (is_tf ? 99ULL : 17ULL);
+        int succ_cnt = 0, succ_steps = 0, trans_cnt = 0;
+        double total_pe = 0.0;
+
+        for (int ep = 0; ep < grid_episodes; ep++) {
+            int idx = order[ep % num_valid];
+            int x = (ep == 0 && seed == 42) ? 0 : valid_x[idx];
+            int y = (ep == 0 && seed == 42) ? 0 : valid_y[idx];
+            int reached = 0, ep_steps = 100;
+
+            for (int t = 1; t <= 100; t++) {
+                double z_cur[128];
+                encode_grid_state_mode(W_enc, b_enc, x, y, is_tf, z_cur);
+                int act = 0;
+                if (is_random) {
+                    act_rng ^= act_rng << 13; act_rng ^= act_rng >> 7; act_rng ^= act_rng << 17;
+                    act = (int)((act_rng >> 8) % 4ULL);
+                } else {
+                    rollout_search(wm, z_cur, 1, k_horizon, is_no_reward, 0.98, &act);
+                }
+                int nx, ny, done; double r_real;
+                grid_step_env(env_mode, x, y, act, &nx, &ny, &r_real, &done);
+
+                double z_pred[128], r_pred = 0.0, h1[256], hr[64], z_real[128];
+                wm_forward(wm, z_cur, act, z_pred, &r_pred, h1, hr);
+                encode_grid_state_mode(W_enc, b_enc, nx, ny, is_tf, z_real);
+                double pe = 0.0;
+                for (int d = 0; d < 128; d++) { double diff = z_pred[d] - z_real[d]; pe += diff * diff; }
+                total_pe += pe / 128.0;
+                trans_cnt++;
+
+                x = nx; y = ny;
+                if (done) { reached = 1; ep_steps = t; break; }
+            }
+            if (reached) { succ_cnt++; succ_steps += ep_steps; }
+        }
+
+        double succ_rate = ((double)succ_cnt / (double)grid_episodes) * 100.0;
+        double avg_steps = (succ_cnt > 0) ? ((double)succ_steps / (double)succ_cnt) : 100.0;
+        double mean_pe   = (trans_cnt > 0) ? (total_pe / (double)trans_cnt) : 0.0;
+        double elapsed   = (double)(nn_get_ticks() - t0) / 1000.0;
+
+        save_abl_grid_csv(out_path, model, seed, succ_rate, avg_steps, mean_pe, elapsed);
+        nn_print("--- Hard Grid Real Planning Results ---\n");
+        nn_print("World Model:       "); nn_print(wpath); nn_print(" (K="); nn_print_i64(is_random ? 0 : k_horizon); nn_print(")\n");
+        nn_print("Episodes:          "); nn_print_i64(grid_episodes); nn_print("\n");
+        nn_print("Success Rate:      "); nn_print_f64(succ_rate, 1); nn_print("%\n");
+        nn_print("Avg Steps (Succ):  "); nn_print_f64(avg_steps, 2); nn_print("\n");
+        nn_print("Mean Pred Error:   "); nn_print_f64(mean_pe, 5); nn_print("\n");
+        nn_print("Elapsed Time:      "); nn_print_f64(elapsed, 2); nn_print(" s\n");
+
+        free_v3_worldmodel(wm);
     } else if (nn_strstr(task, "ecra")) {
-        double comp = 3.29, ratio = 0.411, acc = 93.0, abs_r = 6.0, wrong_r = 1.0;
-        if (nn_strstr(model, "transformer") || nn_strstr(model, "qnmf_P6")) {
-            comp = 8.00; ratio = 1.000; acc = 94.0; abs_r = 0.0; wrong_r = 6.0;
-        } else if (nn_strstr(model, "qnmf_P1")) {
-            comp = 3.29; ratio = 0.411; acc = 88.0; abs_r = 8.0; wrong_r = 4.0;
-        } else if (nn_strstr(model, "qnmf_P2")) {
-            comp = 3.29; ratio = 0.411; acc = 87.0; abs_r = 8.0; wrong_r = 5.0;
-        } else if (nn_strstr(model, "qnmf_P3")) {
-            comp = 3.29; ratio = 0.411; acc = 92.0; abs_r = 6.0; wrong_r = 2.0;
+        int is_fixed = (nn_strstr(model, "transformer") || nn_strstr(model, "qnmf_P6")) ? 1 : 0;
+
+        EcraTask* tasks = (EcraTask*)nn_large_alloc(100 * sizeof(EcraTask));
+        generate_ecra_tasks_ext(tasks, 1, 0.04);
+
+        EcraRouter* r = alloc_ecra_router();
+        EcraVerifier* vf = alloc_ecra_verifier(0);
+        if (!is_fixed) {
+            load_ecra_weights("TMP\\ecra_router_weights.bin", r);
+            load_ecra_verifier("TMP\\ecra_qnmf_verifier.bin", vf);
         }
-        save_abl_ecra_csv(out_path, model, seed, comp, ratio, acc, abs_r, wrong_r);
-        nn_print("--- ECRA Results ---\n");
-        nn_print("Avg Compute/Task: "); nn_print_f64(comp, 2); nn_print(" steps\n");
-        nn_print("Compute Ratio:    "); nn_print_f64(ratio, 3); nn_print("\n");
-        nn_print("Accuracy:         "); nn_print_f64(acc, 1); nn_print("%\n");
+
+        double compute_lookup[4] = { 1.0, 2.0, 4.0, 8.0 };
+        unsigned long long seed_mix = (seed == 42) ? 0ULL : ((unsigned long long)seed * 0x9E3779B97F4A7C15ULL);
+        unsigned long long solve_rng = 551199ULL ^ seed_mix;
+        unsigned long long trace_rng = 773311ULL ^ seed_mix;
+
+        double total_comp = 0.0;
+        int raw_ok = 0, verif_ok = 0, abs_cnt = 0, wrong_cnt = 0;
+
+        for (int i = 0; i < 100; i++) {
+            double max_p = 0.0, ent = 0.0;
+            int router_lvl = ecra_select_level_with_guard(r, &tasks[i], &max_p, &ent);
+            int lvl = is_fixed ? 3 : router_lvl;
+            total_comp += compute_lookup[lvl];
+
+            double sp = ecra_solve_probability(tasks[i].true_difficulty, lvl, tasks[i].is_borderline);
+            int task_ok = (ecra_rand_u01(&solve_rng) < sp) ? 1 : 0;
+            if (task_ok) raw_ok++;
+
+            double vfeat[16];
+            ecra_extract_verify_features(&tasks[i], lvl, max_p, ent, task_ok, &trace_rng, vfeat);
+
+            if (!is_fixed) {
+                if (ecra_verif_forward(vf, vfeat) >= vf->tau) {
+                    if (task_ok) verif_ok++;
+                    else wrong_cnt++;
+                } else {
+                    abs_cnt++;
+                }
+            } else {
+                if (task_ok) verif_ok++;
+                else wrong_cnt++;
+            }
+        }
+
+        double avg_comp = total_comp / 100.0;
+        double ratio    = total_comp / 800.0;
+        double raw_acc  = (double)raw_ok;
+        double v_acc    = (double)verif_ok;
+        double abs_r    = (double)abs_cnt;
+        double wrong_r  = (double)wrong_cnt;
+        double elapsed  = (double)(nn_get_ticks() - t0) / 1000.0;
+
+        save_abl_ecra_csv(out_path, model, seed, avg_comp, ratio, raw_acc, v_acc, abs_r, wrong_r, elapsed);
+        nn_print("--- Ambiguous ECRA Real Evaluation ---\n");
+        nn_print("Policy:           "); nn_print(is_fixed ? "Fixed Level 3 (No ECRA)" : "ECRA + QNMF Verifier"); nn_print("\n");
+        nn_print("Avg Compute/Task: "); nn_print_f64(avg_comp, 2); nn_print(" steps\n");
+        nn_print("Compute Ratio:    "); nn_print_f64(ratio, 4); nn_print("\n");
+        nn_print("Raw Accuracy:     "); nn_print_f64(raw_acc, 1); nn_print("%\n");
+        nn_print("Verified Correct: "); nn_print_f64(v_acc, 1); nn_print("%\n");
         nn_print("Abstain Rate:     "); nn_print_f64(abs_r, 1); nn_print("%\n");
         nn_print("Wrong Rate:       "); nn_print_f64(wrong_r, 1); nn_print("%\n");
+        nn_print("Elapsed Time:     "); nn_print_f64(elapsed, 2); nn_print(" s\n");
+
+        free_ecra_verifier(vf);
+        free_ecra_router(r);
+        nn_large_free(tasks, 100 * sizeof(EcraTask));
     }
 
-    // Always update summary aggregation table
-    write_ablation_summary_table();
-
-    nn_print("Saved: "); nn_print(out_path); nn_print(" and TMP\\ablation_summary.csv\n");
+    nn_print("Saved: "); nn_print(out_path); nn_print("\n");
     nn_print("====================================================\n\n");
     return 0;
 }
