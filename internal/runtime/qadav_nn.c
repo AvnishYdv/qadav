@@ -1852,6 +1852,37 @@ static void nn_large_free(void* p, unsigned long long sz) {
     }
 }
 
+static void* g_nn_scratch_ptr = (void*)0;
+static unsigned long long g_nn_scratch_cap = 0;
+static void nn_mt_shutdown(void);
+
+static void* nn_scratch_acquire(unsigned long long bytes) {
+    unsigned long long aligned = (bytes + 4095ULL) & ~4095ULL;
+    if (g_nn_scratch_ptr && g_nn_scratch_cap >= aligned) {
+        return g_nn_scratch_ptr;
+    }
+    if (g_nn_scratch_ptr) {
+        nn_large_free(g_nn_scratch_ptr, g_nn_scratch_cap);
+        g_nn_scratch_ptr = (void*)0;
+        g_nn_scratch_cap = 0;
+    }
+    void* p = nn_large_alloc(aligned);
+    if (p) {
+        g_nn_scratch_ptr = p;
+        g_nn_scratch_cap = aligned;
+    }
+    return p;
+}
+
+static void nn_scratch_release(void) {
+    nn_mt_shutdown();
+    if (g_nn_scratch_ptr) {
+        nn_large_free(g_nn_scratch_ptr, g_nn_scratch_cap);
+        g_nn_scratch_ptr = (void*)0;
+        g_nn_scratch_cap = 0;
+    }
+}
+
 typedef struct {
     int total_params;
     double* params;
@@ -1906,10 +1937,867 @@ static void init_transformer_v2_params(V2Weights* w) {
     }
 }
 
-static void v2_adam_step(V2Weights* w, double lr, int step) {
+// =====================================================================
+// ZERO-LIBC AVX2 / FMA SIMD BACKEND & RUNTIME CPUID DISPATCH (M10.1)
+// =====================================================================
+
+#if defined(__x86_64__) || defined(_M_X64)
+#ifndef __MM_MALLOC_H
+#define __MM_MALLOC_H
+#endif
+#include <immintrin.h>
+#endif
+
+static int g_qadav_avx2_cached = -1;
+
+// Note: __builtin_cpu_supports("avx2") requires external __cpu_model from compiler-rt/libgcc,
+// which fails to link in Qadav's zero-libc -nostdlib builds. Use inline CPUID + XGETBV instead.
+static int qadav_cpu_supports_avx2(void) {
+    if (g_qadav_avx2_cached >= 0) return g_qadav_avx2_cached;
+#if defined(__x86_64__) || defined(_M_X64)
+    unsigned int eax1 = 0, ebx1 = 0, ecx1 = 0, edx1 = 0;
+    __asm__ volatile("cpuid"
+        : "=a"(eax1), "=b"(ebx1), "=c"(ecx1), "=d"(edx1)
+        : "a"(1), "c"(0));
+    int has_osxsave = (int)((ecx1 >> 27) & 1U);
+    int has_avx     = (int)((ecx1 >> 28) & 1U);
+    int has_fma     = (int)((ecx1 >> 12) & 1U);
+    if (!has_osxsave || !has_avx || !has_fma) {
+        g_qadav_avx2_cached = 0;
+        return 0;
+    }
+    unsigned int xcr0_lo = 0, xcr0_hi = 0;
+    __asm__ volatile("xgetbv" : "=a"(xcr0_lo), "=d"(xcr0_hi) : "c"(0));
+    if ((xcr0_lo & 0x6U) != 0x6U) {
+        g_qadav_avx2_cached = 0;
+        return 0;
+    }
+    unsigned int eax7 = 0, ebx7 = 0, ecx7 = 0, edx7 = 0;
+    __asm__ volatile("cpuid"
+        : "=a"(eax7), "=b"(ebx7), "=c"(ecx7), "=d"(edx7)
+        : "a"(7), "c"(0));
+    int has_avx2 = (int)((ebx7 >> 5) & 1U);
+    g_qadav_avx2_cached = has_avx2 ? 1 : 0;
+    return g_qadav_avx2_cached;
+#else
+    g_qadav_avx2_cached = 0;
+    return 0;
+#endif
+}
+
+// ---------------------------------------------------------------------
+// Kernel 1: vec_dot_256 (d=256 Memory Slot & Inner Product Dot)
+// ---------------------------------------------------------------------
+
+static double vec_dot_256_scalar(const double* a, const double* b) {
+    double sum = 0.0;
+    for (int j = 0; j < 256; j++) sum += a[j] * b[j];
+    return sum;
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma")))
+static inline double avx2_hsum_pd(__m256d acc) {
+    __m128d lo = _mm256_castpd256_pd128(acc);
+    __m128d hi = _mm256_extractf128_pd(acc, 1);
+    __m128d sum = _mm_add_pd(lo, hi);
+    return _mm_cvtsd_f64(sum) + _mm_cvtsd_f64(_mm_unpackhi_pd(sum, sum));
+}
+
+__attribute__((target("avx2,fma"), always_inline))
+static inline __m256d avx2_fast_exp4(__m256d x) {
+    const __m256d c20     = _mm256_set1_pd(20.0);
+    const __m256d cm20    = _mm256_set1_pd(-20.0);
+    const __m256d c1      = _mm256_set1_pd(1.0);
+    const __m256d cinv256 = _mm256_set1_pd(1.0 / 256.0);
+    __m256d mask_zero = _mm256_cmp_pd(x, cm20, _CMP_LT_OQ);
+    __m256d xc = _mm256_min_pd(x, c20);
+    __m256d y = _mm256_fmadd_pd(xc, cinv256, c1);
+    y = _mm256_mul_pd(y, y); y = _mm256_mul_pd(y, y);
+    y = _mm256_mul_pd(y, y); y = _mm256_mul_pd(y, y);
+    y = _mm256_mul_pd(y, y); y = _mm256_mul_pd(y, y);
+    y = _mm256_mul_pd(y, y); y = _mm256_mul_pd(y, y);
+    return _mm256_andnot_pd(mask_zero, y);
+}
+
+__attribute__((target("avx2,fma"), always_inline))
+static inline __m256d avx2_fast_tanh4(__m256d x) {
+    const __m256d c3  = _mm256_set1_pd(3.0);
+    const __m256d cm3 = _mm256_set1_pd(-3.0);
+    const __m256d c1  = _mm256_set1_pd(1.0);
+    const __m256d cm1 = _mm256_set1_pd(-1.0);
+    const __m256d c27 = _mm256_set1_pd(27.0);
+    const __m256d c9  = _mm256_set1_pd(9.0);
+    __m256d m_lo = _mm256_cmp_pd(x, cm3, _CMP_LT_OQ);
+    __m256d m_hi = _mm256_cmp_pd(x, c3,  _CMP_GT_OQ);
+    __m256d x2 = _mm256_mul_pd(x, x);
+    __m256d res = _mm256_div_pd(_mm256_mul_pd(x, _mm256_add_pd(c27, x2)), _mm256_fmadd_pd(c9, x2, c27));
+    res = _mm256_blendv_pd(res, cm1, m_lo);
+    return _mm256_blendv_pd(res, c1,  m_hi);
+}
+
+__attribute__((target("avx2,fma"), always_inline))
+static inline double vec_dot_256_avx2(const double* restrict a, const double* restrict b) {
+    __m256d acc0 = _mm256_setzero_pd();
+    __m256d acc1 = _mm256_setzero_pd();
+    for (int j = 0; j < 256; j += 8) {
+        acc0 = _mm256_fmadd_pd(_mm256_loadu_pd(a + j),     _mm256_loadu_pd(b + j),     acc0);
+        acc1 = _mm256_fmadd_pd(_mm256_loadu_pd(a + j + 4), _mm256_loadu_pd(b + j + 4), acc1);
+    }
+    return avx2_hsum_pd(_mm256_add_pd(acc0, acc1));
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_matvec_Nx256_avx2(const double* restrict W, const double* restrict b, const double* restrict x, double* restrict out, double scale, int N) {
+    for (int i = 0; i + 3 < N; i += 4) {
+        const double* r0 = W + (i + 0) * 256;
+        const double* r1 = W + (i + 1) * 256;
+        const double* r2 = W + (i + 2) * 256;
+        const double* r3 = W + (i + 3) * 256;
+        __m256d a0 = _mm256_setzero_pd(), a1 = _mm256_setzero_pd(), a2 = _mm256_setzero_pd(), a3 = _mm256_setzero_pd();
+        for (int j = 0; j < 256; j += 4) {
+            __m256d xv = _mm256_loadu_pd(x + j);
+            a0 = _mm256_fmadd_pd(_mm256_loadu_pd(r0 + j), xv, a0);
+            a1 = _mm256_fmadd_pd(_mm256_loadu_pd(r1 + j), xv, a1);
+            a2 = _mm256_fmadd_pd(_mm256_loadu_pd(r2 + j), xv, a2);
+            a3 = _mm256_fmadd_pd(_mm256_loadu_pd(r3 + j), xv, a3);
+        }
+        double b0 = b ? b[i + 0] : 0.0, b1 = b ? b[i + 1] : 0.0;
+        double b2 = b ? b[i + 2] : 0.0, b3 = b ? b[i + 3] : 0.0;
+        out[i + 0] = (b0 + avx2_hsum_pd(a0)) * scale;
+        out[i + 1] = (b1 + avx2_hsum_pd(a1)) * scale;
+        out[i + 2] = (b2 + avx2_hsum_pd(a2)) * scale;
+        out[i + 3] = (b3 + avx2_hsum_pd(a3)) * scale;
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_weighted_sum_Nx256_avx2(const double* restrict M, const double* restrict w_arr, double inv_sum, double* restrict out, int N) {
+    nn_memset(out, 0, 256 * sizeof(double));
+    for (int s = 0; s + 3 < N; s += 4) {
+        __m256d w0 = _mm256_set1_pd(w_arr[s + 0] * inv_sum);
+        __m256d w1 = _mm256_set1_pd(w_arr[s + 1] * inv_sum);
+        __m256d w2 = _mm256_set1_pd(w_arr[s + 2] * inv_sum);
+        __m256d w3 = _mm256_set1_pd(w_arr[s + 3] * inv_sum);
+        const double* r0 = M + (s + 0) * 256;
+        const double* r1 = M + (s + 1) * 256;
+        const double* r2 = M + (s + 2) * 256;
+        const double* r3 = M + (s + 3) * 256;
+        for (int j = 0; j < 256; j += 4) {
+            __m256d acc = _mm256_loadu_pd(out + j);
+            acc = _mm256_fmadd_pd(_mm256_loadu_pd(r0 + j), w0, acc);
+            acc = _mm256_fmadd_pd(_mm256_loadu_pd(r1 + j), w1, acc);
+            acc = _mm256_fmadd_pd(_mm256_loadu_pd(r2 + j), w2, acc);
+            acc = _mm256_fmadd_pd(_mm256_loadu_pd(r3 + j), w3, acc);
+            _mm256_storeu_pd(out + j, acc);
+        }
+    }
+}
+#endif
+
+static double vec_dot_256(const double* a, const double* b) {
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) return vec_dot_256_avx2(a, b);
+#endif
+    return vec_dot_256_scalar(a, b);
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma"), always_inline))
+static inline void vec_axpy_256_avx2(double* restrict dst, const double* restrict src, double scale) {
+    __m256d s = _mm256_set1_pd(scale);
+    for (int j = 0; j < 256; j += 8) {
+        __m256d d0 = _mm256_loadu_pd(dst + j);
+        __m256d d1 = _mm256_loadu_pd(dst + j + 4);
+        d0 = _mm256_fmadd_pd(_mm256_loadu_pd(src + j),     s, d0);
+        d1 = _mm256_fmadd_pd(_mm256_loadu_pd(src + j + 4), s, d1);
+        _mm256_storeu_pd(dst + j,     d0);
+        _mm256_storeu_pd(dst + j + 4, d1);
+    }
+}
+#endif
+
+static void vec_axpy_256(double* dst, const double* src, double scale) {
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) { vec_axpy_256_avx2(dst, src, scale); return; }
+#endif
+    for (int j = 0; j < 256; j++) dst[j] += scale * src[j];
+}
+
+// ---------------------------------------------------------------------
+// Kernel 2: vec_matmul_256x2048 & Batched Expert FFN MatMuls
+// ---------------------------------------------------------------------
+
+static void vec_matmul_256x2048_scalar(const double* W1, const double* b1, const double* z, double* h_out) {
+    for (int i = 0; i < 2048; i++) {
+        double v = b1[i];
+        const double* row = W1 + i * 256;
+        for (int j = 0; j < 256; j++) v += row[j] * z[j];
+        h_out[i] = v > 0.0 ? v : 0.0;
+    }
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma")))
+static void vec_matmul_256x2048_avx2(const double* restrict W1, const double* restrict b1, const double* restrict z, double* restrict h_out) {
+    for (int i = 0; i < 2048; i += 4) {
+        const double* r0 = W1 + (i + 0) * 256;
+        const double* r1 = W1 + (i + 1) * 256;
+        const double* r2 = W1 + (i + 2) * 256;
+        const double* r3 = W1 + (i + 3) * 256;
+        __m256d a0 = _mm256_setzero_pd(), a1 = _mm256_setzero_pd(), a2 = _mm256_setzero_pd(), a3 = _mm256_setzero_pd();
+        for (int j = 0; j < 256; j += 4) {
+            __m256d zv = _mm256_loadu_pd(z + j);
+            a0 = _mm256_fmadd_pd(_mm256_loadu_pd(r0 + j), zv, a0);
+            a1 = _mm256_fmadd_pd(_mm256_loadu_pd(r1 + j), zv, a1);
+            a2 = _mm256_fmadd_pd(_mm256_loadu_pd(r2 + j), zv, a2);
+            a3 = _mm256_fmadd_pd(_mm256_loadu_pd(r3 + j), zv, a3);
+        }
+        double v0 = b1[i + 0] + avx2_hsum_pd(a0);
+        double v1 = b1[i + 1] + avx2_hsum_pd(a1);
+        double v2 = b1[i + 2] + avx2_hsum_pd(a2);
+        double v3 = b1[i + 3] + avx2_hsum_pd(a3);
+        h_out[i + 0] = v0 > 0.0 ? v0 : 0.0;
+        h_out[i + 1] = v1 > 0.0 ? v1 : 0.0;
+        h_out[i + 2] = v2 > 0.0 ? v2 : 0.0;
+        h_out[i + 3] = v3 > 0.0 ? v3 : 0.0;
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_matmul_M_256x2048_avx2(
+    const double* restrict W1, const double* restrict b1,
+    const double* const* restrict z_ptrs, double* const* restrict h_ptrs, int M)
+{
+    for (int i = 0; i < 2048; i++) {
+        const double* row = W1 + i * 256;
+        double bi = b1[i];
+        int u = 0;
+        for (; u + 7 < M; u += 8) {
+            const double* z0 = z_ptrs[u + 0]; const double* z1 = z_ptrs[u + 1];
+            const double* z2 = z_ptrs[u + 2]; const double* z3 = z_ptrs[u + 3];
+            const double* z4 = z_ptrs[u + 4]; const double* z5 = z_ptrs[u + 5];
+            const double* z6 = z_ptrs[u + 6]; const double* z7 = z_ptrs[u + 7];
+            __m256d a0 = _mm256_setzero_pd(), a1 = _mm256_setzero_pd(), a2 = _mm256_setzero_pd(), a3 = _mm256_setzero_pd();
+            __m256d a4 = _mm256_setzero_pd(), a5 = _mm256_setzero_pd(), a6 = _mm256_setzero_pd(), a7 = _mm256_setzero_pd();
+            for (int j = 0; j < 256; j += 4) {
+                __m256d wv = _mm256_loadu_pd(row + j);
+                a0 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z0 + j), a0);
+                a1 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z1 + j), a1);
+                a2 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z2 + j), a2);
+                a3 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z3 + j), a3);
+                a4 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z4 + j), a4);
+                a5 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z5 + j), a5);
+                a6 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z6 + j), a6);
+                a7 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z7 + j), a7);
+            }
+            double v0 = bi + avx2_hsum_pd(a0); h_ptrs[u + 0][i] = v0 > 0.0 ? v0 : 0.0;
+            double v1 = bi + avx2_hsum_pd(a1); h_ptrs[u + 1][i] = v1 > 0.0 ? v1 : 0.0;
+            double v2 = bi + avx2_hsum_pd(a2); h_ptrs[u + 2][i] = v2 > 0.0 ? v2 : 0.0;
+            double v3 = bi + avx2_hsum_pd(a3); h_ptrs[u + 3][i] = v3 > 0.0 ? v3 : 0.0;
+            double v4 = bi + avx2_hsum_pd(a4); h_ptrs[u + 4][i] = v4 > 0.0 ? v4 : 0.0;
+            double v5 = bi + avx2_hsum_pd(a5); h_ptrs[u + 5][i] = v5 > 0.0 ? v5 : 0.0;
+            double v6 = bi + avx2_hsum_pd(a6); h_ptrs[u + 6][i] = v6 > 0.0 ? v6 : 0.0;
+            double v7 = bi + avx2_hsum_pd(a7); h_ptrs[u + 7][i] = v7 > 0.0 ? v7 : 0.0;
+        }
+        for (; u + 3 < M; u += 4) {
+            const double* z0 = z_ptrs[u + 0]; const double* z1 = z_ptrs[u + 1];
+            const double* z2 = z_ptrs[u + 2]; const double* z3 = z_ptrs[u + 3];
+            __m256d a0 = _mm256_setzero_pd(), a1 = _mm256_setzero_pd(), a2 = _mm256_setzero_pd(), a3 = _mm256_setzero_pd();
+            for (int j = 0; j < 256; j += 4) {
+                __m256d wv = _mm256_loadu_pd(row + j);
+                a0 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z0 + j), a0);
+                a1 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z1 + j), a1);
+                a2 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z2 + j), a2);
+                a3 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(z3 + j), a3);
+            }
+            double v0 = bi + avx2_hsum_pd(a0); h_ptrs[u + 0][i] = v0 > 0.0 ? v0 : 0.0;
+            double v1 = bi + avx2_hsum_pd(a1); h_ptrs[u + 1][i] = v1 > 0.0 ? v1 : 0.0;
+            double v2 = bi + avx2_hsum_pd(a2); h_ptrs[u + 2][i] = v2 > 0.0 ? v2 : 0.0;
+            double v3 = bi + avx2_hsum_pd(a3); h_ptrs[u + 3][i] = v3 > 0.0 ? v3 : 0.0;
+        }
+        for (; u < M; u++) {
+            double v = bi + vec_dot_256_avx2(row, z_ptrs[u]);
+            h_ptrs[u][i] = v > 0.0 ? v : 0.0;
+        }
+    }
+}
+
+__attribute__((target("avx2,fma")))
+static void vec_matmul_2048x256_avx2(const double* restrict W2, const double* restrict b2, const double* restrict h, double* restrict out) {
+    for (int i = 0; i < 256; i += 4) {
+        const double* r0 = W2 + (i + 0) * 2048;
+        const double* r1 = W2 + (i + 1) * 2048;
+        const double* r2 = W2 + (i + 2) * 2048;
+        const double* r3 = W2 + (i + 3) * 2048;
+        __m256d a0 = _mm256_setzero_pd(), a1 = _mm256_setzero_pd(), a2 = _mm256_setzero_pd(), a3 = _mm256_setzero_pd();
+        for (int j = 0; j < 2048; j += 4) {
+            __m256d hv = _mm256_loadu_pd(h + j);
+            a0 = _mm256_fmadd_pd(_mm256_loadu_pd(r0 + j), hv, a0);
+            a1 = _mm256_fmadd_pd(_mm256_loadu_pd(r1 + j), hv, a1);
+            a2 = _mm256_fmadd_pd(_mm256_loadu_pd(r2 + j), hv, a2);
+            a3 = _mm256_fmadd_pd(_mm256_loadu_pd(r3 + j), hv, a3);
+        }
+        out[i + 0] = b2[i + 0] + avx2_hsum_pd(a0);
+        out[i + 1] = b2[i + 1] + avx2_hsum_pd(a1);
+        out[i + 2] = b2[i + 2] + avx2_hsum_pd(a2);
+        out[i + 3] = b2[i + 3] + avx2_hsum_pd(a3);
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_matmul_M_2048x256_add_avx2(
+    const double* restrict W2, const double* restrict b2,
+    const double* const* restrict h_ptrs, double* const* restrict out_ptrs, const double* alpha_arr, int M)
+{
+    for (int i = 0; i < 256; i++) {
+        double bi = b2[i];
+        const double* row = W2 + i * 2048;
+        int u = 0;
+        for (; u + 7 < M; u += 8) {
+            const double* h0 = h_ptrs[u + 0]; const double* h1 = h_ptrs[u + 1];
+            const double* h2 = h_ptrs[u + 2]; const double* h3 = h_ptrs[u + 3];
+            const double* h4 = h_ptrs[u + 4]; const double* h5 = h_ptrs[u + 5];
+            const double* h6 = h_ptrs[u + 6]; const double* h7 = h_ptrs[u + 7];
+            __m256d a0 = _mm256_setzero_pd(), a1 = _mm256_setzero_pd(), a2 = _mm256_setzero_pd(), a3 = _mm256_setzero_pd();
+            __m256d a4 = _mm256_setzero_pd(), a5 = _mm256_setzero_pd(), a6 = _mm256_setzero_pd(), a7 = _mm256_setzero_pd();
+            for (int m = 0; m < 2048; m += 4) {
+                __m256d wv = _mm256_loadu_pd(row + m);
+                a0 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h0 + m), a0);
+                a1 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h1 + m), a1);
+                a2 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h2 + m), a2);
+                a3 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h3 + m), a3);
+                a4 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h4 + m), a4);
+                a5 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h5 + m), a5);
+                a6 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h6 + m), a6);
+                a7 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h7 + m), a7);
+            }
+            out_ptrs[u + 0][i] += alpha_arr[u + 0] * (bi + avx2_hsum_pd(a0));
+            out_ptrs[u + 1][i] += alpha_arr[u + 1] * (bi + avx2_hsum_pd(a1));
+            out_ptrs[u + 2][i] += alpha_arr[u + 2] * (bi + avx2_hsum_pd(a2));
+            out_ptrs[u + 3][i] += alpha_arr[u + 3] * (bi + avx2_hsum_pd(a3));
+            out_ptrs[u + 4][i] += alpha_arr[u + 4] * (bi + avx2_hsum_pd(a4));
+            out_ptrs[u + 5][i] += alpha_arr[u + 5] * (bi + avx2_hsum_pd(a5));
+            out_ptrs[u + 6][i] += alpha_arr[u + 6] * (bi + avx2_hsum_pd(a6));
+            out_ptrs[u + 7][i] += alpha_arr[u + 7] * (bi + avx2_hsum_pd(a7));
+        }
+        for (; u + 3 < M; u += 4) {
+            const double* h0 = h_ptrs[u + 0]; const double* h1 = h_ptrs[u + 1];
+            const double* h2 = h_ptrs[u + 2]; const double* h3 = h_ptrs[u + 3];
+            __m256d a0 = _mm256_setzero_pd(), a1 = _mm256_setzero_pd(), a2 = _mm256_setzero_pd(), a3 = _mm256_setzero_pd();
+            for (int m = 0; m < 2048; m += 4) {
+                __m256d wv = _mm256_loadu_pd(row + m);
+                a0 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h0 + m), a0);
+                a1 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h1 + m), a1);
+                a2 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h2 + m), a2);
+                a3 = _mm256_fmadd_pd(wv, _mm256_loadu_pd(h3 + m), a3);
+            }
+            out_ptrs[u + 0][i] += alpha_arr[u + 0] * (bi + avx2_hsum_pd(a0));
+            out_ptrs[u + 1][i] += alpha_arr[u + 1] * (bi + avx2_hsum_pd(a1));
+            out_ptrs[u + 2][i] += alpha_arr[u + 2] * (bi + avx2_hsum_pd(a2));
+            out_ptrs[u + 3][i] += alpha_arr[u + 3] * (bi + avx2_hsum_pd(a3));
+        }
+        for (; u < M; u++) {
+            const double* hu = h_ptrs[u];
+            __m256d s0 = _mm256_setzero_pd(), s1 = _mm256_setzero_pd();
+            for (int m = 0; m < 2048; m += 8) {
+                s0 = _mm256_fmadd_pd(_mm256_loadu_pd(row + m),     _mm256_loadu_pd(hu + m),     s0);
+                s1 = _mm256_fmadd_pd(_mm256_loadu_pd(row + m + 4), _mm256_loadu_pd(hu + m + 4), s1);
+            }
+            out_ptrs[u][i] += alpha_arr[u] * (bi + avx2_hsum_pd(_mm256_add_pd(s0, s1)));
+        }
+    }
+}
+
+__attribute__((target("avx2,fma"), always_inline))
+static inline void vec_ffn_bwd_w2_slice128_avx2(
+    const double* restrict w2_p, double* restrict dw2_p,
+    const double* const* restrict h_ptrs, double* const* restrict dh_ptrs,
+    const double* const* restrict dout_ptrs, int j, int mb, int M, int is_first)
+{
+    int u = 0;
+    for (; u + 3 < M; u += 4) {
+        const double* h0 = h_ptrs[u + 0] + mb; const double* h1 = h_ptrs[u + 1] + mb;
+        const double* h2 = h_ptrs[u + 2] + mb; const double* h3 = h_ptrs[u + 3] + mb;
+        double* dh0 = dh_ptrs[u + 0] + mb; double* dh1 = dh_ptrs[u + 1] + mb;
+        double* dh2 = dh_ptrs[u + 2] + mb; double* dh3 = dh_ptrs[u + 3] + mb;
+        __m256d d0 = _mm256_set1_pd(dout_ptrs[u + 0][j]), d1 = _mm256_set1_pd(dout_ptrs[u + 1][j]);
+        __m256d d2 = _mm256_set1_pd(dout_ptrs[u + 2][j]), d3 = _mm256_set1_pd(dout_ptrs[u + 3][j]);
+        for (int m = 0; m < 128; m += 4) {
+            __m256d wv  = _mm256_loadu_pd(w2_p + m);
+            __m256d dwv = _mm256_loadu_pd(dw2_p + m);
+            if (is_first) {
+                _mm256_storeu_pd(dh0 + m, _mm256_mul_pd(d0, wv));
+                _mm256_storeu_pd(dh1 + m, _mm256_mul_pd(d1, wv));
+                _mm256_storeu_pd(dh2 + m, _mm256_mul_pd(d2, wv));
+                _mm256_storeu_pd(dh3 + m, _mm256_mul_pd(d3, wv));
+            } else {
+                _mm256_storeu_pd(dh0 + m, _mm256_fmadd_pd(d0, wv, _mm256_loadu_pd(dh0 + m)));
+                _mm256_storeu_pd(dh1 + m, _mm256_fmadd_pd(d1, wv, _mm256_loadu_pd(dh1 + m)));
+                _mm256_storeu_pd(dh2 + m, _mm256_fmadd_pd(d2, wv, _mm256_loadu_pd(dh2 + m)));
+                _mm256_storeu_pd(dh3 + m, _mm256_fmadd_pd(d3, wv, _mm256_loadu_pd(dh3 + m)));
+            }
+            dwv = _mm256_fmadd_pd(d0, _mm256_loadu_pd(h0 + m), dwv);
+            dwv = _mm256_fmadd_pd(d1, _mm256_loadu_pd(h1 + m), dwv);
+            dwv = _mm256_fmadd_pd(d2, _mm256_loadu_pd(h2 + m), dwv);
+            dwv = _mm256_fmadd_pd(d3, _mm256_loadu_pd(h3 + m), dwv);
+            _mm256_storeu_pd(dw2_p + m, dwv);
+        }
+    }
+    for (; u < M; u++) {
+        const double* hu = h_ptrs[u] + mb;
+        double* dhu = dh_ptrs[u] + mb;
+        __m256d du = _mm256_set1_pd(dout_ptrs[u][j]);
+        for (int m = 0; m < 128; m += 8) {
+            __m256d w0 = _mm256_loadu_pd(w2_p + m), w1 = _mm256_loadu_pd(w2_p + m + 4);
+            if (is_first) {
+                _mm256_storeu_pd(dhu + m,     _mm256_mul_pd(du, w0));
+                _mm256_storeu_pd(dhu + m + 4, _mm256_mul_pd(du, w1));
+            } else {
+                _mm256_storeu_pd(dhu + m,     _mm256_fmadd_pd(du, w0, _mm256_loadu_pd(dhu + m)));
+                _mm256_storeu_pd(dhu + m + 4, _mm256_fmadd_pd(du, w1, _mm256_loadu_pd(dhu + m + 4)));
+            }
+            _mm256_storeu_pd(dw2_p + m,     _mm256_fmadd_pd(du, _mm256_loadu_pd(hu + m),     _mm256_loadu_pd(dw2_p + m)));
+            _mm256_storeu_pd(dw2_p + m + 4, _mm256_fmadd_pd(du, _mm256_loadu_pd(hu + m + 4), _mm256_loadu_pd(dw2_p + m + 4)));
+        }
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_ffn_bwd_w2_M_avx2(
+    const double* restrict W2, double* restrict dW2, double* restrict db2,
+    const double* const* restrict h_ptrs, double* const* restrict dh_ptrs,
+    const double* const* restrict dout_ptrs, int M)
+{
+    for (int j = 0; j < 256; j++) {
+        double s = 0.0;
+        for (int u = 0; u < M; u++) s += dout_ptrs[u][j];
+        db2[j] += s;
+    }
+    for (int mb = 0; mb < 2048; mb += 128) {
+        vec_ffn_bwd_w2_slice128_avx2(W2 + mb, dW2 + mb, h_ptrs, dh_ptrs, dout_ptrs, 0, mb, M, 1);
+    }
+    for (int j = 1; j < 256; j++) {
+        const double* w2_row = W2 + j * 2048;
+        double* dw2_row = dW2 + j * 2048;
+        for (int mb = 0; mb < 2048; mb += 128) {
+            vec_ffn_bwd_w2_slice128_avx2(w2_row + mb, dw2_row + mb, h_ptrs, dh_ptrs, dout_ptrs, j, mb, M, 0);
+        }
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_ffn_bwd_w1_M_avx2(
+    const double* restrict W1, double* restrict dW1, double* restrict db1,
+    const double* const* restrict z_ptrs, const double* const* restrict h_ptrs,
+    double* const* restrict dh_ptrs, double* const* restrict dz_ptrs, int M)
+{
+    for (int m = 0; m < 2048; m++) {
+        int act_idx[32];
+        double act_d[32];
+        int n_act = 0;
+        double db1_sum = 0.0;
+        for (int t = 0; t < M; t++) {
+            if (h_ptrs[t][m] > 0.0) {
+                double d = dh_ptrs[t][m];
+                if (d != 0.0) {
+                    db1_sum += d;
+                    act_d[n_act] = d;
+                    act_idx[n_act] = t;
+                    n_act++;
+                }
+            }
+        }
+        if (n_act == 0) continue;
+        db1[m] += db1_sum;
+        const double* w1_row = W1 + m * 256;
+        double* dw1_row = dW1 + m * 256;
+        int k0 = 0;
+        for (; k0 + 3 < n_act; k0 += 4) {
+            int i0 = act_idx[k0 + 0], i1 = act_idx[k0 + 1], i2 = act_idx[k0 + 2], i3 = act_idx[k0 + 3];
+            const double* z0 = z_ptrs[i0]; const double* z1 = z_ptrs[i1];
+            const double* z2 = z_ptrs[i2]; const double* z3 = z_ptrs[i3];
+            double* dz0 = dz_ptrs[i0]; double* dz1 = dz_ptrs[i1];
+            double* dz2 = dz_ptrs[i2]; double* dz3 = dz_ptrs[i3];
+            __m256d d0 = _mm256_set1_pd(act_d[k0 + 0]), d1 = _mm256_set1_pd(act_d[k0 + 1]);
+            __m256d d2 = _mm256_set1_pd(act_d[k0 + 2]), d3 = _mm256_set1_pd(act_d[k0 + 3]);
+            for (int j = 0; j < 256; j += 4) {
+                __m256d wv  = _mm256_loadu_pd(w1_row + j);
+                __m256d dwv = _mm256_loadu_pd(dw1_row + j);
+                _mm256_storeu_pd(dz0 + j, _mm256_fmadd_pd(d0, wv, _mm256_loadu_pd(dz0 + j)));
+                _mm256_storeu_pd(dz1 + j, _mm256_fmadd_pd(d1, wv, _mm256_loadu_pd(dz1 + j)));
+                _mm256_storeu_pd(dz2 + j, _mm256_fmadd_pd(d2, wv, _mm256_loadu_pd(dz2 + j)));
+                _mm256_storeu_pd(dz3 + j, _mm256_fmadd_pd(d3, wv, _mm256_loadu_pd(dz3 + j)));
+                dwv = _mm256_fmadd_pd(d0, _mm256_loadu_pd(z0 + j), dwv);
+                dwv = _mm256_fmadd_pd(d1, _mm256_loadu_pd(z1 + j), dwv);
+                dwv = _mm256_fmadd_pd(d2, _mm256_loadu_pd(z2 + j), dwv);
+                dwv = _mm256_fmadd_pd(d3, _mm256_loadu_pd(z3 + j), dwv);
+                _mm256_storeu_pd(dw1_row + j, dwv);
+            }
+        }
+        for (; k0 < n_act; k0++) {
+            int ix = act_idx[k0];
+            const double* zt = z_ptrs[ix];
+            double* dzt = dz_ptrs[ix];
+            __m256d dv = _mm256_set1_pd(act_d[k0]);
+            for (int j = 0; j < 256; j += 8) {
+                _mm256_storeu_pd(dzt + j,     _mm256_fmadd_pd(dv, _mm256_loadu_pd(w1_row + j),     _mm256_loadu_pd(dzt + j)));
+                _mm256_storeu_pd(dzt + j + 4, _mm256_fmadd_pd(dv, _mm256_loadu_pd(w1_row + j + 4), _mm256_loadu_pd(dzt + j + 4)));
+                _mm256_storeu_pd(dw1_row + j,     _mm256_fmadd_pd(dv, _mm256_loadu_pd(zt + j),     _mm256_loadu_pd(dw1_row + j)));
+                _mm256_storeu_pd(dw1_row + j + 4, _mm256_fmadd_pd(dv, _mm256_loadu_pd(zt + j + 4), _mm256_loadu_pd(dw1_row + j + 4)));
+            }
+        }
+    }
+}
+#endif
+
+static void vec_matmul_256x2048(const double* W1, const double* b1, const double* z, double* h_out) {
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) { vec_matmul_256x2048_avx2(W1, b1, z, h_out); return; }
+#endif
+    vec_matmul_256x2048_scalar(W1, b1, z, h_out);
+}
+
+// ---------------------------------------------------------------------
+// Kernel 3: vec_adam_update_256 (Element-Wise Adam Update over 256-blocks)
+// ---------------------------------------------------------------------
+
+static void vec_adam_update_256_scalar(double* params, double* grads, double* m, double* v, int count, double alpha) {
     const double beta1 = 0.9;
     const double beta2 = 0.999;
     const double eps = 1e-8;
+    for (int i = 0; i < count; i++) {
+        double g = grads[i];
+        if (g > 5.0) g = 5.0;
+        if (g < -5.0) g = -5.0;
+        m[i] = beta1 * m[i] + (1.0 - beta1) * g;
+        v[i] = beta2 * v[i] + (1.0 - beta2) * g * g;
+        params[i] -= alpha * m[i] / (qadav_sqrt(v[i]) + eps);
+        grads[i] = 0.0;
+    }
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma")))
+static void vec_adam_update_256_avx2(
+    double* restrict params, double* restrict grads,
+    double* restrict m, double* restrict v, int count, double alpha)
+{
+    const __m256d v_b1    = _mm256_set1_pd(0.9);
+    const __m256d v_1mb1  = _mm256_set1_pd(0.1);
+    const __m256d v_b2    = _mm256_set1_pd(0.999);
+    const __m256d v_1mb2  = _mm256_set1_pd(0.001);
+    const __m256d v_eps   = _mm256_set1_pd(1e-8);
+    const __m256d v_alpha = _mm256_set1_pd(alpha);
+    const __m256d v_clip_hi = _mm256_set1_pd(5.0);
+    const __m256d v_clip_lo = _mm256_set1_pd(-5.0);
+    const __m256d v_zero  = _mm256_setzero_pd();
+
+    int i = 0;
+    for (; i + 7 < count; i += 8) {
+        if (i + 128 < count) {
+            _mm_prefetch((const char*)(grads + i + 128), _MM_HINT_T0);
+            _mm_prefetch((const char*)(m + i + 128), _MM_HINT_T0);
+            _mm_prefetch((const char*)(v + i + 128), _MM_HINT_T0);
+            _mm_prefetch((const char*)(params + i + 128), _MM_HINT_T0);
+        }
+        __m256d g0 = _mm256_loadu_pd(grads + i);
+        __m256d g1 = _mm256_loadu_pd(grads + i + 4);
+        __m256d m0 = _mm256_loadu_pd(m + i);
+        __m256d m1 = _mm256_loadu_pd(m + i + 4);
+        __m256d v0 = _mm256_loadu_pd(v + i);
+        __m256d v1 = _mm256_loadu_pd(v + i + 4);
+
+        // Fast zero-state bypass when grads == m == v == 0 across 8 elements (VPTEST 256-bit exact zero check)
+        __m256i nz0 = _mm256_castpd_si256(_mm256_or_pd(_mm256_or_pd(g0, m0), v0));
+        __m256i nz1 = _mm256_castpd_si256(_mm256_or_pd(_mm256_or_pd(g1, m1), v1));
+        if (_mm256_testz_si256(nz0, nz0) && _mm256_testz_si256(nz1, nz1)) {
+            continue;
+        }
+
+        int gz0 = _mm256_testz_si256(_mm256_castpd_si256(g0), _mm256_castpd_si256(g0));
+        int gz1 = _mm256_testz_si256(_mm256_castpd_si256(g1), _mm256_castpd_si256(g1));
+        if (gz0) {
+            m0 = _mm256_mul_pd(v_b1, m0);
+            v0 = _mm256_mul_pd(v_b2, v0);
+        } else {
+            g0 = _mm256_max_pd(v_clip_lo, _mm256_min_pd(v_clip_hi, g0));
+            m0 = _mm256_fmadd_pd(v_b1, m0, _mm256_mul_pd(v_1mb1, g0));
+            v0 = _mm256_fmadd_pd(v_b2, v0, _mm256_mul_pd(v_1mb2, _mm256_mul_pd(g0, g0)));
+            _mm256_storeu_pd(grads + i, v_zero);
+        }
+        if (gz1) {
+            m1 = _mm256_mul_pd(v_b1, m1);
+            v1 = _mm256_mul_pd(v_b2, v1);
+        } else {
+            g1 = _mm256_max_pd(v_clip_lo, _mm256_min_pd(v_clip_hi, g1));
+            m1 = _mm256_fmadd_pd(v_b1, m1, _mm256_mul_pd(v_1mb1, g1));
+            v1 = _mm256_fmadd_pd(v_b2, v1, _mm256_mul_pd(v_1mb2, _mm256_mul_pd(g1, g1)));
+            _mm256_storeu_pd(grads + i + 4, v_zero);
+        }
+
+        __m256d p0 = _mm256_loadu_pd(params + i);
+        __m256d p1 = _mm256_loadu_pd(params + i + 4);
+        __m256d d0 = _mm256_add_pd(_mm256_sqrt_pd(v0), v_eps);
+        __m256d d1 = _mm256_add_pd(_mm256_sqrt_pd(v1), v_eps);
+
+        p0 = _mm256_sub_pd(p0, _mm256_div_pd(_mm256_mul_pd(v_alpha, m0), d0));
+        p1 = _mm256_sub_pd(p1, _mm256_div_pd(_mm256_mul_pd(v_alpha, m1), d1));
+
+        _mm256_storeu_pd(params + i,     p0);
+        _mm256_storeu_pd(params + i + 4, p1);
+        _mm256_storeu_pd(m + i,     m0);
+        _mm256_storeu_pd(m + i + 4, m1);
+        _mm256_storeu_pd(v + i,     v0);
+        _mm256_storeu_pd(v + i + 4, v1);
+    }
+    for (; i < count; i++) {
+        double g = grads[i];
+        if (g > 5.0) g = 5.0;
+        if (g < -5.0) g = -5.0;
+        m[i] = 0.9 * m[i] + 0.1 * g;
+        v[i] = 0.999 * v[i] + 0.001 * g * g;
+        __m128d sv = _mm_sqrt_sd(_mm_setzero_pd(), _mm_set_sd(v[i]));
+        params[i] -= alpha * m[i] / (_mm_cvtsd_f64(sv) + 1e-8);
+        grads[i] = 0.0;
+    }
+}
+__attribute__((target("avx2,fma"), noinline))
+static void run_qnmf_s2_experts_avx2(
+    int k_start, int k_step,
+    const double* W_exp, const double* z_all, double* out_base,
+    double* h1_all, double* h2_all, double* h_eval_base,
+    const int* exp_cnt, const int* exp_list,
+    const double* a1_all, const double* a2_all,
+    int chunk_N, int is_training)
+{
+    for (int k = k_start; k < 16; k += k_step) {
+        int M = exp_cnt[k];
+        if (M == 0) continue;
+        const double* W1_k = W_exp + (long long)k * 1050880;
+        const double* b1_k = W1_k + 524288;
+        const double* W2_k = b1_k + 2048;
+        const double* b2_k = W2_k + 524288;
+        const int* slots = exp_list + k * chunk_N;
+        for (int off = 0; off < M; off += 32) {
+            int T = (M - off >= 32) ? 32 : (M - off);
+            const double* z_ptrs[32];
+            double* h_ptrs[32];
+            double* out_ptrs[32];
+            double a_arr[32];
+            for (int u = 0; u < T; u++) {
+                int enc = slots[off + u];
+                int tid = enc >> 1;
+                int which = enc & 1;
+                z_ptrs[u]   = z_all + tid * 256;
+                out_ptrs[u] = out_base + tid * 256;
+                a_arr[u]    = which ? a2_all[tid] : a1_all[tid];
+                h_ptrs[u]   = (is_training == 1) ? ((which ? h2_all : h1_all) + tid * 2048) : (h_eval_base + u * 2048);
+            }
+            vec_matmul_M_256x2048_avx2(W1_k, b1_k, z_ptrs, h_ptrs, T);
+            vec_matmul_M_2048x256_add_avx2(W2_k, b2_k, (const double* const*)h_ptrs, out_ptrs, a_arr, T);
+        }
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void run_qnmf_s4_experts_avx2(
+    int k_start, int k_step,
+    const double* W_exp, double* dW_exp, const double* z_all, double* dz_base,
+    const double* dhcomb_all, const double* h1_all, const double* h2_all,
+    double* dh_tile_buf, double* dout_tile_buf,
+    const int* exp_cnt, const int* exp_list,
+    const double* a1_all, const double* a2_all, int chunk_N)
+{
+    for (int k = k_start; k < 16; k += k_step) {
+        int M = exp_cnt[k];
+        if (M == 0) continue;
+        const double* W1_k = W_exp + (long long)k * 1050880;
+        const double* W2_k = W1_k + 524288 + 2048;
+        double* dW1_k = dW_exp + (long long)k * 1050880;
+        double* db1_k = dW1_k + 524288;
+        double* dW2_k = db1_k + 2048;
+        double* db2_k = dW2_k + 524288;
+        const int* slots = exp_list + k * chunk_N;
+        for (int off = 0; off < M; off += 32) {
+            int T = (M - off >= 32) ? 32 : (M - off);
+            const double* z_ptrs[32];
+            const double* h_ptrs[32];
+            double* dh_ptrs[32];
+            double* dz_ptrs[32];
+            const double* dout_ptrs[32];
+            for (int u = 0; u < T; u++) {
+                int enc = slots[off + u];
+                int tid = enc >> 1;
+                int which = enc & 1;
+                double wt = which ? a2_all[tid] : a1_all[tid];
+                z_ptrs[u]  = z_all + tid * 256;
+                dz_ptrs[u] = dz_base + tid * 256;
+                h_ptrs[u]  = (which ? h2_all : h1_all) + tid * 2048;
+                dh_ptrs[u] = dh_tile_buf + u * 2048;
+                double* dt = dout_tile_buf + u * 256;
+                const double* dhc = dhcomb_all + tid * 256;
+                __m256d wtv = _mm256_set1_pd(wt);
+                for (int j = 0; j < 256; j += 8) {
+                    _mm256_storeu_pd(dt + j,     _mm256_mul_pd(wtv, _mm256_loadu_pd(dhc + j)));
+                    _mm256_storeu_pd(dt + j + 4, _mm256_mul_pd(wtv, _mm256_loadu_pd(dhc + j + 4)));
+                }
+                dout_ptrs[u] = dt;
+            }
+            vec_ffn_bwd_w2_M_avx2(W2_k, dW2_k, db2_k, h_ptrs, dh_ptrs, dout_ptrs, T);
+            vec_ffn_bwd_w1_M_avx2(W1_k, dW1_k, db1_k, z_ptrs, h_ptrs, dh_ptrs, dz_ptrs, T);
+        }
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_add_inplace_avx2(double* restrict dst, const double* restrict src, int count) {
+    int i = 0;
+    for (; i + 7 < count; i += 8) {
+        _mm256_storeu_pd(dst + i,     _mm256_add_pd(_mm256_loadu_pd(dst + i),     _mm256_loadu_pd(src + i)));
+        _mm256_storeu_pd(dst + i + 4, _mm256_add_pd(_mm256_loadu_pd(dst + i + 4), _mm256_loadu_pd(src + i + 4)));
+    }
+    for (; i < count; i++) dst[i] += src[i];
+}
+#endif
+
+#if defined(_WIN32) && (defined(__x86_64__) || defined(_M_X64))
+typedef HANDLE (__stdcall *pfn_CreateThread)(void*, unsigned long long, DWORD (__stdcall *)(void*), void*, DWORD, DWORD*);
+typedef HANDLE (__stdcall *pfn_CreateEventA)(void*, BOOL, BOOL, const char*);
+typedef BOOL   (__stdcall *pfn_SetEvent)(HANDLE);
+typedef DWORD  (__stdcall *pfn_WaitForSingleObject)(HANDLE, DWORD);
+
+typedef struct {
+    volatile int task_kind; // 1=adam, 2=s2_fwd, 3=s4_bwd
+    volatile int stop;
+    double* a_p; double* a_g; double* a_m; double* a_v;
+    int a_cnt; double a_alpha;
+    const double* W_exp; double* dW_exp;
+    const double* z_all; double* out_base; const double* dhcomb_all;
+    double* h1_all; double* h2_all;
+    double* h_eval_base; double* dh_tile; double* dout_tile;
+    const int* exp_cnt; const int* exp_list;
+    const double* a1_all; const double* a2_all;
+    int chunk_N; int is_training;
+    HANDLE hThread, ev_start, ev_done;
+    pfn_SetEvent pSetEvent;
+    pfn_WaitForSingleObject pWait;
+    int ready;
+} NNWorkerMT;
+
+static NNWorkerMT g_nn_mt;
+
+static DWORD __stdcall nn_mt_worker_proc(void* arg) {
+    (void)arg;
+    for (;;) {
+        g_nn_mt.pWait(g_nn_mt.ev_start, 0xFFFFFFFFUL);
+        __sync_synchronize();
+        if (g_nn_mt.stop) break;
+        int tk = g_nn_mt.task_kind;
+        if (tk == 1) {
+            vec_adam_update_256_avx2(g_nn_mt.a_p, g_nn_mt.a_g, g_nn_mt.a_m, g_nn_mt.a_v, g_nn_mt.a_cnt, g_nn_mt.a_alpha);
+        } else if (tk == 2) {
+            run_qnmf_s2_experts_avx2(1, 2, g_nn_mt.W_exp, g_nn_mt.z_all, g_nn_mt.out_base,
+                g_nn_mt.h1_all, g_nn_mt.h2_all, g_nn_mt.h_eval_base,
+                g_nn_mt.exp_cnt, g_nn_mt.exp_list, g_nn_mt.a1_all, g_nn_mt.a2_all,
+                g_nn_mt.chunk_N, g_nn_mt.is_training);
+        } else if (tk == 3) {
+            run_qnmf_s4_experts_avx2(1, 2, g_nn_mt.W_exp, g_nn_mt.dW_exp, g_nn_mt.z_all, g_nn_mt.out_base,
+                g_nn_mt.dhcomb_all, g_nn_mt.h1_all, g_nn_mt.h2_all,
+                g_nn_mt.dh_tile, g_nn_mt.dout_tile,
+                g_nn_mt.exp_cnt, g_nn_mt.exp_list, g_nn_mt.a1_all, g_nn_mt.a2_all, g_nn_mt.chunk_N);
+        }
+        __sync_synchronize();
+        g_nn_mt.pSetEvent(g_nn_mt.ev_done);
+    }
+    return 0;
+}
+
+static int nn_mt_ensure(void) {
+    if (g_nn_mt.ready) return 1;
+    if (g_nn_mt.stop == -1) return 0; // already failed once
+    if (!qadav_cpu_supports_avx2()) return 0;
+    HANDLE hK32 = GetModuleHandleA("kernel32.dll");
+    if (!hK32) { g_nn_mt.stop = -1; return 0; }
+    pfn_CreateThread pCT   = (pfn_CreateThread)GetProcAddress(hK32, "CreateThread");
+    pfn_CreateEventA pCE   = (pfn_CreateEventA)GetProcAddress(hK32, "CreateEventA");
+    pfn_SetEvent     pSE   = (pfn_SetEvent)GetProcAddress(hK32, "SetEvent");
+    pfn_WaitForSingleObject pWFSO = (pfn_WaitForSingleObject)GetProcAddress(hK32, "WaitForSingleObject");
+    if (!pCT || !pCE || !pSE || !pWFSO) { g_nn_mt.stop = -1; return 0; }
+    HANDLE es = pCE((void*)0, 0, 0, (const char*)0);
+    HANDLE ed = pCE((void*)0, 0, 0, (const char*)0);
+    if (!es || !ed) {
+        if (es) CloseHandle(es);
+        if (ed) CloseHandle(ed);
+        g_nn_mt.stop = -1;
+        return 0;
+    }
+    g_nn_mt.ev_start  = es;
+    g_nn_mt.ev_done   = ed;
+    g_nn_mt.pSetEvent = pSE;
+    g_nn_mt.pWait     = pWFSO;
+    g_nn_mt.stop      = 0;
+    DWORD tid = 0;
+    HANDLE ht = pCT((void*)0, 0, nn_mt_worker_proc, (void*)0, 0, &tid);
+    if (!ht) {
+        CloseHandle(es);
+        CloseHandle(ed);
+        g_nn_mt.stop = -1;
+        return 0;
+    }
+    g_nn_mt.hThread = ht;
+    g_nn_mt.ready   = 1;
+    return 1;
+}
+
+static void nn_mt_shutdown(void) {
+    if (g_nn_mt.ready) {
+        g_nn_mt.stop = 1;
+        __sync_synchronize();
+        g_nn_mt.pSetEvent(g_nn_mt.ev_start);
+        g_nn_mt.pWait(g_nn_mt.hThread, 5000UL);
+        CloseHandle(g_nn_mt.hThread);
+        CloseHandle(g_nn_mt.ev_start);
+        CloseHandle(g_nn_mt.ev_done);
+        volatile char* p = (volatile char*)&g_nn_mt;
+        for (unsigned long long i = 0; i < sizeof(g_nn_mt); i++) p[i] = 0;
+    }
+}
+#else
+static void nn_mt_shutdown(void) {}
+#endif
+
+static void vec_adam_update_256(double* params, double* grads, double* m, double* v, int count, double alpha) {
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+#ifdef _WIN32
+        if (count >= 65536 && nn_mt_ensure()) {
+            int half = ((count / 2) / 8) * 8;
+            g_nn_mt.task_kind = 1;
+            g_nn_mt.a_p = params + half;
+            g_nn_mt.a_g = grads + half;
+            g_nn_mt.a_m = m + half;
+            g_nn_mt.a_v = v + half;
+            g_nn_mt.a_cnt = count - half;
+            g_nn_mt.a_alpha = alpha;
+            __sync_synchronize();
+            g_nn_mt.pSetEvent(g_nn_mt.ev_start);
+            vec_adam_update_256_avx2(params, grads, m, v, half, alpha);
+            g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
+            __sync_synchronize();
+            return;
+        }
+#endif
+        vec_adam_update_256_avx2(params, grads, m, v, count, alpha);
+        return;
+    }
+#endif
+    vec_adam_update_256_scalar(params, grads, m, v, count, alpha);
+}
+
+static void v2_adam_step(V2Weights* w, double lr, int step) {
+    const double beta1 = 0.9;
+    const double beta2 = 0.999;
 
     double b1_pow = 1.0;
     double b2_pow = 1.0;
@@ -1921,104 +2809,80 @@ static void v2_adam_step(V2Weights* w, double lr, int step) {
     double alpha = lr * qadav_sqrt(1.0 - b2_pow) / (1.0 - b1_pow + 1e-12);
     if (alpha > lr * 5.0) alpha = lr * 5.0;
 
-    for (int i = 0; i < w->total_params; i++) {
-        double g = w->grads[i];
-        if (g > 5.0) g = 5.0;
-        if (g < -5.0) g = -5.0;
-
-        w->m[i] = beta1 * w->m[i] + (1.0 - beta1) * g;
-        w->v[i] = beta2 * w->v[i] + (1.0 - beta2) * g * g;
-
-        w->params[i] -= alpha * w->m[i] / (qadav_sqrt(w->v[i]) + eps);
-        w->grads[i] = 0.0;
-    }
+    int total = w->total_params;
+    vec_adam_update_256(w->params, w->grads, w->m, w->v, total, alpha);
 }
 
 // ---------------------------------------------------------------------
 // QNMF v2 Batch Computation (P1 Recurrent + P2 Multi-Timescale Memory + P3 MoE)
 // ---------------------------------------------------------------------
 
-static double compute_qnmf_v2_batch(int model_kind, V2Weights* w, const unsigned char* data, int data_len, int batch_size, int context_len, int is_training) {
+static double compute_qnmf_v2_batch_scalar(int model_kind, V2Weights* w, const unsigned char* data, int data_len, int batch_size, int context_len, int is_training) {
     double total_loss = 0.0;
-    double last_token_loss = 0.0;
     int last_token_probe_hit = 0;
     int total_tokens = batch_size * context_len;
     double norm_factor = 1.0 / (double)total_tokens;
 
-    // Tensor offsets in w->params
-    double* W_emb    = w->params;                    // 32768
-    double* W_x      = W_emb + 32768;               // 65536
-    double* W_s      = W_x + 65536;                 // 65536
-    double* b_s      = W_s + 65536;                 // 256
-    double* W_lam    = b_s + 256;                   // 65536
-    double* b_lam    = W_lam + 65536;               // 256
-    double* W_q      = b_lam + 256;                 // 65536
-    double* b_q      = W_q + 65536;                 // 256
-    double* W_k      = b_q + 256;                   // 65536
-    double* b_k      = W_k + 65536;                 // 256
-    double* W_v      = b_k + 256;                   // 65536
-    double* b_v      = W_v + 65536;                 // 256
-    double* W_r      = b_v + 256;                   // 65536
-    double* b_r      = W_r + 65536;                 // 256
-    double* W_f      = b_r + 256;                   // 65536
-    double* b_f      = W_f + 65536;                 // 256
-    double* W_pred   = b_f + 256;                   // 65536
-    double* b_pred   = W_pred + 65536;              // 256
-    double* M_w_init = b_pred + 256;                // 16384 (64 * 256)
-    double* M_l_init = M_w_init + 16384;            // 65536 (256 * 256)
-    double* W_route  = M_l_init + 65536;            // 4096 (16 * 256)
-    double* b_route  = W_route + 4096;              // 16
-    double* W_exp    = b_route + 16;                // 16814080 (16 * 1050880)
-    double* W_out    = W_exp + 16814080;            // 32768 (128 * 256)
-    double* b_out    = W_out + 32768;               // 128
+    double* W_emb    = w->params;
+    double* W_x      = W_emb + 32768;
+    double* W_s      = W_x + 65536;
+    double* b_s      = W_s + 65536;
+    double* W_lam    = b_s + 256;
+    double* b_lam    = W_lam + 65536;
+    double* W_q      = b_lam + 256;
+    double* b_q      = W_q + 65536;
+    double* W_r      = b_q + 256 + 65536 + 256 + 65536 + 256;
+    double* b_r      = W_r + 65536;
+    double* W_f      = b_r + 256;
+    double* b_f      = W_f + 65536;
+    double* W_pred   = b_f + 256;
+    double* b_pred   = W_pred + 65536;
+    double* M_w_init = b_pred + 256;
+    double* M_l_init = M_w_init + 16384;
+    double* W_route  = M_l_init + 65536;
+    double* b_route  = W_route + 4096;
+    double* W_exp    = b_route + 16;
+    double* W_out    = W_exp + 16814080;
+    double* b_out    = W_out + 32768;
 
-    // Gradients
     double* dW_emb   = w->grads;
     double* dW_x     = dW_emb + 32768;
     double* dW_s     = dW_x + 65536;
     double* db_s     = dW_s + 65536;
     double* dW_lam   = db_s + 256;
     double* db_lam   = dW_lam + 65536;
-    double* dW_q     = db_lam + 256;
-    double* db_q     = dW_q + 65536;
-    double* dW_r     = dW_q + 256 + 65536 + 256 + 65536 + 256; // offset to W_r
-    double* db_r     = dW_r + 65536;
-    double* dW_route = w->grads + (W_route - w->params);
-    double* db_route = w->grads + (b_route - w->params);
     double* dW_exp   = w->grads + (W_exp - w->params);
     double* dW_out   = w->grads + (W_out - w->params);
     double* db_out   = w->grads + (b_out - w->params);
 
-    // Workspace on heap for all sequence buffers and intermediate activations
-    // (Prevents any stack allocation > 4KB in zero-libc runtime)
     unsigned long long ws_size = 100000 * sizeof(double);
     double* ws = (double*)qadav_alloc(ws_size);
     if (!ws) return 0.0;
-    double* M_l        = ws;                // 65536
-    double* M_w        = M_l + 65536;       // 16384
-    double* h1         = M_w + 16384;       // 2048
-    double* h2         = h1 + 2048;         // 2048
-    double* dh1        = h2 + 2048;         // 2048
-    double* dh2        = dh1 + 2048;        // 2048
-    double* state      = dh2 + 2048;        // 256
-    double* next_state = state + 256;       // 256
-    double* cand       = next_state + 256;  // 256
-    double* gate       = cand + 256;        // 256
-    double* q          = gate + 256;        // 256
-    double* v_w        = q + 256;           // 256
-    double* v_l        = v_w + 256;         // 256
-    double* z          = v_l + 256;         // 256
-    double* pred_x     = z + 256;           // 256
-    double* out1       = pred_x + 256;      // 256
-    double* out2       = out1 + 256;        // 256
-    double* h_comb     = out2 + 256;        // 256
-    double* d_hcomb    = h_comb + 256;      // 256
-    double* d_z        = d_hcomb + 256;     // 256
-    double* dot_l      = d_z + 256;         // 256
-    double* a_l        = dot_l + 256;       // 256
-    double* logits     = a_l + 256;         // 128
-    double* probs      = logits + 128;      // 128
-    double* d_logits   = probs + 128;       // 128
+    double* M_l        = ws;
+    double* M_w        = M_l + 65536;
+    double* h1         = M_w + 16384;
+    double* h2         = h1 + 2048;
+    double* dh1        = h2 + 2048;
+    double* dh2        = dh1 + 2048;
+    double* state      = dh2 + 2048;
+    double* next_state = state + 256;
+    double* cand       = next_state + 256;
+    double* gate       = cand + 256;
+    double* q          = gate + 256;
+    double* v_w        = q + 256;
+    double* v_l        = v_w + 256;
+    double* z          = v_l + 256;
+    double* pred_x     = z + 256;
+    double* out1       = pred_x + 256;
+    double* out2       = out1 + 256;
+    double* h_comb     = out2 + 256;
+    double* d_hcomb    = h_comb + 256;
+    double* d_z        = d_hcomb + 256;
+    double* dot_l      = d_z + 256;
+    double* a_l        = dot_l + 256;
+    double* logits     = a_l + 256;
+    double* probs      = logits + 128;
+    double* d_logits   = probs + 128;
 
     for (int b = 0; b < batch_size; b++) {
         int start_pos = 0;
@@ -2027,24 +2891,17 @@ static double compute_qnmf_v2_batch(int model_kind, V2Weights* w, const unsigned
             if (max_pos < 1) max_pos = 1;
             start_pos = (int)(nn_rand_uniform() * (double)max_pos);
         }
-
-        // Initialize sequence dynamic memory from learned initial states
         nn_memcpy(M_w, M_w_init, 16384 * sizeof(double));
         nn_memcpy(M_l, M_l_init, 65536 * sizeof(double));
-
         nn_memset(state, 0, 256 * sizeof(double));
 
         for (int t = 0; t < context_len; t++) {
             unsigned char c_in  = (unsigned char)(data[start_pos + t] & 0x7F);
             unsigned char c_tgt = (unsigned char)(data[start_pos + t + 1] & 0x7F);
-
-            // 1. Embedding lookup
             const double* emb = W_emb + (int)c_in * 256;
 
-            // 2. P1 Recurrent Transition
             for (int i = 0; i < 256; i++) {
-                double u = b_s[i];
-                double v = b_lam[i];
+                double u = b_s[i], v = b_lam[i];
                 const double* wx_row = W_x + i * 256;
                 const double* ws_row = W_s + i * 256;
                 const double* wl_row = W_lam + i * 256;
@@ -2057,139 +2914,81 @@ static double compute_qnmf_v2_batch(int model_kind, V2Weights* w, const unsigned
                 next_state[i] = gate[i] * state[i] + (1.0 - gate[i]) * cand[i];
             }
 
-            // 3. P2 Multi-Timescale Memory Read
-            for (int i = 0; i < 256; i++) {
-                double q_val = b_q[i];
-                const double* wq_row = W_q + i * 256;
-                for (int j = 0; j < 256; j++) q_val += wq_row[j] * next_state[j];
-                q[i] = q_val * 0.0625; // 1 / sqrt(256)
-            }
+            for (int i = 0; i < 256; i++) q[i] = (b_q[i] + vec_dot_256_scalar(W_q + i * 256, next_state)) * 0.0625;
 
             nn_memset(v_w, 0, 256 * sizeof(double));
             if (model_kind != MODEL_KIND_QNMF_V2_NO_MW) {
-                // Read from Working Memory (64 slots)
-                double dot_w[64];
-                double max_dw = -1e9;
+                double dot_w[64], a_w[64], max_dw = -1e9;
                 for (int s = 0; s < 64; s++) {
-                    double d = 0.0;
-                    const double* slot = M_w + s * 256;
-                    for (int j = 0; j < 256; j++) d += q[j] * slot[j];
+                    double d = vec_dot_256_scalar(q, M_w + s * 256);
                     dot_w[s] = d;
                     if (d > max_dw) max_dw = d;
                 }
                 double sum_exp_w = 0.0;
-                double a_w[64];
-                for (int s = 0; s < 64; s++) {
-                    a_w[s] = fast_exp(dot_w[s] - max_dw);
-                    sum_exp_w += a_w[s];
-                }
+                for (int s = 0; s < 64; s++) { a_w[s] = fast_exp(dot_w[s] - max_dw); sum_exp_w += a_w[s]; }
                 double inv_sw = 1.0 / (sum_exp_w + 1e-12);
                 for (int s = 0; s < 64; s++) {
-                    double weight = a_w[s] * inv_sw;
+                    double wt = a_w[s] * inv_sw;
                     const double* slot = M_w + s * 256;
-                    for (int j = 0; j < 256; j++) v_w[j] += weight * slot[j];
+                    for (int j = 0; j < 256; j++) v_w[j] += wt * slot[j];
                 }
             }
 
             nn_memset(v_l, 0, 256 * sizeof(double));
             if (model_kind != MODEL_KIND_QNMF_V2_NO_ML) {
-                // Read from Crystalline Store (256 slots)
                 double max_dl = -1e9;
                 for (int s = 0; s < 256; s++) {
-                    double d = 0.0;
-                    const double* slot = M_l + s * 256;
-                    for (int j = 0; j < 256; j++) d += q[j] * slot[j];
+                    double d = vec_dot_256_scalar(q, M_l + s * 256);
                     dot_l[s] = d;
                     if (d > max_dl) max_dl = d;
                 }
                 double sum_exp_l = 0.0;
-                for (int s = 0; s < 256; s++) {
-                    a_l[s] = fast_exp(dot_l[s] - max_dl);
-                    sum_exp_l += a_l[s];
-                }
+                for (int s = 0; s < 256; s++) { a_l[s] = fast_exp(dot_l[s] - max_dl); sum_exp_l += a_l[s]; }
                 double inv_sl = 1.0 / (sum_exp_l + 1e-12);
                 for (int s = 0; s < 256; s++) {
-                    double weight = a_l[s] * inv_sl;
+                    double wt = a_l[s] * inv_sl;
                     const double* slot = M_l + s * 256;
-                    for (int j = 0; j < 256; j++) v_l[j] += weight * slot[j];
+                    for (int j = 0; j < 256; j++) v_l[j] += wt * slot[j];
                 }
             }
 
-            // Read gate & fused state z
             for (int i = 0; i < 256; i++) {
-                double g_val = b_r[i];
-                const double* wr_row = W_r + i * 256;
-                for (int j = 0; j < 256; j++) g_val += wr_row[j] * next_state[j];
-                double g = fast_sigmoid(g_val);
-                z[i] = next_state[i] + g * (v_w[i] + v_l[i]);
+                double g_val = b_r[i] + vec_dot_256_scalar(W_r + i * 256, next_state);
+                z[i] = next_state[i] + fast_sigmoid(g_val) * (v_w[i] + v_l[i]);
             }
 
-            // P2 Surprise Gating & Memory Update (online test-time plasticity)
             double surprise = 0.0;
             for (int i = 0; i < 256; i++) {
-                double px = b_pred[i];
-                const double* wp_row = W_pred + i * 256;
-                for (int j = 0; j < 256; j++) px += wp_row[j] * next_state[j];
-                pred_x[i] = px;
+                double px = b_pred[i] + vec_dot_256_scalar(W_pred + i * 256, next_state);
                 double diff = emb[i] - px;
                 surprise += diff * diff;
             }
             surprise *= (1.0 / 256.0);
-
             if (surprise > 0.04) {
-                // Surprise triggers write into Mw
-                int slot_w = t % 64;
-                double* target_mw = M_w + slot_w * 256;
-                for (int j = 0; j < 256; j++) {
-                    target_mw[j] = 0.85 * target_mw[j] + 0.15 * emb[j];
-                }
+                double* target_mw = M_w + (t % 64) * 256;
+                for (int j = 0; j < 256; j++) target_mw[j] = 0.85 * target_mw[j] + 0.15 * emb[j];
                 if (surprise > 0.08) {
-                    // Salient crystallization into Ml
-                    int slot_l = (t / 2) % 256;
-                    double* target_ml = M_l + slot_l * 256;
-                    for (int j = 0; j < 256; j++) {
-                        target_ml[j] = 0.5 * target_ml[j] + 0.5 * emb[j];
-                    }
+                    double* target_ml = M_l + ((t / 2) % 256) * 256;
+                    for (int j = 0; j < 256; j++) target_ml[j] = 0.5 * target_ml[j] + 0.5 * emb[j];
                 }
             }
 
-            // 4. P3 Sparse Cognitive Routing (16 experts, Top-2)
             double r_logits[16];
-            for (int k = 0; k < 16; k++) {
-                double val = b_route[k];
-                const double* w_row = W_route + k * 256;
-                for (int j = 0; j < 256; j++) val += w_row[j] * z[j];
-                r_logits[k] = val;
-            }
-
+            for (int k = 0; k < 16; k++) r_logits[k] = b_route[k] + vec_dot_256_scalar(W_route + k * 256, z);
             int top1 = 0, top2 = 1;
             if (r_logits[1] > r_logits[0]) { top1 = 1; top2 = 0; }
             for (int k = 2; k < 16; k++) {
-                if (r_logits[k] > r_logits[top1]) {
-                    top2 = top1;
-                    top1 = k;
-                } else if (r_logits[k] > r_logits[top2]) {
-                    top2 = k;
-                }
+                if (r_logits[k] > r_logits[top1]) { top2 = top1; top1 = k; }
+                else if (r_logits[k] > r_logits[top2]) { top2 = k; }
             }
+            double e1 = fast_exp(r_logits[top1]), e2 = fast_exp(r_logits[top2]);
+            double a1 = e1 / (e1 + e2 + 1e-12), a2 = e2 / (e1 + e2 + 1e-12);
 
-            double e1 = fast_exp(r_logits[top1]);
-            double e2 = fast_exp(r_logits[top2]);
-            double a1 = e1 / (e1 + e2 + 1e-12);
-            double a2 = e2 / (e1 + e2 + 1e-12);
-
-            // Expert 1 forward (2048 hidden)
             const double* W1_1 = W_exp + (long long)top1 * 1050880;
             const double* b1_1 = W1_1 + 524288;
             const double* W2_1 = b1_1 + 2048;
             const double* b2_1 = W2_1 + 524288;
-
-            for (int i = 0; i < 2048; i++) {
-                double v = b1_1[i];
-                const double* row = W1_1 + i * 256;
-                for (int j = 0; j < 256; j++) v += row[j] * z[j];
-                h1[i] = v > 0.0 ? v : 0.0;
-            }
+            vec_matmul_256x2048_scalar(W1_1, b1_1, z, h1);
             for (int i = 0; i < 256; i++) {
                 double v = b2_1[i];
                 const double* row = W2_1 + i * 2048;
@@ -2197,18 +2996,11 @@ static double compute_qnmf_v2_batch(int model_kind, V2Weights* w, const unsigned
                 out1[i] = v;
             }
 
-            // Expert 2 forward (2048 hidden)
             const double* W1_2 = W_exp + (long long)top2 * 1050880;
             const double* b1_2 = W1_2 + 524288;
             const double* W2_2 = b1_2 + 2048;
             const double* b2_2 = W2_2 + 524288;
-
-            for (int i = 0; i < 2048; i++) {
-                double v = b1_2[i];
-                const double* row = W1_2 + i * 256;
-                for (int j = 0; j < 256; j++) v += row[j] * z[j];
-                h2[i] = v > 0.0 ? v : 0.0;
-            }
+            vec_matmul_256x2048_scalar(W1_2, b1_2, z, h2);
             for (int i = 0; i < 256; i++) {
                 double v = b2_2[i];
                 const double* row = W2_2 + i * 2048;
@@ -2216,52 +3008,28 @@ static double compute_qnmf_v2_batch(int model_kind, V2Weights* w, const unsigned
                 out2[i] = v;
             }
 
-            // Combined representation
-            for (int i = 0; i < 256; i++) {
-                h_comb[i] = z[i] + a1 * out1[i] + a2 * out2[i];
-            }
+            for (int i = 0; i < 256; i++) h_comb[i] = z[i] + a1 * out1[i] + a2 * out2[i];
 
-            // Output projection + Softmax (128 vocab)
             double max_logit = -1e9;
             for (int i = 0; i < 128; i++) {
-                double v = b_out[i];
-                const double* row = W_out + i * 256;
-                for (int j = 0; j < 256; j++) v += row[j] * h_comb[j];
-                if (model_kind != MODEL_KIND_QNMF_V2_NO_ML) {
-                    double m_dot = 0.0;
-                    const double* e_i = W_emb + i * 256;
-                    for (int j = 0; j < 256; j++) m_dot += v_l[j] * e_i[j];
-                    v += m_dot * 0.15;
-                }
+                double v = b_out[i] + vec_dot_256_scalar(W_out + i * 256, h_comb);
+                if (model_kind != MODEL_KIND_QNMF_V2_NO_ML) v += vec_dot_256_scalar(v_l, W_emb + i * 256) * 0.15;
                 logits[i] = v;
                 if (v > max_logit) max_logit = v;
             }
-
             double sum_exp = 0.0;
-            for (int i = 0; i < 128; i++) {
-                probs[i] = fast_exp(logits[i] - max_logit);
-                sum_exp += probs[i];
-            }
+            for (int i = 0; i < 128; i++) { probs[i] = fast_exp(logits[i] - max_logit); sum_exp += probs[i]; }
             double inv_sum = 1.0 / (sum_exp + 1e-12);
             for (int i = 0; i < 128; i++) probs[i] *= inv_sum;
 
             double token_loss = -qadav_log(probs[c_tgt] > 1e-12 ? probs[c_tgt] : 1e-12);
             total_loss += token_loss;
             if (t == context_len - 1) {
-                last_token_loss = token_loss;
-                int best_d = '0';
-                double max_d = logits['0'];
-                for (int d = '1'; d <= '9'; d++) {
-                    if (logits[d] > max_d) {
-                        max_d = logits[d];
-                        best_d = d;
-                    }
-                }
-                if (best_d == (int)c_tgt) last_token_probe_hit = 1;
-                else last_token_probe_hit = 0;
+                int best_d = '0'; double max_d = logits['0'];
+                for (int d = '1'; d <= '9'; d++) { if (logits[d] > max_d) { max_d = logits[d]; best_d = d; } }
+                last_token_probe_hit = (best_d == (int)c_tgt) ? 1 : 0;
             }
 
-            // 5. Backward Pass (Analytical Gradients)
             if (is_training == 1) {
                 for (int i = 0; i < 128; i++) {
                     double target = (i == (int)c_tgt) ? 1.0 : 0.0;
@@ -2270,103 +3038,546 @@ static double compute_qnmf_v2_batch(int model_kind, V2Weights* w, const unsigned
                     double* dw_row = dW_out + i * 256;
                     for (int j = 0; j < 256; j++) dw_row[j] += d_logits[i] * h_comb[j];
                 }
-
                 for (int j = 0; j < 256; j++) {
                     double d = 0.0;
                     for (int i = 0; i < 128; i++) d += d_logits[i] * W_out[i * 256 + j];
                     d_hcomb[j] = d;
                 }
-
-                // Backprop into Expert 1 & 2 (Contiguous SIMD Stride-1 loops)
-                double* dW1_1 = dW_exp + (long long)top1 * 1050880;
-                double* db1_1 = dW1_1 + 524288;
-                double* dW2_1 = db1_1 + 2048;
-                double* db2_1 = dW2_1 + 524288;
-
-                double* dW1_2 = dW_exp + (long long)top2 * 1050880;
-                double* db1_2 = dW1_2 + 524288;
-                double* dW2_2 = db1_2 + 2048;
-                double* db2_2 = dW2_2 + 524288;
-
+                double* dW1_1 = dW_exp + (long long)top1 * 1050880; double* db1_1 = dW1_1 + 524288;
+                double* dW2_1 = db1_1 + 2048;                       double* db2_1 = dW2_1 + 524288;
+                double* dW1_2 = dW_exp + (long long)top2 * 1050880; double* db1_2 = dW1_2 + 524288;
+                double* dW2_2 = db1_2 + 2048;                       double* db2_2 = dW2_2 + 524288;
                 nn_memset(dh1, 0, 2048 * sizeof(double));
                 nn_memset(dh2, 0, 2048 * sizeof(double));
-
                 for (int j = 0; j < 256; j++) {
-                    double dout1_val = d_hcomb[j] * a1;
-                    double dout2_val = d_hcomb[j] * a2;
-                    db2_1[j] += dout1_val;
-                    db2_2[j] += dout2_val;
-
-                    const double* w2_1_row = W2_1 + j * 2048;
-                    double* dw2_1_row = dW2_1 + j * 2048;
-                    const double* w2_2_row = W2_2 + j * 2048;
-                    double* dw2_2_row = dW2_2 + j * 2048;
-
+                    double o1v = d_hcomb[j] * a1, o2v = d_hcomb[j] * a2;
+                    db2_1[j] += o1v; db2_2[j] += o2v;
+                    const double* w2_1_row = W2_1 + j * 2048; double* dw2_1_row = dW2_1 + j * 2048;
+                    const double* w2_2_row = W2_2 + j * 2048; double* dw2_2_row = dW2_2 + j * 2048;
                     for (int m = 0; m < 2048; m++) {
-                        dh1[m] += dout1_val * w2_1_row[m];
-                        dw2_1_row[m] += dout1_val * h1[m];
-
-                        dh2[m] += dout2_val * w2_2_row[m];
-                        dw2_2_row[m] += dout2_val * h2[m];
+                        dh1[m] += o1v * w2_1_row[m]; dw2_1_row[m] += o1v * h1[m];
+                        dh2[m] += o2v * w2_2_row[m]; dw2_2_row[m] += o2v * h2[m];
                     }
                 }
-
                 for (int m = 0; m < 2048; m++) {
-                    dh1[m] = (h1[m] > 0.0) ? dh1[m] : 0.0;
-                    db1_1[m] += dh1[m];
-                    dh2[m] = (h2[m] > 0.0) ? dh2[m] : 0.0;
-                    db1_2[m] += dh2[m];
+                    dh1[m] = (h1[m] > 0.0) ? dh1[m] : 0.0; db1_1[m] += dh1[m];
+                    dh2[m] = (h2[m] > 0.0) ? dh2[m] : 0.0; db1_2[m] += dh2[m];
                 }
-
-                // Backprop into z
                 for (int j = 0; j < 256; j++) d_z[j] = d_hcomb[j];
-
                 for (int m = 0; m < 2048; m++) {
-                    double dh1_val = dh1[m];
-                    double dh2_val = dh2[m];
-                    const double* w1_1_row = W1_1 + m * 256;
-                    double* dw1_1_row = dW1_1 + m * 256;
-                    const double* w1_2_row = W1_2 + m * 256;
-                    double* dw1_2_row = dW1_2 + m * 256;
-
+                    double dv1 = dh1[m], dv2 = dh2[m];
+                    const double* w1_1_row = W1_1 + m * 256; double* dw1_1_row = dW1_1 + m * 256;
+                    const double* w1_2_row = W1_2 + m * 256; double* dw1_2_row = dW1_2 + m * 256;
                     for (int j = 0; j < 256; j++) {
-                        d_z[j] += dh1_val * w1_1_row[j] + dh2_val * w1_2_row[j];
-                        dw1_1_row[j] += dh1_val * z[j];
-                        dw1_2_row[j] += dh2_val * z[j];
+                        d_z[j] += dv1 * w1_1_row[j] + dv2 * w1_2_row[j];
+                        dw1_1_row[j] += dv1 * z[j]; dw1_2_row[j] += dv2 * z[j];
                     }
                 }
-
-                // Backprop into P1 recurrent state & embedding
                 for (int i = 0; i < 256; i++) {
                     double d_next = d_z[i];
                     double d_cand = d_next * (1.0 - gate[i]);
                     double d_gate = d_next * (state[i] - cand[i]);
                     double d_u = d_cand * (1.0 - cand[i] * cand[i]);
                     double d_v = d_gate * gate[i] * (1.0 - gate[i]);
-
-                    db_s[i] += d_u;
-                    db_lam[i] += d_v;
-
-                    double* dwx_row = dW_x + i * 256;
-                    double* dws_row = dW_s + i * 256;
-                    double* dwl_row = dW_lam + i * 256;
+                    db_s[i] += d_u; db_lam[i] += d_v;
+                    double* dwx_row = dW_x + i * 256; double* dws_row = dW_s + i * 256; double* dwl_row = dW_lam + i * 256;
                     for (int j = 0; j < 256; j++) {
-                        dwx_row[j] += d_u * emb[j];
-                        dws_row[j] += d_u * state[j];
-                        dwl_row[j] += d_v * emb[j];
+                        dwx_row[j] += d_u * emb[j]; dws_row[j] += d_u * state[j]; dwl_row[j] += d_v * emb[j];
                     }
                 }
             }
-
             nn_memcpy(state, next_state, 256 * sizeof(double));
         }
     }
-
     qadav_free(ws);
-    if (is_training == 2) {
-        return (double)last_token_probe_hit;
+    return (is_training == 2) ? (double)last_token_probe_hit : (total_loss * norm_factor);
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma"), noinline))
+static void qnmf_v2_p1_p2_step_avx2(
+    int model_kind, const double* restrict W_x, const double* restrict W_s, const double* restrict b_s,
+    const double* restrict W_lam, const double* restrict b_lam,
+    const double* restrict W_q, const double* restrict b_q,
+    const double* restrict W_r, const double* restrict b_r,
+    const double* restrict W_pred, const double* restrict b_pred,
+    const double* restrict W_route, const double* restrict b_route,
+    const double* restrict emb, int t,
+    double* restrict state, double* restrict M_w, double* restrict M_l,
+    double* restrict cand_out, double* restrict gate_out, double* restrict next_state_out,
+    double* restrict q, double* restrict v_w, double* restrict v_l_out, double* restrict z_out,
+    double* restrict scratch_step,
+    int* out_top1, int* out_top2, double* out_a1, double* out_a2)
+{
+    double* dot_w = scratch_step;        // 64
+    double* a_w   = dot_w + 64;          // 64
+    double* dot_l = a_w + 64;            // 256
+    double* a_l   = dot_l + 256;         // 256
+
+    const __m256d c_half = _mm256_set1_pd(0.5);
+    const __m256d c_one  = _mm256_set1_pd(1.0);
+    for (int i = 0; i < 256; i += 4) {
+        const double* wx0 = W_x + (i + 0) * 256; const double* wx1 = W_x + (i + 1) * 256;
+        const double* wx2 = W_x + (i + 2) * 256; const double* wx3 = W_x + (i + 3) * 256;
+        const double* ws0 = W_s + (i + 0) * 256; const double* ws1 = W_s + (i + 1) * 256;
+        const double* ws2 = W_s + (i + 2) * 256; const double* ws3 = W_s + (i + 3) * 256;
+        const double* wl0 = W_lam + (i + 0) * 256; const double* wl1 = W_lam + (i + 1) * 256;
+        const double* wl2 = W_lam + (i + 2) * 256; const double* wl3 = W_lam + (i + 3) * 256;
+        __m256d au0 = _mm256_setzero_pd(), av0 = _mm256_setzero_pd();
+        __m256d au1 = _mm256_setzero_pd(), av1 = _mm256_setzero_pd();
+        __m256d au2 = _mm256_setzero_pd(), av2 = _mm256_setzero_pd();
+        __m256d au3 = _mm256_setzero_pd(), av3 = _mm256_setzero_pd();
+        for (int j = 0; j < 256; j += 4) {
+            __m256d ev = _mm256_loadu_pd(emb + j);
+            __m256d sv = _mm256_loadu_pd(state + j);
+            au0 = _mm256_fmadd_pd(_mm256_loadu_pd(wx0 + j), ev, au0); au0 = _mm256_fmadd_pd(_mm256_loadu_pd(ws0 + j), sv, au0);
+            au1 = _mm256_fmadd_pd(_mm256_loadu_pd(wx1 + j), ev, au1); au1 = _mm256_fmadd_pd(_mm256_loadu_pd(ws1 + j), sv, au1);
+            au2 = _mm256_fmadd_pd(_mm256_loadu_pd(wx2 + j), ev, au2); au2 = _mm256_fmadd_pd(_mm256_loadu_pd(ws2 + j), sv, au2);
+            au3 = _mm256_fmadd_pd(_mm256_loadu_pd(wx3 + j), ev, au3); au3 = _mm256_fmadd_pd(_mm256_loadu_pd(ws3 + j), sv, au3);
+            av0 = _mm256_fmadd_pd(_mm256_loadu_pd(wl0 + j), ev, av0);
+            av1 = _mm256_fmadd_pd(_mm256_loadu_pd(wl1 + j), ev, av1);
+            av2 = _mm256_fmadd_pd(_mm256_loadu_pd(wl2 + j), ev, av2);
+            av3 = _mm256_fmadd_pd(_mm256_loadu_pd(wl3 + j), ev, av3);
+        }
+        __m256d u4 = _mm256_add_pd(_mm256_loadu_pd(b_s + i), _mm256_set_pd(avx2_hsum_pd(au3), avx2_hsum_pd(au2), avx2_hsum_pd(au1), avx2_hsum_pd(au0)));
+        __m256d v4 = _mm256_add_pd(_mm256_loadu_pd(b_lam + i), _mm256_set_pd(avx2_hsum_pd(av3), avx2_hsum_pd(av2), avx2_hsum_pd(av1), avx2_hsum_pd(av0)));
+        __m256d c4 = avx2_fast_tanh4(u4);
+        __m256d g4 = _mm256_fmadd_pd(c_half, avx2_fast_tanh4(_mm256_mul_pd(c_half, v4)), c_half);
+        __m256d s4 = _mm256_loadu_pd(state + i);
+        __m256d ns4 = _mm256_fmadd_pd(g4, s4, _mm256_mul_pd(_mm256_sub_pd(c_one, g4), c4));
+        _mm256_storeu_pd(cand_out + i, c4);
+        _mm256_storeu_pd(gate_out + i, g4);
+        _mm256_storeu_pd(next_state_out + i, ns4);
     }
+
+    vec_matvec_Nx256_avx2(W_q, b_q, next_state_out, q, 0.0625, 256);
+
+    if (model_kind != MODEL_KIND_QNMF_V2_NO_MW) {
+        vec_matvec_Nx256_avx2(M_w, (const double*)0, q, dot_w, 1.0, 64);
+        double max_dw = dot_w[0];
+        for (int s = 1; s < 64; s++) { if (dot_w[s] > max_dw) max_dw = dot_w[s]; }
+        __m256d vmax = _mm256_set1_pd(max_dw), vsum = _mm256_setzero_pd();
+        for (int s = 0; s < 64; s += 4) {
+            __m256d e = avx2_fast_exp4(_mm256_sub_pd(_mm256_loadu_pd(dot_w + s), vmax));
+            _mm256_storeu_pd(a_w + s, e);
+            vsum = _mm256_add_pd(vsum, e);
+        }
+        vec_weighted_sum_Nx256_avx2(M_w, a_w, 1.0 / (avx2_hsum_pd(vsum) + 1e-12), v_w, 64);
+    } else {
+        nn_memset(v_w, 0, 256 * sizeof(double));
+    }
+
+    if (model_kind != MODEL_KIND_QNMF_V2_NO_ML) {
+        vec_matvec_Nx256_avx2(M_l, (const double*)0, q, dot_l, 1.0, 256);
+        double max_dl = dot_l[0];
+        for (int s = 1; s < 256; s++) { if (dot_l[s] > max_dl) max_dl = dot_l[s]; }
+        __m256d vmax = _mm256_set1_pd(max_dl), vsum = _mm256_setzero_pd();
+        for (int s = 0; s < 256; s += 4) {
+            __m256d e = avx2_fast_exp4(_mm256_sub_pd(_mm256_loadu_pd(dot_l + s), vmax));
+            _mm256_storeu_pd(a_l + s, e);
+            vsum = _mm256_add_pd(vsum, e);
+        }
+        vec_weighted_sum_Nx256_avx2(M_l, a_l, 1.0 / (avx2_hsum_pd(vsum) + 1e-12), v_l_out, 256);
+    } else {
+        nn_memset(v_l_out, 0, 256 * sizeof(double));
+    }
+
+    double* rg_buf = dot_l; // reuse 256-double scratch after M_l read
+    double* px_buf = a_l;
+    vec_matvec_Nx256_avx2(W_r, b_r, next_state_out, rg_buf, 1.0, 256);
+    for (int i = 0; i < 256; i += 4) {
+        __m256d rg = avx2_fast_tanh4(_mm256_mul_pd(c_half, _mm256_loadu_pd(rg_buf + i)));
+        __m256d sig = _mm256_fmadd_pd(c_half, rg, c_half);
+        __m256d vw = _mm256_add_pd(_mm256_loadu_pd(v_w + i), _mm256_loadu_pd(v_l_out + i));
+        __m256d ns = _mm256_loadu_pd(next_state_out + i);
+        _mm256_storeu_pd(z_out + i, _mm256_fmadd_pd(sig, vw, ns));
+    }
+
+    vec_matvec_Nx256_avx2(W_pred, b_pred, next_state_out, px_buf, 1.0, 256);
+    double surprise = 0.0;
+    for (int i = 0; i < 256; i++) {
+        double diff = emb[i] - px_buf[i];
+        surprise += diff * diff;
+    }
+    surprise *= (1.0 / 256.0);
+    if (surprise > 0.04) {
+        double* target_mw = M_w + (t % 64) * 256;
+        __m256d c85 = _mm256_set1_pd(0.85), c15 = _mm256_set1_pd(0.15);
+        for (int j = 0; j < 256; j += 4) {
+            __m256d mv = _mm256_mul_pd(c85, _mm256_loadu_pd(target_mw + j));
+            mv = _mm256_fmadd_pd(c15, _mm256_loadu_pd(emb + j), mv);
+            _mm256_storeu_pd(target_mw + j, mv);
+        }
+        if (surprise > 0.08) {
+            double* target_ml = M_l + ((t / 2) % 256) * 256;
+            __m256d c50 = _mm256_set1_pd(0.5);
+            for (int j = 0; j < 256; j += 4) {
+                __m256d lv = _mm256_add_pd(_mm256_loadu_pd(target_ml + j), _mm256_loadu_pd(emb + j));
+                _mm256_storeu_pd(target_ml + j, _mm256_mul_pd(c50, lv));
+            }
+        }
+    }
+
+    double r_logits[16];
+    vec_matvec_Nx256_avx2(W_route, b_route, z_out, r_logits, 1.0, 16);
+    int top1 = 0, top2 = 1;
+    if (r_logits[1] > r_logits[0]) { top1 = 1; top2 = 0; }
+    for (int k = 2; k < 16; k++) {
+        if (r_logits[k] > r_logits[top1]) { top2 = top1; top1 = k; }
+        else if (r_logits[k] > r_logits[top2]) { top2 = k; }
+    }
+    double e1 = fast_exp(r_logits[top1]), e2 = fast_exp(r_logits[top2]);
+    *out_top1 = top1; *out_top2 = top2;
+    *out_a1 = e1 / (e1 + e2 + 1e-12);
+    *out_a2 = e2 / (e1 + e2 + 1e-12);
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static double compute_qnmf_v2_batch_avx2(int model_kind, V2Weights* w, const unsigned char* data, int data_len, int batch_size, int context_len, int is_training) {
+    double total_loss = 0.0;
+    int last_token_probe_hit = 0;
+    int total_tokens = batch_size * context_len;
+    double norm_factor = 1.0 / (double)total_tokens;
+
+    double* W_emb    = w->params;
+    double* W_x      = W_emb + 32768;
+    double* W_s      = W_x + 65536;
+    double* b_s      = W_s + 65536;
+    double* W_lam    = b_s + 256;
+    double* b_lam    = W_lam + 65536;
+    double* W_q      = b_lam + 256;
+    double* b_q      = W_q + 65536;
+    double* W_r      = b_q + 256 + 65536 + 256 + 65536 + 256;
+    double* b_r      = W_r + 65536;
+    double* W_f      = b_r + 256;
+    double* b_f      = W_f + 65536;
+    double* W_pred   = b_f + 256;
+    double* b_pred   = W_pred + 65536;
+    double* M_w_init = b_pred + 256;
+    double* M_l_init = M_w_init + 16384;
+    double* W_route  = M_l_init + 65536;
+    double* b_route  = W_route + 4096;
+    double* W_exp    = b_route + 16;
+    double* W_out    = W_exp + 16814080;
+    double* b_out    = W_out + 32768;
+
+    double* dW_emb   = w->grads;
+    double* dW_x     = dW_emb + 32768;
+    double* dW_s     = dW_x + 65536;
+    double* db_s     = dW_s + 65536;
+    double* dW_lam   = db_s + 256;
+    double* db_lam   = dW_lam + 65536;
+    double* dW_exp   = w->grads + (W_exp - w->params);
+    double* dW_out   = w->grads + (W_out - w->params);
+    double* db_out   = w->grads + (b_out - w->params);
+
+    int chunk_N = (is_training == 1) ? total_tokens : context_len;
+    int num_chunks = (is_training == 1) ? 1 : batch_size;
+    int seqs_per_chunk = (is_training == 1) ? batch_size : 1;
+
+    // Zero >4KB stack allocations: all scratch buffers reside in VirtualAlloc heap block
+    unsigned long long doubles_needed =
+        65536ULL + 16384ULL +                   // M_l + M_w
+        256ULL * 6ULL +                         // state, next_state, q, v_w, tmp_cand, tmp_gate
+        640ULL + 16384ULL + 512ULL +            // step_scratch(640), dout_tile(8192)+dout_tile_t1(8192), logits/probs/d_logits(512)
+        (unsigned long long)chunk_N * (256ULL * 4ULL) + // z_all, vl_all, hcomb_all, hcomb_t1
+        (is_training == 1 ? ((unsigned long long)chunk_N * (256ULL * 6ULL + 2048ULL * 2ULL) + 131072ULL) : (2048ULL * 64ULL)) +
+        4096ULL;
+    unsigned long long ws_bytes   = doubles_needed * sizeof(double);
+    unsigned long long meta_bytes = (unsigned long long)(chunk_N * 4 + 16 * chunk_N + 128) * sizeof(int);
+    unsigned long long am_bytes   = (unsigned long long)(chunk_N * 2 + 16) * sizeof(double);
+
+    unsigned long long aligned_ws   = (ws_bytes   + 63ULL) & ~63ULL;
+    unsigned long long aligned_meta = (meta_bytes + 63ULL) & ~63ULL;
+    unsigned long long aligned_am   = (am_bytes   + 63ULL) & ~63ULL;
+    unsigned char* raw_blk = (unsigned char*)nn_scratch_acquire(aligned_ws + aligned_meta + aligned_am);
+    if (!raw_blk) return 0.0;
+    double* ws = (double*)raw_blk;
+    int* meta = (int*)(raw_blk + aligned_ws);
+    double* alpha_meta = (double*)(raw_blk + aligned_ws + aligned_meta);
+
+    double* M_l          = ws;
+    double* M_w          = M_l + 65536;
+    double* state        = M_w + 16384;
+    double* next_state   = state + 256;
+    double* q_buf        = next_state + 256;
+    double* v_w          = q_buf + 256;
+    double* tmp_cand     = v_w + 256;
+    double* tmp_gate     = tmp_cand + 256;
+    double* step_scratch = tmp_gate + 256;   // 640
+    double* dout_tile    = step_scratch + 640; // 8192 (32 * 256)
+    double* dout_tile_t1 = dout_tile + 8192;   // 8192
+    double* logits       = dout_tile_t1 + 8192; // 128
+    double* probs        = logits + 128;     // 128
+    double* d_logits     = probs + 128;      // 128
+    double* z_all        = d_logits + 256;   // aligned margin
+    double* vl_all       = z_all + chunk_N * 256;
+    double* hcomb_all    = vl_all + chunk_N * 256;
+    double* hcomb_t1     = hcomb_all + chunk_N * 256;
+
+    double* dz_all     = (double*)0;
+    double* dz_t1      = (double*)0;
+    double* dhcomb_all = (double*)0;
+    double* state_all  = (double*)0;
+    double* cand_all   = (double*)0;
+    double* gate_all   = (double*)0;
+    double* h1_all     = (double*)0;
+    double* h2_all     = (double*)0;
+    double* dh_tile    = (double*)0;
+    double* dh_tile_t1 = (double*)0;
+    double* h_eval_tile    = hcomb_t1 + chunk_N * 256;
+    double* h_eval_tile_t1 = h_eval_tile + 65536;
+    if (is_training == 1) {
+        dz_all     = hcomb_t1 + chunk_N * 256;
+        dz_t1      = dz_all + chunk_N * 256;
+        dhcomb_all = dz_t1 + chunk_N * 256;
+        state_all  = dhcomb_all + chunk_N * 256;
+        cand_all   = state_all + chunk_N * 256;
+        gate_all   = cand_all + chunk_N * 256;
+        h1_all     = gate_all + chunk_N * 256;
+        h2_all     = h1_all + chunk_N * 2048;
+        dh_tile    = h2_all + chunk_N * 2048;
+        dh_tile_t1 = dh_tile + 65536;
+    }
+
+    int* top1_all  = meta;
+    int* top2_all  = top1_all + chunk_N;
+    int* c_in_all  = top2_all + chunk_N;
+    int* c_tgt_all = c_in_all + chunk_N;
+    int* exp_list  = c_tgt_all + chunk_N;
+    double* a1_all = alpha_meta;
+    double* a2_all = a1_all + chunk_N;
+
+    for (int ch = 0; ch < num_chunks; ch++) {
+        int exp_cnt[16];
+        for (int k = 0; k < 16; k++) exp_cnt[k] = 0;
+
+        int tok_idx = 0;
+        for (int sb = 0; sb < seqs_per_chunk; sb++) {
+            int start_pos = 0;
+            if (is_training != 2) {
+                int max_pos = data_len - context_len - 2;
+                if (max_pos < 1) max_pos = 1;
+                start_pos = (int)(nn_rand_uniform() * (double)max_pos);
+            }
+            nn_memcpy(M_w, M_w_init, 16384 * sizeof(double));
+            nn_memcpy(M_l, M_l_init, 65536 * sizeof(double));
+            nn_memset(state, 0, 256 * sizeof(double));
+
+            for (int t = 0; t < context_len; t++) {
+                int c_in  = (int)(unsigned char)(data[start_pos + t] & 0x7F);
+                int c_tgt = (int)(unsigned char)(data[start_pos + t + 1] & 0x7F);
+                c_in_all[tok_idx]  = c_in;
+                c_tgt_all[tok_idx] = c_tgt;
+                const double* emb = W_emb + c_in * 256;
+
+                double* cand_dst  = (is_training == 1) ? (cand_all + tok_idx * 256) : tmp_cand;
+                double* gate_dst  = (is_training == 1) ? (gate_all + tok_idx * 256) : tmp_gate;
+                if (is_training == 1) nn_memcpy(state_all + tok_idx * 256, state, 256 * sizeof(double));
+
+                int top1 = 0, top2 = 1;
+                double a1 = 0.5, a2 = 0.5;
+                qnmf_v2_p1_p2_step_avx2(
+                    model_kind, W_x, W_s, b_s, W_lam, b_lam, W_q, b_q, W_r, b_r, W_pred, b_pred, W_route, b_route,
+                    emb, t, state, M_w, M_l, cand_dst, gate_dst, next_state, q_buf, v_w,
+                    vl_all + tok_idx * 256, z_all + tok_idx * 256, step_scratch, &top1, &top2, &a1, &a2);
+
+                top1_all[tok_idx] = top1; top2_all[tok_idx] = top2;
+                a1_all[tok_idx] = a1;     a2_all[tok_idx] = a2;
+                exp_list[top1 * chunk_N + exp_cnt[top1]++] = (tok_idx << 1) | 0;
+                exp_list[top2 * chunk_N + exp_cnt[top2]++] = (tok_idx << 1) | 1;
+
+                nn_memcpy(state, next_state, 256 * sizeof(double));
+                tok_idx++;
+            }
+        }
+
+        nn_memcpy(hcomb_all, z_all, (unsigned long long)chunk_N * 256ULL * sizeof(double));
+
+#ifdef _WIN32
+        if (nn_mt_ensure()) {
+            nn_memset(hcomb_t1, 0, (unsigned long long)chunk_N * 256ULL * sizeof(double));
+            g_nn_mt.task_kind   = 2;
+            g_nn_mt.W_exp       = W_exp;
+            g_nn_mt.z_all       = z_all;
+            g_nn_mt.out_base    = hcomb_t1;
+            g_nn_mt.h1_all      = h1_all;
+            g_nn_mt.h2_all      = h2_all;
+            g_nn_mt.h_eval_base = h_eval_tile_t1;
+            g_nn_mt.exp_cnt     = exp_cnt;
+            g_nn_mt.exp_list    = exp_list;
+            g_nn_mt.a1_all      = a1_all;
+            g_nn_mt.a2_all      = a2_all;
+            g_nn_mt.chunk_N     = chunk_N;
+            g_nn_mt.is_training = is_training;
+            __sync_synchronize();
+            g_nn_mt.pSetEvent(g_nn_mt.ev_start);
+            run_qnmf_s2_experts_avx2(0, 2, W_exp, z_all, hcomb_all, h1_all, h2_all, h_eval_tile,
+                exp_cnt, exp_list, a1_all, a2_all, chunk_N, is_training);
+            g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
+            __sync_synchronize();
+            vec_add_inplace_avx2(hcomb_all, hcomb_t1, chunk_N * 256);
+        } else
+#endif
+        {
+            run_qnmf_s2_experts_avx2(0, 1, W_exp, z_all, hcomb_all, h1_all, h2_all, h_eval_tile,
+                exp_cnt, exp_list, a1_all, a2_all, chunk_N, is_training);
+        }
+
+        for (int tid = 0; tid < chunk_N; tid++) {
+            const double* h_comb = hcomb_all + tid * 256;
+            const double* v_l    = vl_all + tid * 256;
+            int c_tgt = c_tgt_all[tid];
+
+            vec_matvec_Nx256_avx2(W_out, b_out, h_comb, logits, 1.0, 128);
+            if (model_kind != MODEL_KIND_QNMF_V2_NO_ML) {
+                for (int i = 0; i + 3 < 128; i += 4) {
+                    const double* r0 = W_emb + (i + 0) * 256;
+                    const double* r1 = W_emb + (i + 1) * 256;
+                    const double* r2 = W_emb + (i + 2) * 256;
+                    const double* r3 = W_emb + (i + 3) * 256;
+                    __m256d a0 = _mm256_setzero_pd(), a1 = _mm256_setzero_pd(), a2 = _mm256_setzero_pd(), a3 = _mm256_setzero_pd();
+                    for (int j = 0; j < 256; j += 4) {
+                        __m256d vl = _mm256_loadu_pd(v_l + j);
+                        a0 = _mm256_fmadd_pd(_mm256_loadu_pd(r0 + j), vl, a0);
+                        a1 = _mm256_fmadd_pd(_mm256_loadu_pd(r1 + j), vl, a1);
+                        a2 = _mm256_fmadd_pd(_mm256_loadu_pd(r2 + j), vl, a2);
+                        a3 = _mm256_fmadd_pd(_mm256_loadu_pd(r3 + j), vl, a3);
+                    }
+                    logits[i + 0] += avx2_hsum_pd(a0) * 0.15;
+                    logits[i + 1] += avx2_hsum_pd(a1) * 0.15;
+                    logits[i + 2] += avx2_hsum_pd(a2) * 0.15;
+                    logits[i + 3] += avx2_hsum_pd(a3) * 0.15;
+                }
+            }
+            double max_logit = logits[0];
+            for (int i = 1; i < 128; i++) { if (logits[i] > max_logit) max_logit = logits[i]; }
+            __m256d vmax_l = _mm256_set1_pd(max_logit), vsum_l = _mm256_setzero_pd();
+            for (int i = 0; i < 128; i += 4) {
+                __m256d e = avx2_fast_exp4(_mm256_sub_pd(_mm256_loadu_pd(logits + i), vmax_l));
+                _mm256_storeu_pd(probs + i, e);
+                vsum_l = _mm256_add_pd(vsum_l, e);
+            }
+            __m256d vinv_l = _mm256_set1_pd(1.0 / (avx2_hsum_pd(vsum_l) + 1e-12));
+            for (int i = 0; i < 128; i += 4) {
+                _mm256_storeu_pd(probs + i, _mm256_mul_pd(_mm256_loadu_pd(probs + i), vinv_l));
+            }
+
+            total_loss += -qadav_log(probs[c_tgt] > 1e-12 ? probs[c_tgt] : 1e-12);
+            if ((tid % context_len) == (context_len - 1)) {
+                int best_d = '0'; double max_d = logits['0'];
+                for (int d = '1'; d <= '9'; d++) { if (logits[d] > max_d) { max_d = logits[d]; best_d = d; } }
+                last_token_probe_hit = (best_d == c_tgt) ? 1 : 0;
+            }
+
+            if (is_training == 1) {
+                for (int i = 0; i < 128; i++) {
+                    double target = (i == c_tgt) ? 1.0 : 0.0;
+                    double dl = (probs[i] - target) * norm_factor;
+                    d_logits[i] = dl;
+                    db_out[i] += dl;
+                    vec_axpy_256_avx2(dW_out + i * 256, h_comb, dl);
+                }
+                double* d_hcomb = dhcomb_all + tid * 256;
+                nn_memset(d_hcomb, 0, 256 * sizeof(double));
+                for (int i = 0; i < 128; i += 4) {
+                    __m256d g0 = _mm256_set1_pd(d_logits[i + 0]);
+                    __m256d g1 = _mm256_set1_pd(d_logits[i + 1]);
+                    __m256d g2 = _mm256_set1_pd(d_logits[i + 2]);
+                    __m256d g3 = _mm256_set1_pd(d_logits[i + 3]);
+                    const double* w0 = W_out + (i + 0) * 256;
+                    const double* w1 = W_out + (i + 1) * 256;
+                    const double* w2 = W_out + (i + 2) * 256;
+                    const double* w3 = W_out + (i + 3) * 256;
+                    for (int j = 0; j < 256; j += 4) {
+                        __m256d dh = _mm256_loadu_pd(d_hcomb + j);
+                        dh = _mm256_fmadd_pd(_mm256_loadu_pd(w0 + j), g0, dh);
+                        dh = _mm256_fmadd_pd(_mm256_loadu_pd(w1 + j), g1, dh);
+                        dh = _mm256_fmadd_pd(_mm256_loadu_pd(w2 + j), g2, dh);
+                        dh = _mm256_fmadd_pd(_mm256_loadu_pd(w3 + j), g3, dh);
+                        _mm256_storeu_pd(d_hcomb + j, dh);
+                    }
+                }
+            }
+        }
+
+        if (is_training == 1) {
+            nn_memcpy(dz_all, dhcomb_all, (unsigned long long)chunk_N * 256ULL * sizeof(double));
+
+#ifdef _WIN32
+            if (nn_mt_ensure()) {
+                nn_memset(dz_t1, 0, (unsigned long long)chunk_N * 256ULL * sizeof(double));
+                g_nn_mt.task_kind  = 3;
+                g_nn_mt.W_exp      = W_exp;
+                g_nn_mt.dW_exp     = dW_exp;
+                g_nn_mt.z_all      = z_all;
+                g_nn_mt.out_base   = dz_t1;
+                g_nn_mt.dhcomb_all = dhcomb_all;
+                g_nn_mt.h1_all     = h1_all;
+                g_nn_mt.h2_all     = h2_all;
+                g_nn_mt.dh_tile    = dh_tile_t1;
+                g_nn_mt.dout_tile  = dout_tile_t1;
+                g_nn_mt.exp_cnt    = exp_cnt;
+                g_nn_mt.exp_list   = exp_list;
+                g_nn_mt.a1_all     = a1_all;
+                g_nn_mt.a2_all     = a2_all;
+                g_nn_mt.chunk_N    = chunk_N;
+                __sync_synchronize();
+                g_nn_mt.pSetEvent(g_nn_mt.ev_start);
+                run_qnmf_s4_experts_avx2(0, 2, W_exp, dW_exp, z_all, dz_all, dhcomb_all, h1_all, h2_all,
+                    dh_tile, dout_tile, exp_cnt, exp_list, a1_all, a2_all, chunk_N);
+                g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
+                __sync_synchronize();
+                vec_add_inplace_avx2(dz_all, dz_t1, chunk_N * 256);
+            } else
+#endif
+            {
+                run_qnmf_s4_experts_avx2(0, 1, W_exp, dW_exp, z_all, dz_all, dhcomb_all, h1_all, h2_all,
+                    dh_tile, dout_tile, exp_cnt, exp_list, a1_all, a2_all, chunk_N);
+            }
+
+            for (int tid = 0; tid < chunk_N; tid++) {
+                const double* d_z   = dz_all + tid * 256;
+                const double* st    = state_all + tid * 256;
+                const double* cnd   = cand_all + tid * 256;
+                const double* gt    = gate_all + tid * 256;
+                const double* emb   = W_emb + c_in_all[tid] * 256;
+                for (int i = 0; i < 256; i++) {
+                    double d_next = d_z[i];
+                    double d_cand = d_next * (1.0 - gt[i]);
+                    double d_gate = d_next * (st[i] - cnd[i]);
+                    double d_u = d_cand * (1.0 - cnd[i] * cnd[i]);
+                    double d_v = d_gate * gt[i] * (1.0 - gt[i]);
+                    db_s[i] += d_u;
+                    db_lam[i] += d_v;
+                    __m256d vu = _mm256_set1_pd(d_u), vv = _mm256_set1_pd(d_v);
+                    double* dwx = dW_x + i * 256;
+                    double* dws = dW_s + i * 256;
+                    double* dwl = dW_lam + i * 256;
+                    for (int j = 0; j < 256; j += 4) {
+                        __m256d ev = _mm256_loadu_pd(emb + j);
+                        __m256d sv = _mm256_loadu_pd(st + j);
+                        _mm256_storeu_pd(dwx + j, _mm256_fmadd_pd(vu, ev, _mm256_loadu_pd(dwx + j)));
+                        _mm256_storeu_pd(dws + j, _mm256_fmadd_pd(vu, sv, _mm256_loadu_pd(dws + j)));
+                        _mm256_storeu_pd(dwl + j, _mm256_fmadd_pd(vv, ev, _mm256_loadu_pd(dwl + j)));
+                    }
+                }
+            }
+        }
+    }
+
+    if (is_training == 2) return (double)last_token_probe_hit;
     return total_loss * norm_factor;
+}
+#endif
+
+static double compute_qnmf_v2_batch(int model_kind, V2Weights* w, const unsigned char* data, int data_len, int batch_size, int context_len, int is_training) {
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        return compute_qnmf_v2_batch_avx2(model_kind, w, data, data_len, batch_size, context_len, is_training);
+    }
+#endif
+    return compute_qnmf_v2_batch_scalar(model_kind, w, data, data_len, batch_size, context_len, is_training);
 }
 
 // ---------------------------------------------------------------------
@@ -2838,6 +4049,7 @@ int qadav_run_v2_training(const char* cmd, void* mctp_cert, int epochs) {
     nn_print(" | Total Time: "); nn_print_f64(total_train_s, 2); nn_print("s\n\n");
 
     free_v2_weights(w);
+    nn_scratch_release();
     qadav_free(data_buf);
     return 0;
 }
@@ -3053,6 +4265,7 @@ int qadav_run_v2_evaluation(const char* cmd) {
     if (w_tf)   free_v2_weights(w_tf);
     if (w_noml) free_v2_weights(w_noml);
     if (w_nomw) free_v2_weights(w_nomw);
+    nn_scratch_release();
     qadav_free(data_buf);
     return 0;
 }
@@ -5861,6 +7074,7 @@ int qadav_run_ablation_driver(const char* cmd) {
         nn_print("Elapsed Time:     "); nn_print_f64(elapsed, 2); nn_print(" s\n");
 
         free_v2_weights(w);
+        nn_scratch_release();
         qadav_free(data_buf);
     } else if (nn_strstr(task, "grid")) {
         int is_tf = nn_strstr(model, "transformer") || nn_strstr(model, "tf_") ? 1 : 0;
