@@ -7,10 +7,24 @@
 
 double qadav_sqrt(double x) {
     if (x <= 0.0) return 0.0;
-    double y = x;
-    if (y > 1.0) y = x * 0.5;
-    for (int i = 0; i < 15; i++) {
-        y = 0.5 * (y + x / y);
+    double y;
+    if (x >= 2.2250738585072014e-308) {
+        union {
+            double d;
+            unsigned long long u;
+        } ux;
+        ux.d = x;
+        ux.u = (ux.u >> 1) + 0x1ff8000000000000ULL;
+        y = ux.d;
+    } else {
+        y = x;
+    }
+    for (int i = 0; i < 20; i++) {
+        double yn = 0.5 * (y + x / y);
+        double diff = yn - y;
+        if (diff < 0.0) diff = -diff;
+        if (diff < 1e-15 * y) { y = yn; break; }
+        y = yn;
     }
     return y;
 }
@@ -1885,26 +1899,33 @@ static void nn_scratch_release(void) {
 
 typedef struct {
     int total_params;
+    int alloc_params;
+    int num_adam_blks;
     double* params;
     double* grads;
     double* m;
     double* v;
+    unsigned char* adam_blk_active;
 } V2Weights;
 
 static V2Weights* alloc_v2_weights(int count) {
     V2Weights* w = (V2Weights*)qadav_alloc(sizeof(V2Weights));
     if (!w) return (V2Weights*)0;
     w->total_params = count;
+    w->alloc_params = count;
+    w->num_adam_blks = (count + 63) / 64;
     unsigned long long sz = (unsigned long long)count * sizeof(double);
     w->params = (double*)nn_large_alloc(sz);
     w->grads = (double*)nn_large_alloc(sz);
     w->m = (double*)nn_large_alloc(sz);
     w->v = (double*)nn_large_alloc(sz);
-    if (!w->params || !w->grads || !w->m || !w->v) {
+    w->adam_blk_active = (unsigned char*)qadav_alloc((unsigned long long)w->num_adam_blks);
+    if (!w->params || !w->grads || !w->m || !w->v || !w->adam_blk_active) {
         if (w->params) nn_large_free(w->params, sz);
         if (w->grads) nn_large_free(w->grads, sz);
         if (w->m) nn_large_free(w->m, sz);
         if (w->v) nn_large_free(w->v, sz);
+        if (w->adam_blk_active) qadav_free(w->adam_blk_active);
         qadav_free(w);
         return (V2Weights*)0;
     }
@@ -1912,16 +1933,18 @@ static V2Weights* alloc_v2_weights(int count) {
     nn_memset(w->grads, 0, sz);
     nn_memset(w->m, 0, sz);
     nn_memset(w->v, 0, sz);
+    nn_memset(w->adam_blk_active, 0, (unsigned long long)w->num_adam_blks);
     return w;
 }
 
 static void free_v2_weights(V2Weights* w) {
     if (!w) return;
-    unsigned long long sz = (unsigned long long)w->total_params * sizeof(double);
+    unsigned long long sz = (unsigned long long)w->alloc_params * sizeof(double);
     if (w->params) nn_large_free(w->params, sz);
     if (w->grads) nn_large_free(w->grads, sz);
     if (w->m) nn_large_free(w->m, sz);
     if (w->v) nn_large_free(w->v, sz);
+    if (w->adam_blk_active) qadav_free(w->adam_blk_active);
     qadav_free(w);
 }
 
@@ -2478,10 +2501,66 @@ static void vec_adam_update_256_scalar(double* params, double* grads, double* m,
 }
 
 #if defined(__x86_64__) || defined(_M_X64)
-__attribute__((target("avx2,fma")))
-static void vec_adam_update_256_avx2(
+__attribute__((target("avx2,fma"), always_inline))
+static inline void vec_adam_update_8_avx2(
     double* restrict params, double* restrict grads,
-    double* restrict m, double* restrict v, int count, double alpha)
+    double* restrict m, double* restrict v, int i,
+    __m256d v_b1, __m256d v_1mb1, __m256d v_b2, __m256d v_1mb2,
+    __m256d v_eps, __m256d v_alpha, __m256d v_clip_hi, __m256d v_clip_lo, __m256d v_zero)
+{
+    __m256d g0 = _mm256_loadu_pd(grads + i);
+    __m256d g1 = _mm256_loadu_pd(grads + i + 4);
+    __m256d m0 = _mm256_loadu_pd(m + i);
+    __m256d m1 = _mm256_loadu_pd(m + i + 4);
+    __m256d v0 = _mm256_loadu_pd(v + i);
+    __m256d v1 = _mm256_loadu_pd(v + i + 4);
+
+    __m256i nz0 = _mm256_castpd_si256(_mm256_or_pd(_mm256_or_pd(g0, m0), v0));
+    __m256i nz1 = _mm256_castpd_si256(_mm256_or_pd(_mm256_or_pd(g1, m1), v1));
+    if (_mm256_testz_si256(nz0, nz0) && _mm256_testz_si256(nz1, nz1)) return;
+
+    int gz0 = _mm256_testz_si256(_mm256_castpd_si256(g0), _mm256_castpd_si256(g0));
+    int gz1 = _mm256_testz_si256(_mm256_castpd_si256(g1), _mm256_castpd_si256(g1));
+    if (gz0) {
+        m0 = _mm256_mul_pd(v_b1, m0);
+        v0 = _mm256_mul_pd(v_b2, v0);
+    } else {
+        g0 = _mm256_max_pd(v_clip_lo, _mm256_min_pd(v_clip_hi, g0));
+        m0 = _mm256_fmadd_pd(v_b1, m0, _mm256_mul_pd(v_1mb1, g0));
+        v0 = _mm256_fmadd_pd(v_b2, v0, _mm256_mul_pd(v_1mb2, _mm256_mul_pd(g0, g0)));
+        _mm256_storeu_pd(grads + i, v_zero);
+    }
+    if (gz1) {
+        m1 = _mm256_mul_pd(v_b1, m1);
+        v1 = _mm256_mul_pd(v_b2, v1);
+    } else {
+        g1 = _mm256_max_pd(v_clip_lo, _mm256_min_pd(v_clip_hi, g1));
+        m1 = _mm256_fmadd_pd(v_b1, m1, _mm256_mul_pd(v_1mb1, g1));
+        v1 = _mm256_fmadd_pd(v_b2, v1, _mm256_mul_pd(v_1mb2, _mm256_mul_pd(g1, g1)));
+        _mm256_storeu_pd(grads + i + 4, v_zero);
+    }
+
+    __m256d p0 = _mm256_loadu_pd(params + i);
+    __m256d p1 = _mm256_loadu_pd(params + i + 4);
+    __m256d d0 = _mm256_add_pd(_mm256_sqrt_pd(v0), v_eps);
+    __m256d d1 = _mm256_add_pd(_mm256_sqrt_pd(v1), v_eps);
+
+    p0 = _mm256_sub_pd(p0, _mm256_div_pd(_mm256_mul_pd(v_alpha, m0), d0));
+    p1 = _mm256_sub_pd(p1, _mm256_div_pd(_mm256_mul_pd(v_alpha, m1), d1));
+
+    _mm256_storeu_pd(params + i,     p0);
+    _mm256_storeu_pd(params + i + 4, p1);
+    _mm256_storeu_pd(m + i,     m0);
+    _mm256_storeu_pd(m + i + 4, m1);
+    _mm256_storeu_pd(v + i,     v0);
+    _mm256_storeu_pd(v + i + 4, v1);
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_adam_update_256_blk_avx2(
+    double* restrict params, double* restrict grads,
+    double* restrict m, double* restrict v,
+    const unsigned char* blk_active, int count, double alpha)
 {
     const __m256d v_b1    = _mm256_set1_pd(0.9);
     const __m256d v_1mb1  = _mm256_set1_pd(0.1);
@@ -2494,6 +2573,25 @@ static void vec_adam_update_256_avx2(
     const __m256d v_zero  = _mm256_setzero_pd();
 
     int i = 0;
+    if (blk_active) {
+        int full_blks = count / 64;
+        for (int b = 0; b < full_blks; b++) {
+            if (!blk_active[b]) continue;
+            int base = b * 64;
+            for (int k = 0; k < 64; k += 8) {
+                int idx = base + k;
+                if (idx + 64 < count) {
+                    _mm_prefetch((const char*)(grads + idx + 64), _MM_HINT_T0);
+                    _mm_prefetch((const char*)(m + idx + 64), _MM_HINT_T0);
+                    _mm_prefetch((const char*)(v + idx + 64), _MM_HINT_T0);
+                    _mm_prefetch((const char*)(params + idx + 64), _MM_HINT_T0);
+                }
+                vec_adam_update_8_avx2(params, grads, m, v, idx,
+                    v_b1, v_1mb1, v_b2, v_1mb2, v_eps, v_alpha, v_clip_hi, v_clip_lo, v_zero);
+            }
+        }
+        i = full_blks * 64;
+    }
     for (; i + 7 < count; i += 8) {
         if (i + 128 < count) {
             _mm_prefetch((const char*)(grads + i + 128), _MM_HINT_T0);
@@ -2501,55 +2599,8 @@ static void vec_adam_update_256_avx2(
             _mm_prefetch((const char*)(v + i + 128), _MM_HINT_T0);
             _mm_prefetch((const char*)(params + i + 128), _MM_HINT_T0);
         }
-        __m256d g0 = _mm256_loadu_pd(grads + i);
-        __m256d g1 = _mm256_loadu_pd(grads + i + 4);
-        __m256d m0 = _mm256_loadu_pd(m + i);
-        __m256d m1 = _mm256_loadu_pd(m + i + 4);
-        __m256d v0 = _mm256_loadu_pd(v + i);
-        __m256d v1 = _mm256_loadu_pd(v + i + 4);
-
-        // Fast zero-state bypass when grads == m == v == 0 across 8 elements (VPTEST 256-bit exact zero check)
-        __m256i nz0 = _mm256_castpd_si256(_mm256_or_pd(_mm256_or_pd(g0, m0), v0));
-        __m256i nz1 = _mm256_castpd_si256(_mm256_or_pd(_mm256_or_pd(g1, m1), v1));
-        if (_mm256_testz_si256(nz0, nz0) && _mm256_testz_si256(nz1, nz1)) {
-            continue;
-        }
-
-        int gz0 = _mm256_testz_si256(_mm256_castpd_si256(g0), _mm256_castpd_si256(g0));
-        int gz1 = _mm256_testz_si256(_mm256_castpd_si256(g1), _mm256_castpd_si256(g1));
-        if (gz0) {
-            m0 = _mm256_mul_pd(v_b1, m0);
-            v0 = _mm256_mul_pd(v_b2, v0);
-        } else {
-            g0 = _mm256_max_pd(v_clip_lo, _mm256_min_pd(v_clip_hi, g0));
-            m0 = _mm256_fmadd_pd(v_b1, m0, _mm256_mul_pd(v_1mb1, g0));
-            v0 = _mm256_fmadd_pd(v_b2, v0, _mm256_mul_pd(v_1mb2, _mm256_mul_pd(g0, g0)));
-            _mm256_storeu_pd(grads + i, v_zero);
-        }
-        if (gz1) {
-            m1 = _mm256_mul_pd(v_b1, m1);
-            v1 = _mm256_mul_pd(v_b2, v1);
-        } else {
-            g1 = _mm256_max_pd(v_clip_lo, _mm256_min_pd(v_clip_hi, g1));
-            m1 = _mm256_fmadd_pd(v_b1, m1, _mm256_mul_pd(v_1mb1, g1));
-            v1 = _mm256_fmadd_pd(v_b2, v1, _mm256_mul_pd(v_1mb2, _mm256_mul_pd(g1, g1)));
-            _mm256_storeu_pd(grads + i + 4, v_zero);
-        }
-
-        __m256d p0 = _mm256_loadu_pd(params + i);
-        __m256d p1 = _mm256_loadu_pd(params + i + 4);
-        __m256d d0 = _mm256_add_pd(_mm256_sqrt_pd(v0), v_eps);
-        __m256d d1 = _mm256_add_pd(_mm256_sqrt_pd(v1), v_eps);
-
-        p0 = _mm256_sub_pd(p0, _mm256_div_pd(_mm256_mul_pd(v_alpha, m0), d0));
-        p1 = _mm256_sub_pd(p1, _mm256_div_pd(_mm256_mul_pd(v_alpha, m1), d1));
-
-        _mm256_storeu_pd(params + i,     p0);
-        _mm256_storeu_pd(params + i + 4, p1);
-        _mm256_storeu_pd(m + i,     m0);
-        _mm256_storeu_pd(m + i + 4, m1);
-        _mm256_storeu_pd(v + i,     v0);
-        _mm256_storeu_pd(v + i + 4, v1);
+        vec_adam_update_8_avx2(params, grads, m, v, i,
+            v_b1, v_1mb1, v_b2, v_1mb2, v_eps, v_alpha, v_clip_hi, v_clip_lo, v_zero);
     }
     for (; i < count; i++) {
         double g = grads[i];
@@ -2562,16 +2613,25 @@ static void vec_adam_update_256_avx2(
         grads[i] = 0.0;
     }
 }
+
+__attribute__((target("avx2,fma")))
+static void vec_adam_update_256_avx2(
+    double* restrict params, double* restrict grads,
+    double* restrict m, double* restrict v, int count, double alpha)
+{
+    vec_adam_update_256_blk_avx2(params, grads, m, v, (const unsigned char*)0, count, alpha);
+}
 __attribute__((target("avx2,fma"), noinline))
 static void run_qnmf_s2_experts_avx2(
-    int k_start, int k_step,
+    const unsigned char* exp_assign, int worker_id,
     const double* W_exp, const double* z_all, double* out_base,
     double* h1_all, double* h2_all, double* h_eval_base,
     const int* exp_cnt, const int* exp_list,
     const double* a1_all, const double* a2_all,
     int chunk_N, int is_training)
 {
-    for (int k = k_start; k < 16; k += k_step) {
+    for (int k = 0; k < 16; k++) {
+        if (exp_assign && (int)exp_assign[k] != worker_id) continue;
         int M = exp_cnt[k];
         if (M == 0) continue;
         const double* W1_k = W_exp + (long long)k * 1050880;
@@ -2602,14 +2662,15 @@ static void run_qnmf_s2_experts_avx2(
 
 __attribute__((target("avx2,fma"), noinline))
 static void run_qnmf_s4_experts_avx2(
-    int k_start, int k_step,
+    const unsigned char* exp_assign, int worker_id,
     const double* W_exp, double* dW_exp, const double* z_all, double* dz_base,
     const double* dhcomb_all, const double* h1_all, const double* h2_all,
     double* dh_tile_buf, double* dout_tile_buf,
     const int* exp_cnt, const int* exp_list,
     const double* a1_all, const double* a2_all, int chunk_N)
 {
-    for (int k = k_start; k < 16; k += k_step) {
+    for (int k = 0; k < 16; k++) {
+        if (exp_assign && (int)exp_assign[k] != worker_id) continue;
         int M = exp_cnt[k];
         if (M == 0) continue;
         const double* W1_k = W_exp + (long long)k * 1050880;
@@ -2671,12 +2732,14 @@ typedef struct {
     volatile int task_kind; // 1=adam, 2=s2_fwd, 3=s4_bwd
     volatile int stop;
     double* a_p; double* a_g; double* a_m; double* a_v;
+    const unsigned char* a_blk;
     int a_cnt; double a_alpha;
     const double* W_exp; double* dW_exp;
     const double* z_all; double* out_base; const double* dhcomb_all;
     double* h1_all; double* h2_all;
     double* h_eval_base; double* dh_tile; double* dout_tile;
     const int* exp_cnt; const int* exp_list;
+    const unsigned char* exp_assign;
     const double* a1_all; const double* a2_all;
     int chunk_N; int is_training;
     HANDLE hThread, ev_start, ev_done;
@@ -2695,14 +2758,15 @@ static DWORD __stdcall nn_mt_worker_proc(void* arg) {
         if (g_nn_mt.stop) break;
         int tk = g_nn_mt.task_kind;
         if (tk == 1) {
-            vec_adam_update_256_avx2(g_nn_mt.a_p, g_nn_mt.a_g, g_nn_mt.a_m, g_nn_mt.a_v, g_nn_mt.a_cnt, g_nn_mt.a_alpha);
+            vec_adam_update_256_blk_avx2(g_nn_mt.a_p, g_nn_mt.a_g, g_nn_mt.a_m, g_nn_mt.a_v,
+                g_nn_mt.a_blk, g_nn_mt.a_cnt, g_nn_mt.a_alpha);
         } else if (tk == 2) {
-            run_qnmf_s2_experts_avx2(1, 2, g_nn_mt.W_exp, g_nn_mt.z_all, g_nn_mt.out_base,
+            run_qnmf_s2_experts_avx2(g_nn_mt.exp_assign, 1, g_nn_mt.W_exp, g_nn_mt.z_all, g_nn_mt.out_base,
                 g_nn_mt.h1_all, g_nn_mt.h2_all, g_nn_mt.h_eval_base,
                 g_nn_mt.exp_cnt, g_nn_mt.exp_list, g_nn_mt.a1_all, g_nn_mt.a2_all,
                 g_nn_mt.chunk_N, g_nn_mt.is_training);
         } else if (tk == 3) {
-            run_qnmf_s4_experts_avx2(1, 2, g_nn_mt.W_exp, g_nn_mt.dW_exp, g_nn_mt.z_all, g_nn_mt.out_base,
+            run_qnmf_s4_experts_avx2(g_nn_mt.exp_assign, 1, g_nn_mt.W_exp, g_nn_mt.dW_exp, g_nn_mt.z_all, g_nn_mt.out_base,
                 g_nn_mt.dhcomb_all, g_nn_mt.h1_all, g_nn_mt.h2_all,
                 g_nn_mt.dh_tile, g_nn_mt.dout_tile,
                 g_nn_mt.exp_cnt, g_nn_mt.exp_list, g_nn_mt.a1_all, g_nn_mt.a2_all, g_nn_mt.chunk_N);
@@ -2767,27 +2831,62 @@ static void nn_mt_shutdown(void) {
 static void nn_mt_shutdown(void) {}
 #endif
 
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,popcnt"), noinline))
+static long long nn_count_active_grads_avx2(const double* restrict grads, int count, unsigned char* blk_active) {
+    const __m256d abs_mask = _mm256_castsi256_pd(_mm256_set1_epi64x(0x7FFFFFFFFFFFFFFFULL));
+    const __m256d thresh   = _mm256_set1_pd(1e-12);
+    long long active = 0;
+    int full_blks = count / 64;
+    for (int b = 0; b < full_blks; b++) {
+        const double* gp = grads + b * 64;
+        if (b * 64 + 128 < count) _mm_prefetch((const char*)(gp + 128), _MM_HINT_T0);
+        __m256d any_nz = _mm256_setzero_pd();
+        for (int k = 0; k < 64; k += 16) {
+            __m256d g0 = _mm256_loadu_pd(gp + k);
+            __m256d g1 = _mm256_loadu_pd(gp + k + 4);
+            __m256d g2 = _mm256_loadu_pd(gp + k + 8);
+            __m256d g3 = _mm256_loadu_pd(gp + k + 12);
+            any_nz = _mm256_or_pd(any_nz, _mm256_or_pd(_mm256_or_pd(g0, g1), _mm256_or_pd(g2, g3)));
+            int m0 = _mm256_movemask_pd(_mm256_cmp_pd(_mm256_and_pd(g0, abs_mask), thresh, _CMP_GT_OQ));
+            int m1 = _mm256_movemask_pd(_mm256_cmp_pd(_mm256_and_pd(g1, abs_mask), thresh, _CMP_GT_OQ));
+            int m2 = _mm256_movemask_pd(_mm256_cmp_pd(_mm256_and_pd(g2, abs_mask), thresh, _CMP_GT_OQ));
+            int m3 = _mm256_movemask_pd(_mm256_cmp_pd(_mm256_and_pd(g3, abs_mask), thresh, _CMP_GT_OQ));
+            unsigned int packed = (unsigned int)(m0 | (m1 << 4) | (m2 << 8) | (m3 << 12));
+            if (packed) active += (long long)__builtin_popcount(packed);
+        }
+        if (blk_active && !blk_active[b]) {
+            __m256i nzi = _mm256_castpd_si256(any_nz);
+            if (!_mm256_testz_si256(nzi, nzi)) blk_active[b] = 1;
+        }
+    }
+    for (int i = full_blks * 64; i < count; i++) {
+        double g = grads[i];
+        if (g != 0.0 && blk_active) blk_active[full_blks] = 1;
+        if (g < 0.0) g = -g;
+        if (g > 1e-12) active++;
+    }
+    return active;
+}
+#endif
+
+static long long nn_count_active_grads(const double* grads, int count, unsigned char* blk_active) {
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) return nn_count_active_grads_avx2(grads, count, blk_active);
+#endif
+    long long active = 0;
+    for (int i = 0; i < count; i++) {
+        double g = grads[i];
+        if (g != 0.0 && blk_active) blk_active[i >> 6] = 1;
+        if (g < 0.0) g = -g;
+        if (g > 1e-12) active++;
+    }
+    return active;
+}
+
 static void vec_adam_update_256(double* params, double* grads, double* m, double* v, int count, double alpha) {
 #if defined(__x86_64__) || defined(_M_X64)
     if (qadav_cpu_supports_avx2()) {
-#ifdef _WIN32
-        if (count >= 65536 && nn_mt_ensure()) {
-            int half = ((count / 2) / 8) * 8;
-            g_nn_mt.task_kind = 1;
-            g_nn_mt.a_p = params + half;
-            g_nn_mt.a_g = grads + half;
-            g_nn_mt.a_m = m + half;
-            g_nn_mt.a_v = v + half;
-            g_nn_mt.a_cnt = count - half;
-            g_nn_mt.a_alpha = alpha;
-            __sync_synchronize();
-            g_nn_mt.pSetEvent(g_nn_mt.ev_start);
-            vec_adam_update_256_avx2(params, grads, m, v, half, alpha);
-            g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
-            __sync_synchronize();
-            return;
-        }
-#endif
         vec_adam_update_256_avx2(params, grads, m, v, count, alpha);
         return;
     }
@@ -2810,7 +2909,42 @@ static void v2_adam_step(V2Weights* w, double lr, int step) {
     if (alpha > lr * 5.0) alpha = lr * 5.0;
 
     int total = w->total_params;
-    vec_adam_update_256(w->params, w->grads, w->m, w->v, total, alpha);
+    long long active_count = nn_count_active_grads(w->grads, total, w->adam_blk_active);
+    double active_fraction = (double)active_count / (double)total;
+    int use_mt = (active_fraction > 0.30) ? 1 : 0;
+    if (step == 1 || step == 2000) {
+        nn_print("  [Adam] Step "); nn_print_i64(step);
+        nn_print(" active_fraction="); nn_print_f64(active_fraction, 6);
+        nn_print(" ("); nn_print_i64(active_count); nn_print("/"); nn_print_i64(total);
+        nn_print(") | mt="); nn_print_i64(use_mt); nn_print("\n");
+    }
+
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+#ifdef _WIN32
+        if (use_mt && total >= 65536 && nn_mt_ensure()) {
+            int half = ((total / 2) / 64) * 64;
+            g_nn_mt.task_kind = 1;
+            g_nn_mt.a_p = w->params + half;
+            g_nn_mt.a_g = w->grads + half;
+            g_nn_mt.a_m = w->m + half;
+            g_nn_mt.a_v = w->v + half;
+            g_nn_mt.a_blk = w->adam_blk_active ? (w->adam_blk_active + (half / 64)) : (const unsigned char*)0;
+            g_nn_mt.a_cnt = total - half;
+            g_nn_mt.a_alpha = alpha;
+            __sync_synchronize();
+            g_nn_mt.pSetEvent(g_nn_mt.ev_start);
+            vec_adam_update_256_blk_avx2(w->params, w->grads, w->m, w->v, w->adam_blk_active, half, alpha);
+            g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
+            __sync_synchronize();
+            return;
+        }
+#endif
+        vec_adam_update_256_blk_avx2(w->params, w->grads, w->m, w->v, w->adam_blk_active, total, alpha);
+        return;
+    }
+#endif
+    vec_adam_update_256_scalar(w->params, w->grads, w->m, w->v, total, alpha);
 }
 
 // ---------------------------------------------------------------------
@@ -3394,6 +3528,25 @@ static double compute_qnmf_v2_batch_avx2(int model_kind, V2Weights* w, const uns
 
         nn_memcpy(hcomb_all, z_all, (unsigned long long)chunk_N * 256ULL * sizeof(double));
 
+        unsigned char exp_assign[16];
+        {
+            int order[16];
+            for (int k = 0; k < 16; k++) { order[k] = k; exp_assign[k] = 0; }
+            for (int i = 0; i < 16; i++) {
+                for (int j = i + 1; j < 16; j++) {
+                    if (exp_cnt[order[j]] > exp_cnt[order[i]]) {
+                        int tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+                    }
+                }
+            }
+            int load0 = 0, load1 = 0;
+            for (int i = 0; i < 16; i++) {
+                int k = order[i];
+                if (load0 <= load1) { exp_assign[k] = 0; load0 += exp_cnt[k]; }
+                else { exp_assign[k] = 1; load1 += exp_cnt[k]; }
+            }
+        }
+
 #ifdef _WIN32
         if (nn_mt_ensure()) {
             nn_memset(hcomb_t1, 0, (unsigned long long)chunk_N * 256ULL * sizeof(double));
@@ -3406,13 +3559,14 @@ static double compute_qnmf_v2_batch_avx2(int model_kind, V2Weights* w, const uns
             g_nn_mt.h_eval_base = h_eval_tile_t1;
             g_nn_mt.exp_cnt     = exp_cnt;
             g_nn_mt.exp_list    = exp_list;
+            g_nn_mt.exp_assign  = exp_assign;
             g_nn_mt.a1_all      = a1_all;
             g_nn_mt.a2_all      = a2_all;
             g_nn_mt.chunk_N     = chunk_N;
             g_nn_mt.is_training = is_training;
             __sync_synchronize();
             g_nn_mt.pSetEvent(g_nn_mt.ev_start);
-            run_qnmf_s2_experts_avx2(0, 2, W_exp, z_all, hcomb_all, h1_all, h2_all, h_eval_tile,
+            run_qnmf_s2_experts_avx2(exp_assign, 0, W_exp, z_all, hcomb_all, h1_all, h2_all, h_eval_tile,
                 exp_cnt, exp_list, a1_all, a2_all, chunk_N, is_training);
             g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
             __sync_synchronize();
@@ -3420,7 +3574,7 @@ static double compute_qnmf_v2_batch_avx2(int model_kind, V2Weights* w, const uns
         } else
 #endif
         {
-            run_qnmf_s2_experts_avx2(0, 1, W_exp, z_all, hcomb_all, h1_all, h2_all, h_eval_tile,
+            run_qnmf_s2_experts_avx2((const unsigned char*)0, 0, W_exp, z_all, hcomb_all, h1_all, h2_all, h_eval_tile,
                 exp_cnt, exp_list, a1_all, a2_all, chunk_N, is_training);
         }
 
@@ -3519,12 +3673,13 @@ static double compute_qnmf_v2_batch_avx2(int model_kind, V2Weights* w, const uns
                 g_nn_mt.dout_tile  = dout_tile_t1;
                 g_nn_mt.exp_cnt    = exp_cnt;
                 g_nn_mt.exp_list   = exp_list;
+                g_nn_mt.exp_assign = exp_assign;
                 g_nn_mt.a1_all     = a1_all;
                 g_nn_mt.a2_all     = a2_all;
                 g_nn_mt.chunk_N    = chunk_N;
                 __sync_synchronize();
                 g_nn_mt.pSetEvent(g_nn_mt.ev_start);
-                run_qnmf_s4_experts_avx2(0, 2, W_exp, dW_exp, z_all, dz_all, dhcomb_all, h1_all, h2_all,
+                run_qnmf_s4_experts_avx2(exp_assign, 0, W_exp, dW_exp, z_all, dz_all, dhcomb_all, h1_all, h2_all,
                     dh_tile, dout_tile, exp_cnt, exp_list, a1_all, a2_all, chunk_N);
                 g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
                 __sync_synchronize();
@@ -3532,7 +3687,7 @@ static double compute_qnmf_v2_batch_avx2(int model_kind, V2Weights* w, const uns
             } else
 #endif
             {
-                run_qnmf_s4_experts_avx2(0, 1, W_exp, dW_exp, z_all, dz_all, dhcomb_all, h1_all, h2_all,
+                run_qnmf_s4_experts_avx2((const unsigned char*)0, 0, W_exp, dW_exp, z_all, dz_all, dhcomb_all, h1_all, h2_all,
                     dh_tile, dout_tile, exp_cnt, exp_list, a1_all, a2_all, chunk_N);
             }
 
