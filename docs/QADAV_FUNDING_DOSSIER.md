@@ -1,286 +1,137 @@
-# QADAV & QNMF: CONFIDENTIAL INVESTMENT MEMORANDUM & FUNDING DOSSIER
-## Seed Financing: Independent AI-Native Programming Language & Next-Generation Beyond-Transformer Cognitive Architecture
+# QADAV (.ydv) — Seed Investment & Technical Due-Diligence Dossier
+## Native Cryptographic AI Systems Language & QNMF Research Program (M9.16 Revision)
 
-**Company Project:** Qadav (`.ydv`) / Qadav Neuro-Causal Memory Fabric (QNMF)  
-**Document Version:** 1.0.0 (Phase 9 Capstone — Milestone M9.16)  
-**Target Round:** \$5,200,000 USD Seed Financing  
-**Primary Use of Proceeds:** Dedicated GPU Compute Cluster ($64 \times \text{A100/H100}$), Foundation Scale Pretraining (1B–7B Parameters), Systems Compiler Engineering Team  
-**Confidentiality:** Proprietary & Confidential Technical Disclosure  
-**Repository Source:** `c:\Users\avnis\Downloads\Qadav`  
+**Classification:** Seed Technical & Investment Memorandum (Post-Audit Empirical Revision)  
+**Target Round:** **$5.2M Seed** *(Dedicated to validating QNMF at 1B–7B GPU cluster scale & industrializing the native AI compiler runtime)*  
+**Core Systems Asset:** Self-Hosted Zero-Libc Native Compiler (`bin/qyn.exe`, Phase 8 4/4 Bootstrap) + `45` Freestanding C Modules + `25` Documented Inventions  
 **Date:** November 2026  
 
 ---
 
-### Executive Summary
+## Executive Summary
 
-#### The Opportunity
-Artificial Intelligence is undergoing a historic infrastructure bottleneck. Every frontier AI company—OpenAI, Google DeepMind, Anthropic, Meta—is fundamentally constrained by two structural monopolies:
-1. **The Transformer Bottleneck:** Dense multi-head self-attention scales quadratically in compute $\mathcal{O}(L^2)$ and linearly in KV cache memory $\mathcal{O}(L)$. The resulting memory wall limits context scaling, inflates serving costs, and burns millions of dollars in redundant inference FLOPs.
-2. **The Software Dependency Monopoly:** The entire modern deep learning ecosystem is built upon an astonishingly brittle, thirty-year-old stack: Python glue code, dynamic PyTorch C++ bindings, proprietary CUDA drivers, and operating system C standard libraries (`libc`). A standard enterprise deployment requires multi-gigabyte container images, exposes catastrophic supply-chain attack surfaces, and introduces non-deterministic execution.
+**The Thesis:** Modern enterprise AI infrastructure runs on an insecure, bloated software stack—multi-gigabyte Python interpreters, dynamic C++ shared objects (`libtorch`, CUDA bindings), unverified weights, opaque agent sandboxes, and prompt-level safety wrappers that fail cleanly under adversarial inputs. Meanwhile, foundational research on sub-quadratic architectures has struggled to pair memory-efficient sequence modeling with hard execution guarantees.
 
-#### The Qadav Solution
-**Qadav (`.ydv`)** is the world's first completely independent, AI-native programming language. Qadav does not rely on Python, Go, Rust, C++, or Java. It features a self-hosted compiler (`bin/qyn.exe`) and a zero-libc runtime (`internal/runtime/`) that compiles high-level cognitive models directly into standalone, bare-metal native machine code binaries ($\approx 612\text{ KB}$) with zero external runtime dependencies.
+**What Qadav Is:** Qadav (`.ydv`) is an independent, local-first AI/AGI systems programming language compiled via a self-hosted native LLVM IR backend (`bin/qyn.exe`) into standalone `612–614 KB` Windows x86_64 executables linking strictly against OS `kernel32.lib` (`0` Python files, `0` Go runtime files in target compiler binaries, zero `libc` dependencies).
 
-Operating on top of Qadav is **QNMF (Qadav Neuro-Causal Memory Fabric)**, a mathematically unified beyond-Transformer architecture that integrates continuous associative state dynamics, multi-timescale slotted decay memory, entropic optimal transport sparse routing, latent world model rollouts, and evidence-calibrated dynamic computation.
+**Two Distinct Maturity Layers (Transparent Due Diligence):**
+1. **Verified Production Systems Substrate (`M9.1–M9.8`, `M9.4a`):** Qadav delivers eight working cryptographic and safety inventions baked directly into native compiled code: AES-GCM runtime model weight sealing (`QEMWV #7`), SHA-256 deduction chain auditing (`QERA #11`), training data provenance certificates (`MCTP #8`), calibrated proof-carrying abstention (`TTPCR #15`), Byzantine trimmed-mean gradient filtering (`BARAT #19`), canonical device topology attestation (`CDAGA #18`), multimodal domain separation (`QECMA #12`), and non-escaping agent sandbox containment (`QESI #16`), enforced by fail-stop memory zeroization (`ExitProcess(0xDEADBEEF)`). All eight run end-to-end inside a unified `87 ms` executable (`product_integrated.exe`) backed by `25` filed/documented inventions (`6` defensive public-domain + `19` proprietary patent-pending in [`docs/PATENTS.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/PATENTS.md)).
+2. **Proposed Cognitive Architecture with Toy- & 17.6M-Scale Single-CPU Evidence (`QNMF`, `M9.9–M9.15`):** Qadav's **Neuro-Causal Memory Fabric (QNMF)** is a **proposed multi-pillar sequence, memory, routing, planning, and verification architecture** evaluated to date only on a single `8 GB`-class consumer Windows CPU (`540.32 MB` peak RSS, `63` controlled runs in `140.69 s`). Rather than marketing blanket "Transformer replacement" claims, Phase 9 post-audit testing establishes crisp, honest **Pareto trade-offs**:
+   * *Early Loss Convergence vs. Speed Cost:* At `2,000` Adam steps on byte/char Shakespeare (`17.56M` QNMF v2 vs. `17.67M` Transformer v2), QNMF reaches `6.71` vs. `17.01` perplexity (`512` context; `N=3` `M9.15`: `7.57 ± 0.81` vs. `18.66 ± 0.37`), **but runs `9.67x` slower per CPU training step (`3,886.7 s` vs. `402.1 s`)** and remains at **`10.0%` (`5/50`) random digit chance on associative needle recall**.
+   * *World-Model Planning (`Transformer+P4 = QNMF+P4`, `d = 0.000`):* Adding our P4 `92,418`-param lookahead planner solves a hard `4`-trap obstacle maze (`100.0%` at `9.79 ± 1.56` steps vs. `22–46%` at `K=1` and `8.3%` random), **with identical `100.0%` performance (`d = 0.000`) when paired with a Transformer encoder**.
+   * *Adaptive Compute Pareto Curve (`54.88%` Savings for `-3%` Accuracy):* On ambiguous difficulty routing (`M9.14`), ECRA cuts compute by **`54.88%`** (`361 vs. 800` steps; ratio `0.4512`) while **trading `3.0%` raw accuracy (`82.0%` vs. `85.0%`; `N=3` `M9.15` delta `-4.00%`, `95% CI [-9.93%, +1.93%]` `INCONCLUSIVE`)**, paired with a learned `93.82%` precision verifier that lowers error rates from `15.3 ± 3.5%` to `4.7 ± 2.5%` equally across QNMF (`tau=0.66`) and Transformer (`tau=0.50`) backends.
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                          THE QADAV FULL-STACK ADVANTAGE                                │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│  TRADITIONAL AI STACK:                                                                 │
-│  Python ──► PyTorch ──► LibTorch (C++) ──► CUDA / cuDNN ──► OS libc ──► 2-5 GB Image   │
-│                                                                                        │
-│  QADAV AI STACK:                                                                       │
-│  Qadav Source (.ydv) ──► Self-Hosted Compiler (bin/qyn.exe) ──► Direct PE / 612 KB Bin│
-│  (Zero Python · Zero Go · Zero Libc · Zero External Runtime Dependencies)              │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### Proven Traction and Empirical Evidence
-Over 16 rigorously verified milestones in Phase 9, our architecture has delivered undeniable, paper-grade empirical evidence:
-- **8 Working AI Inventions (M9.1–M9.8):** Cryptographic model weight verification (QEMWV), tamper-evident reasoning DAG audits (QERA), training dataset provenance certificates (MCTP), calibrated abstention (TTPCR), Byzantine-tolerant gradient aggregation (BARAT), edge gradient authentication (CDAGA), multimodal cross-attention integrity (QECMA), and sandbox escape containment (QESI).
-- **Paper-Grade QNMF Empirical Ablation (M9.11–M9.15):** Evaluated across 7 model variants at exact parameter parity ($17.67\text{M} \pm 0.16\%$) and 3 diverse domains:
-  - **$26.2\%$ Lower Perplexity at $L=512$:** $19.10$ vs $25.89$ for parameter-matched dense Transformers, with an $8.01\times$ computational efficiency advantage and bounded context degradation ($\rho = 1.072$ vs $1.399$).
-  - **$100.0\%$ Goal-Directed Spatial Planning:** Solves obstacle navigation in optimal 14-step Manhattan trajectories, compared to the $10.0\%$ Brownian motion failure of non-planning baselines ($d = +9000.0$).
-  - **$58.88\%$ Deliberation Compute Reduction:** Dynamically routes queries by complexity, slashing compute cycles by $58.88\%$ while suppressing undetected error rates from $6.0\%$ to $1.0\%$ via calibrated verification.
-- **25 Published Defensive Inventions:** Complete freedom to operate secured via irrevocable defensive prior-art publications in `docs/PATENTS.md`.
-
-We are raising **\$5.2M in Seed Financing** to fund a dedicated $64 \times \text{A100/H100}$ GPU compute cluster, expand our core compiler and research team, and scale QNMF foundation models to 1B and 7B parameters.
+Accordingly, this **$5.2M Seed round funds cluster-scale validation (`1B–7B` parameters) and GPU kernel engineering**—not speculative extrapolation from toy CPU checks.
 
 ---
 
-### 1. The Trillion-Dollar Crisis in AI Infrastructure
+## 1. Enterprise Pain Points & Qadav's Compiler-Level Solution
 
-The commercial artificial intelligence landscape has reached an inflection point where brute-force scaling of existing paradigms yields rapidly diminishing economic returns:
+Deploying autonomous AI models into regulated defense, healthcare, clinical diagnostics, and financial pipelines currently exposes enterprises to eight structural failure modes that prompt-layer guardrails cannot eliminate:
 
-#### 1.1 The Inference Memory Wall and Serving Unit Economics
-While pretraining costs receive substantial media attention, inference accounts for over $85\%$ of the total life-cycle compute expenditure of production foundation models. Under standard scaled self-attention (Vaswani et al., 2017), every generation token requires reading and appending to the Key-Value (KV) cache. At extended context lengths ($32\text{K}$ to $128\text{K}$ tokens), the memory bandwidth required to fetch multi-gigabyte KV caches bottlenecks GPU compute cores, dropping hardware utilization below $20\%$ and driving inference unit economics to unsustainable levels.
+1. **Model Weight Exfiltration (`QEMWV #7`):** GPU/host memory dumps extract proprietary weights in cleartext. Qadav encrypts weights under AES-256-GCM bound to execution tokens, decrypts solely inside ephemeral forward-pass buffers, and triggers zero-latency `0xDEADBEEF` wipe on host tampering (`27 ms` overhead).
+2. **Mutable / Post-Hoc Reasoning Chains (`QERA #11`):** Natural language Chain-of-Thought text can be forged after inference. Qadav embeds immutable cryptographic SHA-256 commitments (`deduce`, `induce`, `abduce`, `verify`) anchored to a chain Merkle root (`19 ms`).
+3. **Training Data Poisoning & Copyright Opacity (`MCTP #8`):** Regulatory frameworks (EU AI Act, FDA SaMD) demand verifiable dataset-to-weight lineage. Qadav binds dataset SHA-256 digests and epoch checkpoints directly into signed binary training certificates (`37 ms`).
+4. **Silent Overconfident Hallucinations (`TTPCR #15`):** Critical systems emit fabricated values when uncalibrated confidence drops. Qadav pairs explicit witness certificates with compile-time safety gates (`tau`) forcing calibrated non-destructive abstention (`REFUSE`, Exit `0`, `19 ms`) rather than guessing.
+5. **Distributed Byzantine Gradient Poisoning (`BARAT #19`):** Poisoned worker vectors skew federated model weights. Qadav implements trimmed-mean coordinate aggregation with Euclidean outlier rejection inside native binaries (`20 ms`)—strictly fixed in `M9.4` & `M9.4a` so exact Frobenius norms (`200.000000`) emit from native `.ydv` 2D tensors rather than C stubs.
+6. **Edge Identity Spoofing & Gradient Replay (`CDAGA #18`):** Asynchronous edge devices replay stale gradient packets. Qadav locks canonical lexicographical UUID topology digests (`29 ms`).
+7. **Cross-Modal Injection & Embedding Swaps (`QECMA #12`):** Vision-language models suffer typographic and embedding domain-crossing exploits. Qadav enforces hardware-checked type separation across Concept (`0x43`), Tensor (`0x54`), Text (`0x58`), Audio (`0x41`), and Vector (`0x56`) tags (`22 ms`).
+8. **Untrusted Agent Sandbox Escapes (`QESI #16`):** Tool-using agents compromise host processes on policy breach. Qadav executes untrusted tools inside capability-sealed sandboxes that halt offending containers with non-forgeable forensic hashes while preserving host execution continuity (`17 ms`).
 
-#### 1.2 Catastrophic Hallucinations and Regulatory Liability
-Enterprises deploying LLMs in healthcare, finance, defense, and legal workflows face massive regulatory exposure under emerging global frameworks such as the European Union AI Act (Regulation EU 2024/1689; [https://eur-lex.europa.eu/eli/reg/2024/1689/oj](https://eur-lex.europa.eu/eli/reg/2024/1689/oj)) and US executive orders on AI security. Standard autoregressive models lack calibrated confidence: they emit unverified assertions with the same fluent conviction as verified facts. Without cryptographic reasoning provenance and verifiable abstention mechanisms, autonomous agents remain uninsurable for mission-critical deployments.
-
-#### 1.3 The Fragile Dependency Stack
-The modern AI software ecosystem represents an unprecedented software engineering compromise:
-- **Extreme Supply-Chain Vulnerabilities:** Python packages in PyPI have experienced an exponential surge in typosquatting and malicious credential exfiltration.
-- **Bloated Deployment Overhead:** Deploying a minimal neural network in production requires container images spanning 2 to 10 gigabytes of dynamic shared libraries (`libtorch.so`, `libcudart.so`, Python runtime interpreters), creating massive cold-start latencies that paralyze edge computing and serverless microservices.
-- **Lack of Binary Determinism:** Non-deterministic reductions in BLAS libraries and fluctuating GPU thread schedules render exact scientific reproducibility and zero-drift cryptographic auditing nearly impossible.
-
----
-
-### 2. The Qadav Solution: Native AGI Language & Beyond-Transformer Architecture
-
-Qadav eliminates these structural vulnerabilities by solving the problem at the programming language and architectural foundation.
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        THE SIX COGNITIVE PILLARS OF QNMF                               │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│  Pillar 1: Continuous Associative State (Sub-quadratic O(L) sequence modeling)         │
-│  Pillar 2: Multi-Timescale Slotted Memory (Decoupled decay: tau_f, tau_m, tau_s)       │
-│  Pillar 3: Entropic Optimal Transport Routing (Sinkhorn-balanced MoE without collapse) │
-│  Pillar 4: Predictive Latent World Model (Counterfactual K-step rollout planning)      │
-│  Pillar 5: Cryptographic Merkle Witness Chains (Tamper-evident reasoning audits)        │
-│  Pillar 6: ECRA Dynamic Compute Router & Verifier (58.9% FLOP reduction, 1% errors)   │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-#### 2.1 An Independent, Native Programming Language
-Qadav (`.ydv`) is not a framework or a high-level wrapper. It is a full-fledged, compiled programming language featuring:
-- **Self-Hosted Compiler (`bin/qyn.exe`):** A multi-stage compiler that compiles directly to clean, optimized LLVM IR and standalone native machine code binaries.
-- **Zero-Libc C Runtime:** A minimalist, auditable runtime consisting of 45 Windows C files (`internal/runtime/`) that interface directly with OS kernel memory primitives (`VirtualAlloc`, `HeapAlloc`), completely bypassing `msvcrt.dll`, glibc, Python, and external linear algebra libraries.
-- **First-Class AI Primitives:** Syntax-level support for neural tensors, automatic differentiation, prime-symbolic knowledge representations, ternary logic (`quasi`), and quantum-inspired error handling (`qeeh`).
-
-#### 2.2 The QNMF Architecture: Beyond the Transformer
-Rather than attempting incremental optimizations to quadratic attention, QNMF re-architects neural sequence processing through six mathematically coordinated pillars:
-1. **Sub-Quadratic Scaling:** Continuous dynamical state updates ($S_t$) combined with slotted decay memory replace pairwise attention, achieving $\mathcal{O}(L \cdot N_m)$ linear time complexity and constant $\mathcal{O}(1)$ autoregressive generation memory.
-2. **Persistent Cognitive Memory:** Slotted memory manifolds featuring differential decay constants ($\tau_f = 4, \tau_m = 32, \tau_s = 256$) retain factual bindings over extended contexts, restricting long-context degradation to $+7.18\%$ over an $8\times$ context expansion.
-3. **Internalized Agency:** An integrated predictive world model ($P_\theta, R_\theta$) simulates counterfactual branches in latent space, delivering $100.0\%$ goal-directed planning success.
-4. **Adaptive Resource Efficiency:** The ECRA controller dynamically matches compute depth to query complexity, reducing average deliberation FLOPs by $58.88\%$ while suppressing undetected hallucinations via evidence-based abstention.
+All eight defenses run concurrently inside a single `614 KB` zero-libc binary (`product_integrated.exe`, `87 ms` happy path) audited in [`PHASE9_EVIDENCE.md`](file:///c:/Users/avnis/Downloads/Qadav/PHASE9_EVIDENCE.md) and [`PHASE9_METRICS.json`](file:///c:/Users/avnis/Downloads/Qadav/PHASE9_METRICS.json).
 
 ---
 
-### 3. Empirical Evidence and Technical Validation Dossier
+## 2. Proprietary IP Moat & Self-Hosted Runtime Stack
 
-Unlike speculative pitch decks that present theoretical roadmaps, Qadav's technological claims are backed by rigorous, reproducible empirical measurements:
+Qadav owns clean full-stack provenance down to its compiler fixed point, eliminating downstream Python licensing and glibc supply-chain liabilities:
 
-#### 3.1 Phase 9 Product Inventions (M9.1–M9.8)
-Across eight standalone enterprise demonstrations, Qadav verified the security, auditability, and resilience of its native AI inventions on Windows x86_64:
-
-##### Table 1: Phase 9 Enterprise Demonstration Verification Scorecard
-| Invention Code | Invention Name | Core Enterprise Problem Solved | Execution Binary | Happy Exit | Tamper Exit | Latency | Standalone Binary Size |
-| :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: |
-| **QEMWV** | Quantum-Entangled Weights | Weight Exfiltration & Host Memory Theft | `product_qemwv.exe` | `0` | `-559038737` | 27 ms | 612 KB |
-| **QERA** | Reasoning DAG Audit | Post-Hoc Reasoning Tampering & Fraud | `product_qera.exe` | `0` | `-559038737` | 19 ms | 612 KB |
-| **MCTP** | Model Training Provenance | Training Set Poisoning & Copyright Blindness | `product_mctp.exe` | `0` | Tamper Flag | 37 ms | 612 KB |
-| **TTPCR** | Calibrated Confidence | High-Stakes Hallucinations & Overconfidence | `product_ttpcr.exe` | `0` | `-559038737` | 19 ms | 612 KB |
-| **BARAT** | Byzantine Gradient Defense | Sybil Poisoning in Distributed Training | `product_barat.exe` | `0` | `-559038737` | 20 ms | 612 KB |
-| **CDAGA** | Device Gradient Auth | Replay Attacks on Edge Fleet Learning | `product_cdaga.exe` | `0` | `-559038737` | 29 ms | 612 KB |
-| **QECMA** | Cross-Modal Confusion | Typographic & Multimodal Injection | `product_qecma.exe` | `0` | `-559038737` | 22 ms | 612 KB |
-| **QESI** | Sandbox Containment | Autonomous Agent Filesystem Sabotage | `product_qesi.exe` | `0` | `-559038737` | 17 ms | 612 KB |
-| **INTEGRATED** | Enterprise Pipeline | All 8 Inventions in One Pipeline | `product_integrated.exe` | `0` | `-559038737` | 87 ms | 614 KB |
-
-*Tamper Decoherence Mechanism:* Under the Qadav Quantum-Inspired Error Engine (`qadav_qeeh.c`), any cryptographic tampering, weight alteration, or witness violation causes immediate memory zeroization and deterministic halt via `ExitProcess(0xDEADBEEF)` (signed `-559038737`).
-
-#### 3.2 Paper-Grade QNMF Controlled Ablations (M9.11–M9.15)
-To evaluate architectural superiority without confounding variables, QNMF was benchmarked against an exactly parameter-matched dense Transformer baseline ($17.67\text{M} \pm 0.16\%$) and five single-pillar ablations:
-
-##### Table 2: Comparative Empirical Benchmark Matrix ($N=2$, Seeds 42 and 123)
-| Metric Domain | Specific Benchmark Metric | Dense Transformer Baseline | QNMF Full Architecture | QNMF Superiority Margin | Cohen's Effect Size ($|d|$) |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| **Sequence Modeling** | Validation PPL @ $L=512$ | $25.89$ | $\mathbf{19.10}$ | $\mathbf{-26.2\%\ (1.36\times\text{ better})}$ | $\mathbf{214.8}$ (Extremely Large) |
-| | Context Inflation ($\frac{\text{PPL}_{512}}{\text{PPL}_{64}}$) | $1.399$ ($+39.95\%$) | $\mathbf{1.072}$ ($\mathbf{+7.18\%}$) | $\mathbf{5.56\times\text{ more stable}}$ | $\mathbf{210.8}$ |
-| | CPU Forward Execution Time | $0.28\text{ s}$ | $\mathbf{0.16\text{ s}}$ | $\mathbf{42.9\%\text{ faster}}$ | — |
-| **Goal Planning** | Episode Success Rate | $10.0\%$ | $\mathbf{100.0\%}$ | $\mathbf{10.0\times\text{ higher}}$ | $\mathbf{9000.0}$ (Near-Infinite) |
-| | Trajectory Steps to Target | $67.9\text{ steps}$ | $\mathbf{14.0\text{ steps}}$ | **Exactly Optimal Manhattan** | — |
-| **Adaptive Deliberation** | Deliberation Compute Ratio | $1.000$ (8.00 steps) | $\mathbf{0.411}$ ($\mathbf{3.29\text{ steps}}$) | $\mathbf{58.88\%\text{ compute saved}}$ | $\mathbf{58.9}$ (Extremely Large) |
-| | Undetected Critical Errors | $6.0\%$ | $\mathbf{1.0\%}$ | $\mathbf{83.3\%\text{ error reduction}}$ | — |
-| | Verifier Precision / Recall | N/A | $\mathbf{98.94\%\,/\,85.71\%}$ | Calibrated Abstention | — |
+* **Phase 8 Bootstrap Verification:** The `.ydv` compiler compiles itself across four stages (Go Stage 0 -> Qadav Stage 1 -> Self Stage 2 -> Fixed-Point Stage 3) with **`10/10` bitwise identical LLVM IR comparisons (`fc.exe /b`)** across core compiler and proof benchmarks.
+* **Freestanding Footprint:** **`45` Windows C runtime object modules (`46` total)** with **`0` Python dependencies**, **`0` Go dependencies**, and `540.32 MB` peak resident RAM (`546.25 MB` private commit) during multi-seed neural evaluation.
+* **25 Documented Inventions ([`docs/PATENTS.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/PATENTS.md)):** `6` irrevocable public-domain defensive publications (`#1–#6`: zero-libc neural runtime, prime-symbolic engine, balanced-ternary quasinary computing, Cognitive IR `confident<T>`, SHA3/WOTS post-quantum self-check nullification, and runtime instrumentation) paired with **`19` proprietary patent-pending technologies (`#7–#25`)** covering cryptographic weight protection, QERA reasoning attestation, proof-carrying codegen (`PCC`), compile-time type safety attestation (`CTSA`), recursive self-compilation attestation (`RSCA`), ethical execution containment (`EEA`), attested adaptive QEC decoders (`AAD`), Byzantine aggregation (`BARAT`), and isolated sandboxes (`QESI`).
 
 ---
 
-### 4. Defensible Moat and Intellectual Property Strategy
+## 3. Empirical Validation Results (`M9.11–M9.15` Post-Audit Synthesis)
 
-Qadav has established an impenetrable technological and legal moat designed to resist commercial co-optation by legacy AI incumbents:
+Institutional diligence demands seeing exact controlled evidence—including negative findings, runtime bottlenecks, and ties—alongside wins. Table 1 consolidates verified results from our revised `N=3` ablation suite (`63` real runs across seeds `42, 123, 999` in [`docs/QNMF_ABLATION_RESULTS.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/QNMF_ABLATION_RESULTS.md)) and 2,000-step single-CPU pretraining benchmarks (`M9.11`, `M9.12`, `M9.13`, `M9.14`).
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                               THE FOUR-TIER QADAV MOAT                                 │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ 1. 25 Defensive Publications: Irrevocable prior art in public domain (docs/PATENTS.md) │
-│ 2. Self-Hosted Compiler: Multi-pass binary compiler bin/qyn.exe (zero Python/Go/Rust)  │
-│ 3. Zero-Libc C Runtime: 45 proprietary C files providing bare-metal OS integration    │
-│ 4. Unified Cognitive Fabric: Co-designed state, memory, world model, and verification  │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
+### Table 1: Audited Quantitative Performance & Pareto Trade-Offs
 
-#### 4.1 Defensive Publication Portfolio (25 Inventions)
-To prevent aggressive patent trolling or monopolization by proprietary AI labs (Google, Microsoft, OpenAI), Qadav has executed a comprehensive defensive publishing strategy. All 25 core inventions are irrevocably disclosed in `docs/PATENTS.md`, establishing unassailable prior art dating to November 2026:
-- **Invention #1:** Zero-Libc Neural Network & Tensor Runtime
-- **Invention #2:** Prime-Symbolic Knowledge Engine
-- **Invention #3:** Quasinary Computing & Topological Energy Minimization
-- **Invention #7:** Quantum-Entangled Model Weight Verification (QEMWV)
-- **Invention #8:** Model Continuum Training Provenance (MCTP)
-- **Invention #11:** Quantum-Enhanced Reasoning Audit (QERA)
-- **Invention #12:** Quantum-Entangled Cross-Modal Alignment (QECMA)
-- **Invention #15:** Tri-Tier Post-Condition Reasoning Verification (TTPCR)
-- **Invention #16:** Quantum-Entangled Sandboxed Execution (QESI)
-- **Invention #18:** Cross-Device Asynchronous Gradient Authentication (CDAGA)
-- **Invention #19:** Byzantine-Aware Robust Aggregation (BARAT)
-- **Inventions #20–#25:** Cognitive State Verification, Slotted Decay Memory Dynamics, Entropic Optimal Transport Routing, and Latent Planning Primitives.
-
-This defensive portfolio guarantees that Qadav retains perpetual, unencumbered commercial freedom to operate while precluding competitors from patenting our fundamental innovations.
-
-#### 4.2 Full-Stack Vertical Integration
-Unlike startups that build thin API wrappers around OpenAI or compile PyTorch graphs via TVM, Qadav owns its entire intellectual stack:
-- **Language Syntax & Semantics:** Native primitives for tensors, concepts, ternary spins, and proofs.
-- **Compiler Front-End & Code Generation:** Pure C self-hosted compiler emitting direct LLVM IR.
-- **Runtime Subsystem:** 45 standalone C files implementing memory allocation, floating-point math, thread scheduling, and cryptography directly against operating system kernel calls.
-- **Cognitive Architecture:** The 6-pillar QNMF engine.
-
-This vertical integration allows optimizations that are mathematically impossible in Python-based frameworks: zero-copy memory re-use, instant cold-start execution ($\approx 17\text{ ms}$), and sub-megabyte standalone deployment footprints.
+| Benchmark Domain | Comparison Configurations | Verified Quantitative Result | Statistical Confidence / Trade-Off Disclosure |
+|---|---|---|---|
+| **Toy Char LM (`M9.11`, `2,000` steps)** | QNMF (`0.31M`) vs. Transformer (`0.42M`) on `900 KB` Shakespeare (`val 100 KB`) | **QNMF `6.10` PPL** (`loss 1.6140`) vs. **Transformer `12.72` PPL** (`loss 2.4303`) | `.ydv` drivers call freestanding C neural kernels (`qadav_nn.c`); single-CPU 2,000-step char scope only |
+| **Scaled LM (`M9.12`, `17.6M`, `2,000` steps)** | `QNMF v2` (`17.56M`) vs. `Transformer v2` (`17.67M`) vs. `no-Mw` / `no-Ml` | Ctx `512`: **QNMF `6.71`** vs. **TF `17.01`**; `no-Mw` `35.37`; `no-Ml` `128.00` (stalled `4.8520`) | **`QNMF` trains `9.67x` slower on scalar CPU (`3,886.7 s` vs. `402.1 s`)**; early step horizon (< Chinchilla saturation) |
+| **Long-Range Associative Recall (`M9.12`)** | All four `17.6M` checkpoints tested @ `500` tokens (`50` needle probes) | **All 4 models score `10.0%` (`5/50` = random 10-digit chance)** | Synthetic retrieval curriculum required in Phase 10; passive Shakespeare pretraining does not induce recall |
+| **Multi-Seed LM Ablation (`M9.15`, `N=3`)** | `7` variants across seeds `42, 123, 999` (`--batch 2`, `512` ctx) | `QNMF Full` `7.57 ± 0.81` vs. `TF` `18.66 ± 0.37`; `no-Mw` `37.45 ± 1.58`; `no-P3` `9.29 ± 0.43` | `d = -17.659*` & `-23.859*` carry `*` **fixed-checkpoint low-variance caveat**; P3 effect modest (`d=-2.663`); P4/P6 neutral (`d=0.000`, `INCONCLUSIVE`) |
+| **Hard 4-Trap Grid Planning (`M9.13`/`M9.15`)** | `QNMF+P4 (K=5)` vs. **`Transformer+P4 (K=5)`** vs. `K=1` & `Random` | **`QNMF+P4 = 100.0%`** & **`TF+P4 = 100.0%`** (`9.66/9.67` steps; `N=3`: `9.79 ± 1.56`); `K=1`: `46%`/`22%`; Rand: `8.3 ± 7.2%` | **`Transformer+P4 = QNMF+P4 (d = 0.000)`**: P4 planner (`92,418` params) works equivalently across backbones |
+| **Ambiguous Compute Routing (`M9.14`/`M9.15`)** | `ECRA (129->64->4)` + Verifier vs. `Fixed L3 (8 steps, unverified)` (`100` tasks, `20%` ambig.) | **`54.88%` step savings** (`361 vs. 800`, ratio `0.4512`); M9.14 Raw `82%` vs. `85%`; M9.15 `80.7±1.2%` vs. `84.7±3.5%`; Wrong `4.7%` vs. `15.3%` | **`QNMF` trades `3%` (`-4.00%` `N=3`, `d=-1.530`, CI `[-9.93%, +1.93%]` `INCONCLUSIVE`) raw acc for `54.88%` savings**; learned verifiers tie (`93.82%` prec, `72.22%` recall) |
 
 ---
 
-### 5. Market Opportunity and Competitive Landscape
+## 4. Scientific Governance & Track Record of Self-Correction
 
-#### 5.1 Addressable Market Sizing
-- **AI Infrastructure & Hardware Acceleration Market:** Projected to exceed **\$200 Billion by 2030** (CAGR: $32.4\%$), driven by enterprise demands for lower inference latency and reduced GPU power consumption.
-- **Edge AI & Autonomous Systems Market:** Projected to reach **\$60 Billion by 2028**, demanding sub-megabyte binaries, zero external runtime dependencies, and high-reliability deterministic execution.
-- **AI Governance, Compliance & Security Market:** Accelerated by the EU AI Act and global regulations, enterprise spending on AI auditability, provenance, and verification is forecasted to surpass **\$15 Billion by 2029**.
-
-#### 5.2 Competitive Matrix
-##### Table 3: Competitive Analysis across Major Industry Paradigms
-| Capability / Dimension | Qadav & QNMF | Modular / Mojo | PyTorch / Python | Julia Computing | Mistral / DeepSeek |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Language Native to AI** | ✅ **Yes (`.ydv`)** | ⚠️ Python Superset | ❌ No (Glue Script) | ⚠️ Scientific Math | ❌ None (Use PyTorch) |
-| **Self-Hosted Compiler** | ✅ **Yes (`qyn.exe`)** | ❌ Proprietary LLVM | ❌ No | ⚠️ LLVM JIT | ❌ None |
-| **Zero-Libc Deployment** | ✅ **Yes ($612\text{ KB}$)** | ❌ Multi-MB Runtime | ❌ Multi-GB Images | ❌ Large Runtime | ❌ Container Bloat |
-| **Beyond-Transformer Memory** | ✅ **Yes (QNMF P2)** | ❌ Standard Attention| ❌ Standard Attention| ❌ None | ⚠️ Linear Attention |
-| **Native Latent Planning** | ✅ **Yes (QNMF P4)** | ❌ No | ❌ External CoT | ❌ No | ❌ External CoT |
-| **Cryptographic Witnessing** | ✅ **Yes (P5 / QERA)** | ❌ No | ❌ No | ❌ No | ❌ No |
-| **Dynamic Pondering (ECRA)** | ✅ **Yes (P6, $-58.9\%$)**| ❌ No | ❌ No | ❌ No | ⚠️ Static Routing |
-| **Open Defensive IP** | ✅ **25 Published** | ❌ Proprietary Closed| ❌ Open Source | ❌ Open Source | ❌ Open Weights |
-
-*Key Differentiation:* Modular (Mojo) focuses narrowly on accelerating Python matrix kernels. Qadav reimagines the entire cognitive architecture and runtime security model, delivering sub-quadratic memory, native agency, and cryptographic verification that no purely numerical compiler can provide.
+A key diligence question for early-stage deep-tech investors is whether the engineering team spots flawed benchmarks or conceals them. During Phase 9 execution, multiple initial milestone drafts failed internal rigor audits—and **every single defect was exposed, rejected, rebuilt in source, and re-verified**:
+* **`M9.1` Regression Repair:** Added the missing `10/10` bitwise `fc.exe /b` compiler regression check after a 5/5 substitute subset was caught.
+* **`M9.4` & `M9.4a` Root-Cause Fixes:** Fixed an erroneous C runtime norm calculation (`0.06` -> exact Frobenius `200.000000`) and patched `selfhost/codegen.ydv` directly so 2D matrices compile natively without C hardcoding.
+* **`M9.9` Bibliographic Hygiene:** Probed live arXiv pages via HTTP (`200 OK`), permanently purged three unverified pre-revision entries, and corrected an author misattribution (`arXiv:2603.15994` verified verbatim as **Zahn & Chana**).
+* **`M9.11` & `M9.12` Training Integrity:** Rejected noisy 20-step curves (`3.61 -> 3.89`), rebuilt `2,000`-step convergence runs, explicitly disclosed the `9.67x` CPU slowdown, and reported the `10.0%` associative recall null result rather than burying it.
+* **`M9.13` & `M9.14` Anti-Sanitization Upgrades:** Replaced trivial open grids with a `4`-trap maze, added fair `Transformer+P4` controls (`d = 0.000`), and replaced `0.0000`-loss synthetic routing tiers with `20%` ambiguity + `4%` noise (`0.1265` loss floor).
+* **`M9.15` & `M9.16` Statistical Honesty:** Replaced understated timing and `N=2` variance inflation with real **`140.69 s`** multi-seed runs (`N=3`), Student-$t$ confidence intervals, and full **What Was NOT Delivered** accountability.
 
 ---
 
-### 6. Technology Roadmap: Phases 10 through 12
+## 5. Commercial Wedge, Deployment Targets & Economics
 
-With Phase 9 fully completed and verified, capital from this seed round will execute our three-year commercialization roadmap:
+Rather than competing head-to-head with hyperscalers on generalist web chatbots (where frontier labs spend hundreds of millions on pretraining clusters), Qadav targets regulated **edge, Sovereign, Defense, Clinical, and Financial AI** where native binary attestation (`QEMWV`, `TTPCR`, `QERA`, `QESI`) creates immediate procurement eligibility and measurable runtime simplification:
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              THREE-YEAR TECHNOLOGY ROADMAP                             │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│ PHASE 10 (Months 1–12): Large-Scale Pretraining & GPU Acceleration                     │
-│ ├── Milestone 10.1: Native GPU Kernel Generation (Direct Vulkan / Metal / PTX)        │
-│ ├── Milestone 10.2: Distributed QNMF Runtime on 64x A100/H100 Cluster                 │
-│ └── Milestone 10.3: Pretrain QNMF Foundation Models (1B and 7B Parameters)            │
-│                                                                                        │
-│ PHASE 11 (Months 13–24): Multimodal Agency & Edge Robotics                            │
-│ ├── Milestone 11.1: Continuous Latent World Models for Spatial Navigation             │
-│ ├── Milestone 11.2: Embedded Micro-Binaries (< 256 KB) on ARM Cortex / RISC-V         │
-│ └── Milestone 11.3: Post-Quantum Evidence Chains (NIST ML-DSA / Dilithium)             │
-│                                                                                        │
-│ PHASE 12 (Months 25–36): Enterprise Commercialization & Autonomous Self-Improvement    │
-│ ├── Milestone 12.1: Enterprise Compliance Engine for EU AI Act Auditability           │
-│ └── Milestone 12.2: Verified Self-Optimizing Compiler via QERA Deduction DAGs         │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
+1. **Air-Gapped Defense & Edge Robotics:** Standalone `~614 KB` zero-dependency executables eliminate multi-gigabyte container images, `glibc` CVE patch cycles, and unverified shared libraries while sealing proprietary model weights (`QEMWV`) against host capture and containing rogue tool calls (`QESI`) without crashing the supervisory flight or mission controller.
+2. **Healthcare Diagnostics & Financial Compliance:** `QERA` immutable Merkle deduction chains and `TTPCR` threshold abstention provide deterministic, regulator-verifiable provenance logs aligned with EU AI Act Article 12–15 record-keeping, traceability, and robustness mandates, eliminating brittle post-hoc compliance parsing.
+3. **Cross-Institution Federated Learning (`BARAT` + `CDAGA`):** Consortium training environments across competing banks or hospital networks gain deterministic trimmed-mean outlier rejection (`BARAT`, verified Frobenius norm `200.000000`) and non-replayable canonical UUID device ordering (`CDAGA`) inside the compiled binary artifact.
+4. **Total Cost of Deployment Ownership:** Standard Python + PyTorch inference deployments frequently pull hundreds of megabytes to multiple gigabytes of interpreter packages, dynamic BLAS libraries, and OS container abstractions before executing a single business logic assertion. Qadav collapses the host runtime dependency graph to pure PE executables linking strictly against Windows `kernel32.lib`, fitting inside `540.32 MB` peak resident RAM even during `17.6M` training/evaluation sweeps while booting cryptographic product pipelines in `17–87 ms`.
+
+**Near-Term Licensing & Go-To-Market Motion (Phase 10–11):** Dual open-core systems strategy—keeping the 6 defensive public-domain publications accessible for ecosystem adoption while licensing enterprise compiler extensions (`Inventions #7–#25`), enclave attestation bindings (`SGX`/`SEV`), regulated runtime support SLAs, and joint cluster co-validation partnerships with defense and clinical infrastructure primes. We explicitly defer general SaaS foundation API billing until Gate 3 confirms whether `1B–7B` QNMF matches frontier attention economics; until then, enterprise revenue anchors in **runtime security, auditability, and compiler tooling**, regardless of which transformer or sequence model the customer selects.
 
 ---
 
-### 7. The Investment Ask and Capital Allocation
+## 6. Seed Ask (`$5.2M`): Specifically to Validate QNMF at `1B–7B` Scale
 
-We are seeking **\$5,200,000 USD** in Seed Financing to support an **18-month operational runway**:
+**Why `$5.2M` Now—and Why "Validate", Not "Scale Proven Tech":**  
+Phase 9 proves Qadav's **compiler and cryptographic runtime engineering** (`10/10` bootstrap, `25` IP assets, `87 ms` unified pipeline) and demonstrates that QNMF's CPU mechanisms compile and train stably within `540.32 MB` RAM. However, single-CPU tests (`17.6M` params, `2,000` steps, `9.67x` slowdown, `10%` recall) **cannot determine whether QNMF scales competitively with Transformers at `1B–7B` parameters**. Raising `$5.2M` strictly funds the multi-GPU engineering and controlled Chinchilla-scale experimentation needed to answer that question definitively within 18 months:
 
-##### Table 4: Capital Allocation Breakdown (\$5.2M Seed Round)
-| Expenditure Category | Allocation (\$ USD) | Percentage | Core Operational Objectives |
-| :--- | :---: | :---: | :--- |
-| **GPU Compute & Pretraining** | \$2,400,000 | $46.15\%$ | Lease of dedicated $64 \times \text{A100/H100}$ cluster for 12 months; foundation pretraining on 2 Trillion tokens. |
-| **Systems & Compiler Engineering** | \$1,500,000 | $28.85\%$ | Hire 4 senior compiler engineers (LLVM, GPU codegen, distributed runtime architecture). |
-| **AI Research Scientists** | \$800,000 | $15.38\%$ | Hire 2 research scientists specializing in non-Transformer architectures, SSMs, and world models. |
-| **Legal, IP & Defensive Filings** | \$250,000 | $4.81\%$ | Ongoing management of defensive prior-art publications and enterprise IP licensing structures. |
-| **Operations, Infrastructure & Audit** | \$250,000 | $4.81\%$ | Independent cryptographic audits, continuous integration clusters, and operational overhead. |
-| **Total Financing Round** | **\$5,200,000** | **$100.0\%$** | **18-Month Fully Funded Runway to Series A Milestones** |
+| Allocation Bucket | Amount ($M) | Share (%) | Concrete Technical Deliverables |
+|---|---|---|---|
+| **1. Multi-GPU Cluster Compute (`H100`/`B200`) & Chinchilla Scaling Runs** | **$2.20M** | `42.3%` | `1B`, `3B`, and `7B` parameter controlled multi-seed pretraining (`>= 20` tokens/param), associative recall curriculum (`EXP-2`), surgical unlearning (`EXP-3`), and `RepetitionCurse` stress suites (`EXP-4`). |
+| **2. Compiler & Kernel Systems Engineering (`WebGPU`/`CUDA`/`AVX-512`)** | **$1.45M** | `27.9%` | Eliminate the `9.67x` scalar CPU slowdown via blocked GEMM/parallel prefix-scan kernels, native zero-libc BPE tokenizer integration, and asynchronous attestation queues. |
+| **3. Security Audits, Hardware Enclaves & Regulated Pilot Integration** | **$0.90M** | `17.3%` | Third-party cryptographic review of `QEMWV`/`QERA`/`CTSA`/`PCC`, Intel SGX / AMD SEV hardware bindings, and initial compliance pilots. |
+| **4. Patent Prosecution (`19` Pending IP Claims) & Operations** | **$0.65M** | `12.5%` | Non-provisional PCT/USPTO filings across Inventions `#7–#25`, benchmark transparency artifacts, and core G&A runway (18 months). |
+| **Total Seed Financing** | **$5.20M** | **100.0%** | **Milestone-gated 18-month technical validation runway.** |
 
-#### Projected Series A Milestones (Month 18)
-1. Pretrained 1B and 7B QNMF foundation models matching or exceeding Llama-3 class performance on standard benchmarks while demonstrating $5\times$ lower serving latency and $8\times$ lower KV memory footprint.
-2. Production deployment of self-hosted Qadav compiler on Windows, Linux, and macOS emitting native GPU code.
-3. Three signed enterprise lighthouse commercial pilots in regulated sectors (finance, healthcare, defense).
-
----
-
-### 8. Risk Analysis and Mitigation Strategies
-
-##### Table 5: Comprehensive Risk Matrix and Concrete Mitigations
-| Risk Category | Identified Operational / Technical Risk | Severity | Concrete Mitigation Strategy Built into Architecture |
-| :--- | :--- | :---: | :--- |
-| **Hardware & Codegen** | GPU vendor lock-in or non-CUDA performance gaps. | Medium | Qadav emits clean LLVM IR, allowing code generation for NVIDIA PTX, AMD ROCm, and Apple Metal via existing LLVM backends. |
-| **Scaling Discrepancies** | Architecture behaves differently at 7B than at 17.6M. | Medium | Mathematical propositions are grounded in asymptotic scaling laws ($\mathcal{O}(L \cdot N_m)$); sparse MoE becomes *more* efficient at scale. |
-| **Ecosystem Adoption** | Developers resistant to adopting a new programming language. | High | Qadav provides seamless C ABI interoperability (`extern "C"`), enabling drop-in deployment of Qadav neural binaries into existing C/C++/Go/Rust stacks. |
-| **Defensive IP Attacks** | Competitors attempt to patent derivative architectures. | Low | Irrevocable defensive publications in `docs/PATENTS.md` establish verified prior art with cryptographic timestamps. |
+### Milestone-Gated Series A Criteria (Clear Go / Pivot Thresholds)
+* **Gate 1 (Month 6 — Systems Throughput):** Blocked SIMD/CUDA/WebGPU kernels reduce QNMF per-step training latency from `9.67x` to `<= 1.5x` Transformer parity at equal batch/context dimensions.
+* **Gate 2 (Month 12 — Memory & Recall Breakthrough):** Native `P1+P2` `100M–1B` models trained with synthetic retrieval curricula surpass **`85.0%` associative recall accuracy** across `32K+` token contexts (breaking Phase 9's `10.0%` floor) while passing $O(1)$ selective slot erasure (`EXP-3`).
+* **Gate 3 (Month 18 — `1B–7B` Scaling Law Verdict):** Multi-seed (`N >= 3` full training runs from scratch) Chinchilla runs measure exact $(\alpha_N, \alpha_D)$ exponents cleanly. If QNMF matches or beats Transformer loss at lower memory/DoS exposure, proceed to full commercial foundation deployment; if dense Transformer attention retains insurmountable quality leads, **pivot commercialization cleanly to Qadav's backbone-agnostic compiler security suite (`QEMWV`, `QERA`, `TTPCR`, `BARAT`, `P4` Planner, `P6` ECRA)** which already works identically over Transformers (`d = 0.000`).
 
 ---
 
-### 9. Leadership, Philosophy, and Execution Track Record
+## 7. Core Risks, Mitigations & Investor Summary
 
-The defining asset of the Qadav team is radical engineering discipline and unmatched execution velocity:
-- **Zero-to-One Compiler Architecture:** Built a completely self-hosted, multi-pass programming language compiler (`bin/qyn.exe`) and a 45-file zero-libc native runtime from scratch, without external venture funding.
-- **16-for-16 Milestone Completion:** Successfully executed every milestone in Phase 9 (M9.1 through M9.16) on schedule, adhering strictly to permanent rules prohibiting synthetic benchmarks, mock results, or fake metrics.
-- **Radical Scientific Honesty:** In an industry characterized by inflated claims and PR hype, Qadav transparently reports negative and neutral findings (e.g., documenting that Pillar 4 provides negligible value on passive language modeling, $|d| = 0.66$, while providing massive value in planning, $|d| = 9000.0$).
+1. **Risk: Scalar Latency Does Not Shrink Enough (`9.67x` Gap):** Stateful recurrences + inner Sinkhorn normalizations synchronize more frequently than pure FlashAttention blocks. *Mitigation:* Parallel associative prefix scans + fused Sinkhorn registers in CUDA/WebGPU, gated at Month 6.
+2. **Risk: Associative Recall Remains Weak Even After Curriculum (`10%` Floor):** Finite compressed state $S_t$ struggles compared to unrestricted KV caches on arbitrary verbatim retrieval (`Yarden et al., 2026`). *Mitigation:* Slotted key-addressed $M_l$ hashes decouple fact lookup capacity from recurrent state bottlenecks; tested explicitly at Gate 2.
+3. **Risk: P4 & Verifier Neutrality Makes Sequence Backbone Less Differentiating:** As shown in `M9.13`/`M9.15`, Transformers equipped with Qadav's P4 planner and P5 verifier tie QNMF (`d = 0.000`, `93.82%` precision). *Strategic Hedging:* Rather than an existential risk, **backbone-agnosticism is a commercial de-risking asset**—enterprises can run existing Transformer weights inside Qadav's cryptographic security & planning runtime immediately while QNMF scales in R&D.
 
 ---
 
-### 10. Conclusion and Call to Action
+## Verification Links & Live Technical Anchors
 
-The era of scaling dense Transformers wrapped in bloated Python runtimes is reaching its economic, physical, and architectural boundaries. The future belongs to integrated cognitive fabrics that combine sub-quadratic memory, native world-model planning, and dynamic compute verification, compiled to bare-metal native binaries.
-
-Qadav has proven this future is mathematically sound and empirically viable. We invite visionary investment partners to join us in establishing the independent, native foundation for Artificial General Intelligence.
-
-**Confidential Diligence Inquiries & Data Room Access:**  
-Qadav Core Architecture Group  
-Repository: `c:\Users\avnis\Downloads\Qadav`  
-Primary Codebases: `bin/qyn.exe`, `internal/runtime/*.c`, `examples/product_*.ydv`  
-Empirical Ledgers: `docs/QNMF_RESEARCH_REPORT.md`, `docs/QNMF_ABLATION_RESULTS.md`, `PHASE9_EVIDENCE.md`
+* Internal Audit & Spec Trail: [`docs/QNMF_PRIOR_ART_AUDIT.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/QNMF_PRIOR_ART_AUDIT.md) (`M9.9`), [`docs/QNMF_MATH_SPEC.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/QNMF_MATH_SPEC.md) (`M9.10`), [`docs/QNMF_ABLATION_RESULTS.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/QNMF_ABLATION_RESULTS.md) (`M9.15`), [`docs/QNMF_RESEARCH_REPORT.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/QNMF_RESEARCH_REPORT.md) (`M9.16`), [`docs/PATENTS.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/PATENTS.md).
+* Canonical Literature Anchors (HTTP `200 OK` Verified November 11, 2026):
+  * Vaswani et al. (2017): https://arxiv.org/abs/1706.03762
+  * Gu & Dao (2023): https://arxiv.org/abs/2312.00752
+  * Dao & Gu (2024): https://arxiv.org/abs/2405.21060
+  * Behrouz et al. (2025, Titans): https://arxiv.org/abs/2501.00663
+  * Dohare et al. (2023/2024, Continual Plasticity): https://arxiv.org/abs/2306.13812
+  * Hoffmann et al. (2022, Chinchilla): https://arxiv.org/abs/2203.15556
+  * Huang et al. (2025, RepetitionCurse): https://arxiv.org/abs/2512.23995
+  * Yarden et al. (2026, Mamba Retrieval): https://arxiv.org/abs/2610.19709
+  * Zahn & Chana (2026, Selective Memory): https://arxiv.org/abs/2603.15994

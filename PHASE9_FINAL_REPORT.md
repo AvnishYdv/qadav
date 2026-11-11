@@ -1,130 +1,87 @@
-# PHASE 9 FINAL REPORT: EXECUTIVE CLOSURE & CAPSTONE SYNTHESIS
-## Complete Scorecard, Empirical Inventory, Honest Accounting, and Formal Phase 10 Transition
+# PHASE 9 FINAL ENGINEERING REPORT
+## Phase 9 Completion Audit, Revised `M9.1–M9.16` Scorecard & Transition to Phase 10
 
-**Document Version:** 1.0.0 (Final Phase 9 Milestone M9.16)  
-**Project:** Qadav (`.ydv`) Autonomous AGI Programming Language  
-**Target Repository:** `c:\Users\avnis\Downloads\Qadav`  
-**Classification:** Milestone Completion & Phase Closure Report  
-**Author:** Qadav Research Scientist, Compiler Engineer & Security Architecture Team  
+**Document Version:** `2.0.0` (Post-Revision Capstone)  
+**Target Environment:** Windows 10/11 x86_64 Native (`zero-libc`, `kernel32.lib` only)  
+**Compiler:** Self-Hosted `bin/qyn.exe` (Phase 8 `4/4` Fixed-Point Bootstrap)  
+**Repository State:** Phase 9 Revisions `M9.1` through `M9.15` Merged; `M9.16` Synthesized Without Code Modifications  
 **Date:** November 2026  
 
 ---
 
-### 1. Executive Summary & Complete Milestone Scorecard (M9.1 through M9.16)
+## 1. Master Phase 9 Milestone Scorecard (`M9.1–M9.16` Post-Revision)
 
-Phase 9 ("AI Problems Solved & QNMF Architectural Foundations") marks a historic transition in the development of the Qadav programming language. Over sixteen consecutive, rigorously verified milestones (M9.1 through M9.16), the project has advanced from compiling basic neural tensor layers to delivering eight production-grade AI security and auditability inventions, formulating a mathematically complete beyond-Transformer cognitive architecture (QNMF), and producing paper-grade empirical proof of its superiority under controlled ablation at parameter parity.
+Every Phase 9 milestone listed below reflects final audited status following systematic rejections, root-cause fixes, and re-verification:
 
-The table below records the formal status, primary deliverables, and verification evidence across all 16 Phase 9 milestones:
-
-##### Table 1: Complete Phase 9 Milestone Scorecard (M9.1 – M9.16)
-| Milestone | Milestone Title | Primary Deliverable / Invention | Core Verified Outcome | Status |
-| :---: | :--- | :--- | :--- | :---: |
-| **M9.1** | Weight Exfiltration & Model Theft | `examples/product_qemwv.ydv` (Invention #7) | Cryptographic AES-256 weight sealing; forward pass unsealing; zeroize on completion; tamper decoherence exit `0xDEADBEEF`. | **PASSED** |
-| **M9.2** | Unauditable Reasoning Chains | `examples/product_qera.ydv` (Invention #11) | Immutable Merkle-chained deduction DAG; tamper detection on premise/hypothesis alterations; instant decoherence halt. | **PASSED** |
-| **M9.3** | Dataset Poisoning & Copyright | `examples/product_mctp.ydv` (Invention #8) | Standalone cryptographic training provenance certificate; SHA-256 dataset digest binding; tamper detection flag. | **PASSED** |
-| **M9.4** | Reasoning Verification & Abstention | `examples/product_ttpcr.ydv` (Invention #15) | Tri-tier verification predicate; calibrated abstention on sub-threshold confidence; suppression of high-stakes errors. | **PASSED** |
-| **M9.5** | Distributed Byzantine Poisoning | `examples/product_barat.ydv` (Invention #19) | Multi-worker gradient aggregation; distance-based Sybil/poisoning filtering; rejection of malicious updates. | **PASSED** |
-| **M9.6** | Edge Gradient Replay Defense | `examples/product_cdaga.ydv` (Invention #18) | Asymmetric device keypairs; nonced gradient authentication tokens; replay attack rejection. | **PASSED** |
-| **M9.7** | Integrated Enterprise AI Pipeline | `examples/product_integrated.ydv` (All 8 Inventions) | End-to-end integration of all 8 inventions in a single zero-libc native pipeline; clean exit `0` on happy path, `0xDEADBEEF` on tamper. | **PASSED** |
-| **M9.8** | Independent Evaluation & Dossier | `PHASE9_EVIDENCE.md` | Formal investor evidence package; comprehensive execution ledger; audit of all 8 product binaries. | **PASSED** |
-| **M9.9** | Beyond-Transformer Prior-Art Audit | `docs/QNMF_PRIOR_ART_AUDIT.md` | Exhaustive survey of 30+ peer-reviewed papers (Transformers, SSMs, Titans, MoE, World Models); 8 concrete gap definitions. | **PASSED** |
-| **M9.10** | QNMF Mathematical Specification | `docs/QNMF_MATH_SPEC.md` | Formal equations for 6 cognitive pillars (P1–P6); 4 formal testable propositions; falsification protocols. | **PASSED** |
-| **M9.11** | Core Neural State Engine (Toy Scale)| `examples/qnmf_toy.ydv`, `TMP/qnmf_loss.csv` | First trainable QNMF recurrent state model ($S_t$); parameter parity vs Transformer; lower loss on sequence modeling. | **PASSED** |
-| **M9.12** | Multi-Timescale Neural Memory | `examples/qnmf_v2.ydv`, `TMP/qnmf_v2_loss.csv`| Slotted decay memory ($\tau_f, \tau_m, \tau_s$); context scaling to $L=512$; PPL: $19.10$ vs Transformer $25.89$. | **PASSED** |
-| **M9.13** | Predictive Latent World Model | `examples/qnmf_v3.ydv`, `TMP/qnmf_v3_loss.csv`| Latent state transition $P_\theta$ and reward $R_\theta$; $K=5$ rollout planning; $100.0\%$ spatial grid navigation. | **PASSED** |
-| **M9.14** | ECRA Dynamic Compute & Verifier | `TMP/plan_grid.exe`, `TMP/ecra_routing_histogram.csv` | Complexity-indexed deliberation router ($129 \to 64 \to 4$); $58.88\%$ compute reduction; undetected errors cut to $1.0\%$. | **PASSED** |
-| **M9.15** | Controlled Baselines & Ablation Study| `docs/QNMF_ABLATION_RESULTS.md`, `TMP/ablation_summary.csv` | 7 models $\times$ 3 domains $\times$ 2 seeds ($N=42$ runs); standardized Cohen's $d$ effect sizes; Propositions 1–4 confirmed. | **PASSED** |
-| **M9.16** | QNMF Research Report & Dossier | `docs/QNMF_RESEARCH_REPORT.md`, `docs/QADAV_FUNDING_DOSSIER.md`, `PHASE9_FINAL_REPORT.md` | NeurIPS-grade 8,900+ word research paper; 3,400+ word investor dossier; complete Phase 9 closure synthesis. | **PASSED** |
+| Milestone | Deliverable Scope | Revision History | Final Verified Outcome | Evidence / Commit Anchor |
+|---|---|---|---|---|
+| **M9.1** | **QEMWV (#7)** — Model weight AES-GCM sealing + wipe | Rejected once (omitted `10/10` Phase 8 `fc /b`), rebuilt & accepted | Happy Exit `0` (`27 ms`), Tamper Exit `-559038737` (`0xDEADBEEF`), `10/10` `fc /b` verbatim match | `examples/product_qemwv*.ydv`, [`PHASE9_METRICS.json`](file:///c:/Users/avnis/Downloads/Qadav/PHASE9_METRICS.json) |
+| **M9.2** | **QERA (#11)** — Cryptographic reasoning audit chain | Accepted | Happy Exit `0` (`19 ms`, Merkle root `56af996a...`), Step-1 tamper Exit `-559038737` | `examples/product_qera*.ydv`, [`PHASE9_EVIDENCE.md`](file:///c:/Users/avnis/Downloads/Qadav/PHASE9_EVIDENCE.md) |
+| **M9.3** | **MCTP (#8) & TTPCR (#15)** — Provenance + abstention | Accepted | `MCTP` (`37 ms`) flags dataset hash alterations; `TTPCR` (`19 ms`) enforces calibrated `REFUSE` (`0.55 < 0.80`) & witness tamper `-559038737` | `examples/product_mctp*.ydv`, `product_ttpcr*.ydv` |
+| **M9.4** | **BARAT (#19)** — Byzantine outlier rejection | Rejected (buggy norm `0.06` instead of `200.0`), fixed in C runtime | Rejects poisoned Worker 3 with exact Frobenius norm `200.000000` (`sqrt(4 * 10000)`), Exit `0` (`20 ms`) / Tamper `-559038737` | `internal/runtime/qadav_barat.c`, `examples/product_barat*.ydv` |
+| **M9.4a** | **Compiler 2D Tensor Literal Fix** | Blocker audit identified hardcoded C tensor workaround in `M9.4` | Fixed `selfhost/codegen.ydv` IR emission for native `.ydv` 2D matrices; removed C workaround; `10/10` `fc /b` & M9.1–M9.6 preserved | `selfhost/codegen.ydv`, compiler IR verification |
+| **M9.5** | **CDAGA (#18) & QECMA (#12)** — Device ordering & multimodal separation | Accepted | `CDAGA` (`29 ms`) enforces UUID canonical topology; `QECMA` (`22 ms`) blocks modality tag swap (`0x43`/`0x54`/`0x58`) | `examples/product_cdaga*.ydv`, `product_qecma*.ydv` |
+| **M9.6** | **QESI (#16)** — Capability sandbox containment | Accepted | Sandbox breach contained with host continuity Exit `0` (`17 ms`); multi-tenant `A` violated / `B` clean; attestation tamper `-559038737` | `examples/product_qesi*.ydv` |
+| **M9.7** | **Integrated Pipeline (`M9.1–M9.6` Combined)** | Re-verified post-`M9.4` & `M9.4a` fixes | 9-step unified enterprise pipeline executes in `87 ms` (`614 KB` binary) with native `2D` tensors & `norm=200.000000` | `examples/product_integrated*.ydv` |
+| **M9.8** | **Phase 9 Systems Evaluation Dossier** | Accepted (`21/21` executions across `8+1` pipelines) | Zero external libs, `583 ms` total execution suite, documented explicit system limits | [`PHASE9_EVIDENCE.md`](file:///c:/Users/avnis/Downloads/Qadav/PHASE9_EVIDENCE.md), `PHASE9_METRICS.json` |
+| **M9.9** | **QNMF Prior-Art Audit** | Revised to purge 8 unverified citations & probe 2026 IDs | `22+` verified citations, 3 leaked unverified pre-revision entries permanently excised; all 5 2026 arXiv IDs verified live HTTP `200` on Nov 11, 2026 (`arXiv:2603.15994` author corrected to `Zahn & Chana`) | [`docs/QNMF_PRIOR_ART_AUDIT.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/QNMF_PRIOR_ART_AUDIT.md) |
+| **M9.10** | **QNMF Formal Math Spec (`P1–P6`)** | Accepted unchanged as theoretical target | Equations, complexities, Propositions `1–4`, null hypotheses & honest attribution documented | [`docs/QNMF_MATH_SPEC.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/QNMF_MATH_SPEC.md) |
+| **M9.11** | **Toy Model (`0.31M` vs `0.42M`, 2,000 steps)** | Rejected (`20`-step noisy run), rebuilt `--steps 2000` + honest wrapper disclosure | Smooth convergence: QNMF `4.1333 -> 1.6140` (`val PPL 6.10`) vs. Transformer `4.1970 -> 2.4303` (`val PPL 12.72`) | `TMP/qnmf_loss.csv`, `TMP/transformer_loss.csv` |
+| **M9.12** | **17.6M Scaled Eval (2,000 steps, CPU)** | Rejected (`20`-step noise), rebuilt 2,000-step scaled training + honest reporting | `QNMF v2` `6.71` vs. `TF v2` `17.01` (@`512`), `no-Mw` `35.37`, `no-Ml` `128.00`; **`9.67x` slower CPU training (`3,886.7 s` vs. `402.1 s`)**; **Associative Recall `10.0%` (`5/50` chance)** | `TMP/qnmf_v2_loss.csv`, `eval_v2.exe` |
+| **M9.13** | **World-Model Grid Planning (`P4`)** | Rebuilt after `K=1` achieved `100%` on trivial open grid + unfair baseline | On `4`-trap `8x8` maze: **`QNMF+P4 = 100.0%` & `Transformer+P4 = 100.0%` (`d = 0.000`, `9.66/9.67` steps)**; `K=1`: `46%`/`22%`; `no_reward`: `0%` | `TMP/plan_ep_*.csv`, `examples/env_grid.ydv` |
+| **M9.14** | **Ambiguous ECRA Dynamic Compute (`P6`)** | Rebuilt after `0.0000`-loss separable synthetic run | `20%` ambiguity + `4%` noise -> `0.1265` loss floor, `85%` routing, **`54.88%` compute savings (`361/800`) at `-3%` raw accuracy cost (`82%` vs. `85%`)**; verifiers tie at `93.82%` prec. / `72.22%` recall | `TMP/ecra_routing_histogram.csv`, `TMP/eval_ecra*.csv` |
+| **M9.15** | **Controlled Multi-Seed Ablation (`7 x 3 x 3 = 63` runs)** | Rejected (N=2 variance inflation, asymmetric baseline, `3.14s` error), rebuilt completely | Real **`140.69 s`** wall time (`540.32 MB` peak RSS), `N=3` Student-$t$ CIs, **`Transformer+P4 = QNMF+P4 (d=0.000)`**, ECRA CI `INCONCLUSIVE` (`d=-1.530`), modest `P3` (`d=-2.663`), low-variance `*` disclosed | [`docs/QNMF_ABLATION_RESULTS.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/QNMF_ABLATION_RESULTS.md), `TMP/abl_*.csv` |
+| **M9.16** | **Capstone Research Report & Dossier Synthesis** | **v1 Rejected (inherited flawed M9.15), v2 Rebuilt strictly from fixed M9.1–M9.15 data** | Synthesized research report, seed dossier, and final audit without adding code or modifying experiments | [`docs/QNMF_RESEARCH_REPORT.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/QNMF_RESEARCH_REPORT.md), [`docs/QADAV_FUNDING_DOSSIER.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/QADAV_FUNDING_DOSSIER.md), `PHASE9_FINAL_REPORT.md` |
 
 ---
 
-### 2. Comprehensive Inventory of What Was Delivered
+## 2. What Was Delivered (Qualified & Reproducible Assets)
 
-The engineering and research outputs delivered across Phase 9 fall into three major divisions:
-
-#### Part A: Eight Integrated AI Product Inventions (M9.1 – M9.8)
-Rather than treating AI security as an external firewall or wrapper script, Phase 9 implemented eight foundational security and auditability inventions directly into native code:
-1. **Invention #7 (QEMWV):** Hardware-bound AES-256 weight encryption, in-memory zeroization upon forward pass termination, and deterministic decoherence halting (`0xDEADBEEF`) under memory tampering.
-2. **Invention #11 (QERA):** Cryptographically witnessed deduction DAGs binding premises, operators, and hypotheses into an immutable Merkle root (`Root_t`).
-3. **Invention #8 (MCTP):** Tamper-evident training provenance certificates recording dataset SHA-256 digests, hyperparameters, and execution environments directly in compiled binary headers.
-4. **Invention #15 (TTPCR):** Tri-tier post-condition verification enabling calibrated refusal and safe abstention on sub-threshold confidence queries.
-5. **Invention #19 (BARAT):** Distance-based Byzantine-tolerant gradient filtering for distributed decentralized learning.
-6. **Invention #18 (CDAGA):** Nonced cryptographic device signatures securing asynchronous edge model updates against replay attacks.
-7. **Invention #12 (QECMA):** Cross-modal embedding alignment and typographic injection mitigation via dual-manifold cosine binding.
-8. **Invention #16 (QESI):** Process isolation and filesystem sandboxing preventing rogue autonomous agent tool execution from compromising host infrastructure.
-9. **Unified Enterprise Pipeline (`product_integrated.ydv`):** All eight inventions executing cooperatively in a single 614 KB standalone executable with an end-to-end latency of only $87\text{ ms}$.
-
-#### Part B: The QNMF Cognitive Architecture & Empirical Proofs (M9.9 – M9.15)
-Phase 9 transitioned from security tooling to foundational cognitive architecture:
-- **Prior-Art Literature Survey (`docs/QNMF_PRIOR_ART_AUDIT.md`):** Comprehensive analysis of 30+ peer-reviewed papers identifying eight concrete mathematical failure modes of existing architectures (quadratic scaling, linear KV cache, asymmetry/reversal curse, delayed relevance gating, MoE routing collapse, lack of latent planning).
-- **Formal Mathematical Specification (`docs/QNMF_MATH_SPEC.md`):** Complete algebraic and dynamical formalization of all six QNMF pillars (P1 through P6) with twenty explicit equations and four testable propositions.
-- **Trainable Neural Engine Implementations (M9.11–M9.14):** First-principles implementation of continuous associative states ($S_t$), slotted decay memory ($M_s, M_w, M_l$), latent transition world models ($P_\theta, R_\theta$), and ECRA complexity routing in pure Qadav and zero-libc C.
-- **Definitive Empirical Ablation Study (`docs/QNMF_ABLATION_RESULTS.md`):** Evaluated 7 model variants at exact parameter parity ($17.67\text{M} \pm 0.16\%$) across 42 multi-seed trials, computing Cohen's $d$ effect sizes and confirming all four theoretical propositions.
-
-#### Part C: Publication-Grade Research & Investor Dossiers (M9.16)
-- **NeurIPS/ICLR-Grade Research Report (`docs/QNMF_RESEARCH_REPORT.md`):** An 8,900+ word, 10-section academic manuscript with 4 appendices, 10 detailed tables, 3 architectural diagrams, and 27 peer-reviewed citations with active URLs.
-- **Confidential Funding Dossier (`docs/QADAV_FUNDING_DOSSIER.md`):** A 3,400+ word institutional investment memorandum detailing market opportunity, full-stack moat, 25 defensive patents, 3-year technology roadmap, and a \$5.2M seed capital allocation plan.
-- **Phase 9 Final Report (`PHASE9_FINAL_REPORT.md`):** This formal closure report synthesizing the complete body of work.
+1. **Deterministic Compiler & Cryptographic Security Products (`M9.1–M9.8`, `M9.4a`):** Standalone Windows x86_64 binaries compiled by self-hosted `bin/qyn.exe` demonstrating AES-256-GCM weight sealing (`QEMWV`), SHA-256 deduction chain integrity (`QERA`), data lineage (`MCTP`), witness-calibrated abstention (`TTPCR`), exact native 2D Byzantine outlier detection (`BARAT`, `norm=200.000000`), canonical device attestation (`CDAGA`), typed multimodal isolation (`QECMA`), sandboxed execution continuity (`QESI`), and integrated 9-step composition (`87 ms`).
+2. **Freestanding Neural Training & Evaluation Engine (`internal/runtime/qadav_nn.c`):** Zero-libc C engine supporting `0.31M` toy (`309,572`), `17.56M` v2 (`17,557,648`), `92,418`-param world-model planning, and `ECRA` router/verifier models executing inside `540.32 MB` RSS with zero external Python/CUDA libraries.
+3. **Empirically Grounded Trade-Off Map (`M9.11–M9.15`):** Verified separation between strong working-memory (`M_w`/`M_l`) LM sensitivity on `2,000`-step CPU runs (`7.57` vs. `18.66` PPL) versus QNMF's `9.67x` scalar CPU training cost, backbone-agnostic `P4` planning parity (`d = 0.000`), and ECRA's `54.88%` compute savings vs. `3%–4%` raw accuracy trade-off.
 
 ---
 
-### 3. Radical Scientific Honesty: What Was NOT Delivered
+## 3. What Was NOT Delivered (Mandatory Unfiltered Gaps)
 
-In strict compliance with **Global AGI Engineering Rule #1, #2, #5, and #17**, we explicitly account for what Phase 9 did **not** accomplish, delineating between proven empirical facts and future milestones:
+In strict adherence to AGI engineering accountability, Phase 9 explicitly **did NOT deliver or prove** any of the following seven claims:
 
-1. **NO Claim of AGI Achievement:** Phase 9 demonstrated sub-quadratic sequence modeling, slotted memory retention, obstacle grid navigation, and adaptive deliberation on toy-scale benchmarks. **This does not constitute Artificial General Intelligence.** AGI requires sustained multi-domain transfer, autonomous goal formulation, meta-learning across unfamiliar distributions, and continuous self-correction without catastrophic forgetting over multi-year horizons.
-2. **NO Frontier Model Dominance over Commercial LLMs:** QNMF was evaluated at an intentional toy scale of $\approx 17.6\text{M}$ parameters on a dual-core consumer CPU. It has **not** beaten GPT-4, Claude 3.5 Sonnet, or Llama-3 70B on broad natural language comprehension, open-ended conversational fluency, or web-scale reasoning benchmarks. Claiming parity with multi-billion-parameter foundation models at this stage would be scientifically fraudulent.
-3. **NO Multi-Node GPU Cluster Scaling:** All Phase 9 experiments were conducted strictly on an Intel Core i5-6200U processor with 8 GB RAM. Native GPU kernel code generation (Vulkan / DirectX 12 / CUDA PTX) and distributed cluster training across $64 \times \text{A100/H100}$ nodes are planned objectives for Phase 10.
-4. **NO Claim of Universal 50% Inference Cost Reduction in Production:** The $58.88\%$ compute cycle reduction was measured on our curated 100-query heterogeneous deliberation benchmark. While mathematically representative of diverse complexity distributions, real-world enterprise cost savings will vary depending on production prompt complexity and cache hit ratios.
-5. **NO Large Subword Tokenizer Integration:** The sequence modeling experiments were conducted on character-level technical text ($V = 128$). While mathematically valid for establishing asymptotic context scaling laws, full subword tokenization (BPE / SentencePiece, $V \ge 32\text{K}$) remains to be implemented in Phase 10.
-6. **Pillar 3 (Sparse MoE) Exhibited Only Modest Benefit at Toy Scale:** Our ablation study honestly revealed that while P1, P2, P4, and P6 delivered massive effect sizes ($|d| \ge 50.0$), removing P3 (Sparse Routing) caused only a $+3.9\%$ perplexity inflation ($|d| = 21.4$). The fixed computational overhead of Sinkhorn optimal transport iterations partially offsets sparse FLOP savings at $17.6\text{M}$ parameters. We openly document that sparse MoE requires larger model dimensions ($> 1\text{B}$ parameters) to achieve full efficiency.
-7. **Pillar 4 (World Model) Proved Highly Domain-Specific:** While P4 was essential for spatial planning ($100.0\%$ vs $10.0\%$ success, $|d| = 9000.0$), it provided negligible benefit for passive character language modeling ($19.10 \to 19.12$ PPL, $|d| = 0.66$). We refrain from claiming universal utility for world models in passive prediction tasks.
-
----
-
-### 4. Portfolio Invariant Audit & Integrity Ledger
-
-Every mandatory invariant established in the project charter and global rules was maintained throughout Phase 9 without compromise:
-
-##### Table 2: Mandatory Portfolio Invariant Audit Ledger
-| Invariant Requirement | Required Charter Standard | Current Audited State | Audit Verdict |
-| :--- | :--- | :--- | :---: |
-| **Python Independence** | Exactly 0 `.py` files across repository | `dir /s /b *.py` returns 0 files | **VERIFIED (0 Python)** |
-| **Go Independence** | Exactly 0 `.go` files across repository | `dir /s /b *.go` returns 0 files | **VERIFIED (0 Go)** |
-| **Defensive Patents** | Exactly 25 Inventions in `docs/PATENTS.md` | 25 numbered Inventions verified | **VERIFIED (25 Patents)** |
-| **Windows C Runtime** | Exactly 45 Windows C files in `internal/runtime` | 45 Windows C files (46 total with Linux) | **VERIFIED (45 Files)** |
-| **Self-Hosted Compiler** | Standalone self-hosted `bin/qyn.exe` preserved | Multi-pass LLVM compiler verified | **VERIFIED (Working)** |
-| **Phase 8 Regression** | Bitwise match on 10/10 Phase 8 examples | `fc.exe /b` confirms "no differences" (10/10) | **VERIFIED (10/10 Bitwise)** |
-| **No-Stdlib Linking** | Executables link with `-nostdlib` | 0 `msvcrt.dll` imports; pure Win32 kernel calls | **VERIFIED (Zero-Libc)** |
-| **Git Working Tree** | Clean working tree on branch `main` | Clean repository status maintained | **VERIFIED (Clean)** |
+1. **No Frontier Model Competition:** Zero evaluations were run against frontier commercial or open-weight models (`GPT-4`, `Claude`, `Gemini`, or `LLaMA-3 8B–70B`) on MMLU, GSM8K, HumanEval, or real long-document tasks.
+2. **No Associative Recall Above Random Chance (`10.0%`):** Across `50` needle probes at `500` tokens in `M9.12`, **all four `17.6M` models (`QNMF v2`, `Transformer v2`, `no-Ml`, `no-Mw`) scored exactly `10.0%` (`5/50` random digit guessing)**. Memory-slot lookup capabilities (`EXP-2`) did not emerge from generic byte pretraining and are deferred to synthetic curriculum supervision.
+3. **No Multi-GPU Cluster or Hardware Enclave Verification:** Every run occurred on a single Windows consumer CPU host (`540.32 MB` peak RSS). Distributed GPU cluster scaling, CUDA/WebGPU kernels, gossip consensus protocols, and Intel SGX/AMD SEV hardware enclave bindings remain unbuilt.
+4. **No Subword BPE / SentencePiece Tokenizer:** `M9.11`/`M9.15` used a `64`-char ASCII subset and `M9.12` used `128`-byte character coding; `M9.13`/`M9.14` operated strictly on synthetic maze states and task feature vectors rather than tokenized natural language streams.
+5. **No Converged Multi-Epoch Convergence (`10K+` Steps):** Due to `~64.8 min` per single QNMF v2 `2,000`-step CPU run (`3,886.7 s`), all pretraining stopped at `2,000` optimization steps—orders of magnitude short of `10,000+` step or Chinchilla compute-matched convergence (`~352M` tokens for `17.6M` weights).
+6. **No QNMF-Specific Planning Advantage:** On the M9.13 `4`-trap obstacle maze, **`Transformer+P4` matches `QNMF+P4` identically at `100.0%` (`9.79 ± 1.56` steps, `d = 0.000`)**. World-model lookahead planning gains originate cleanly in the `P4` rollout planner, not in QNMF's recurrent encoder.
+7. **No Real Sparse Compute / FLOP Speedups from P3 on Small CPU Models:** Ablating `P3` Sinkhorn routing shifts `N=3` perplexity only modestly (`7.57 ± 0.81` vs. `9.29 ± 0.43`, `d = -2.663`), while adding scalar overhead on `4–16` tiny CPU experts. Demonstrating practical sparse FLOP savings and `RepetitionCurse` DoS defense (`EXP-4`) requires `>1B`-parameter models on fused GPU kernels.
 
 ---
 
-### 5. Key Scientific Lessons & Architectural Insights
+## 4. Mandatory Repository Invariants Checked
 
-The sixteen milestones of Phase 9 have produced foundational insights that will guide future neural architecture engineering:
-
-1. **Slotted Neural Decay Memory is the Single Most Important Beyond-Transformer Pillar:**  
-   Our ablation study established that removing Pillar 2 causes a catastrophic $+47.5\%$ increase in validation perplexity ($19.10 \to 28.17$) and explodes context degradation from $+7.18\%$ to $+54.78\%$ ($|d| = 259.1$). Providing multi-timescale decay slots ($\tau_f, \tau_m, \tau_s$) allows a model to retain long-range factual dependencies without the quadratic memory overhead of dense attention.
-2. **Latent Rollout Planning is Indispensable for Agentic Systems:**  
-   Reactive autoregressive policies cannot reliably navigate environments with obstacles or multi-step constraints ($10.0\%$ success). Equipping the model with an explicit latent transition operator $P_\theta(z_{t+1}|z_t, a_t)$ and reward predictor $R_\theta(z_t, a_t)$ converts Brownian random walks into optimal, shortest-path navigation ($100.0\%$ success, 14.0 steps, $|d| = 9000.0$).
-3. **Calibrated Verification Eliminates Hallucination Liability:**  
-   High-stakes enterprise AI failures stem from uncalibrated overconfidence. Integrating cryptographic premise witnessing (P5) with an evidence verification layer (P6) allows an AI system to recognize uncertainty and safely abstain on unsolvable or ambiguous tasks, suppressing undetected error rates from $6.0\%$ to $1.0\%$.
-4. **Zero-Libc Native Compilation is Fully Practical for Machine Learning:**  
-   The deep learning industry's reliance on multi-gigabyte Python and dynamic library runtimes is an engineering habit, not a technical necessity. Standalone Windows PE binaries of $\approx 612\text{ KB}$ can execute complex forward evaluation, backpropagation, and tree search with microsecond cold-start times ($< 30\text{ ms}$) and tiny memory footprints ($< 14.5\text{ MB}$).
+* **Documented IP Assets:** `25` inventions locked (`6` defensive + `19` patent-pending) in [`docs/PATENTS.md`](file:///c:/Users/avnis/Downloads/Qadav/docs/PATENTS.md).
+* **Freestanding C Runtime Footprint:** `45` Windows C runtime files (`46` total across targets).
+* **Zero Forbidden Language Contamination:** `0` `.py` files, `0` `.go` compiler/runtime additions (`selfhost/` + `internal/runtime/` pure `.ydv` + `.c`).
+* **Phase 8 Self-Hosted Compiler Integrity:** `10/10` bitwise `fc.exe /b` identical LLVM IR verified against reference bootstrap snapshots (`hello`, `calc`, `if_else`, `fib`, `dot_product`, `composite`, `classify_operator`, `classify_annotation`, `classify_keyword`, `match_n_arms_proof`).
+* **M9.16 Scope Discipline:** Strictly zero `.c`, `.h`, or `.ydv` changes made during synthesis revision (`M9.16` modified exclusively `docs/QNMF_RESEARCH_REPORT.md`, `docs/QADAV_FUNDING_DOSSIER.md`, and `PHASE9_FINAL_REPORT.md`).
 
 ---
 
-### 6. Formal Transition to Phase 10: Scaling and Deployment
+## 5. Engineering Lessons Learned & Iterative Self-Correction
 
-Phase 9 has successfully fulfilled its scientific and systems engineering mandate. The theoretical and empirical foundations of Qadav and QNMF are established, validated, and protected.
+Phase 9's defining operational lesson is **the compounding necessity of adversarial milestone rejection**. Across Phase 9, **seven milestone submissions required rejection or substantive root-cause rebuilds (`M9.1, M9.4, M9.4a, M9.7, M9.11, M9.12, M9.15, and M9.16`, alongside hardening revisions across `M9.9, M9.13, M9.14`)**:
+* Initial `M9.1` skipped half the mandatory Phase 8 regression suite; enforcing verbatim `10/10 fc /b` caught silent drift risk immediately.
+* Checking `BARAT` arithmetic by hand caught a C runtime bug (`0.06` vs. `200.0`) that simultaneously exposed `M9.4a`—a compiler bug preventing native 2D `.ydv` matrix literal IR lowering—forcing a proper compiler repair before trusting `M9.7` integrated proofs.
+* Rejecting 20-step noisy runs (`M9.11`/`M9.12`), trivially solvable open grids (`M9.13`), zero-loss synthetic routers (`M9.14`), understated timing + `N=2` variance inflation (`M9.15`), and overclaimed summaries (`M9.16` v1) eliminated unsupported claims and uncovered real engineering truths (`9.67x` CPU training overhead, `10%` recall chance baseline, `Transformer+P4 = QNMF+P4 d=0.000`, `54.88%` ECRA step savings vs. `-3%` accuracy trade-off).
+* Live HTTP arXiv verification (`Invoke-WebRequest` probes returning HTTP `200 OK` on November 11, 2026) caught metadata drift in prior audits (restoring exact authorship **Zahn & Chana** for `arXiv:2603.15994` and permanently excising 3 unverified pre-revision entries).
 
-#### Phase 10 Primary Objectives
-The objective of **Phase 10 ("Foundation Scaling & Native Acceleration")** is to advance QNMF from validated toy-scale prototypes to high-performance foundation models:
-1. **Milestone 10.1 (Native GPU Codegen):** Upgrade `bin/qyn.exe` to generate native GPU compute kernels (Vulkan SPIR-V, DirectX 12 HLSL, and NVIDIA PTX) directly from `.ydv` syntax without Python or PyTorch dependencies.
-2. **Milestone 10.2 (Distributed Cluster Runtime):** Implement zero-libc multi-GPU distributed communication primitives in pure C/Qadav (bypassing NCCL).
-3. **Milestone 10.3 (Foundation Scale Pretraining):** Deploy QNMF on a dedicated $64 \times \text{A100/H100}$ cluster to pretrain 1B and 7B parameter models on open-source multilingual corpora (FineWeb, RedPajama), validating sub-quadratic scaling across $32\text{K}$ to $1\text{M}$ token horizons.
-4. **Milestone 10.4 (Enterprise Pilots):** Package the 8 Phase 9 product inventions into commercial SDKs for healthcare and financial enterprise compliance under the EU AI Act.
+Enforcing falsification checks continuously at every milestone boundary—rather than auditing only at phase closeout—will govern Phase 10 execution from Day 1.
 
-#### Phase Closure Declaration
-Phase 9 is hereby declared **100% COMPLETE, VERIFIED, AND FORMALLY CLOSED**. All sixteen milestones (M9.1 through M9.16) have met their strict acceptance criteria. The codebase, documentation, and empirical evidence are committed and ready for Phase 10 execution.
+---
+
+## 6. Transition Checklist to Phase 10
+
+1. **SIMD / WebGPU Acceleration First:** Vectorize tensor inner loops in `qadav_nn.c` or compile optional WebGPU compute shaders so recurrent/Sinkhorn passes run within `<= 1.5x` dense matrix speed before further training sweeps.
+2. **Native Subword Tokenizer & Associative Recall Curriculum (`EXP-2`):** Build a zero-libc BPE tokenizer and train `P1+P2` models under explicit multi-needle supervision to test whether explicit retrieval losses move associative recall above `10.0%`.
+3. **Training-From-Scratch Multi-Seed GPU Validation (`10K+` Steps):** Once accelerated, run `N >= 3` full independent pretraining seeds through Chinchilla token ratios to eliminate fixed-checkpoint `*` low-variance artifacts.
+4. **Hard Runtime Scaling (`EXP-3`, `EXP-4`, Asynchronous QESI/BARAT):** Execute $O(1)$ crystalline revocation benchmarks, `RepetitionCurse` stress benchmarks across `K >= 64` experts, and multi-threaded non-blocking attestation queues in Windows/POSIX runtimes.
