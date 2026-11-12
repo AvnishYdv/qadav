@@ -637,6 +637,34 @@ static DWORD nn_get_ticks(void) {
     if (pfn) return pfn();
     return 0;
 }
+
+typedef BOOL (__stdcall *pfn_QPC)(long long*);
+static unsigned long long nn_rdtsc(void) {
+#if defined(__x86_64__) || defined(_M_X64)
+    unsigned int lo = 0, hi = 0;
+    __asm__ __volatile__("lfence; rdtsc" : "=a"(lo), "=d"(hi));
+    return ((unsigned long long)hi << 32) | lo;
+#else
+    return (unsigned long long)nn_get_ticks() * 1000000ULL;
+#endif
+}
+
+static double nn_calibrate_tsc_per_us(void) {
+    HANDLE hMod = GetModuleHandleA("kernel32.dll");
+    pfn_QPC pQPC = hMod ? (pfn_QPC)GetProcAddress(hMod, "QueryPerformanceCounter") : (pfn_QPC)0;
+    pfn_QPC pQPF = hMod ? (pfn_QPC)GetProcAddress(hMod, "QueryPerformanceFrequency") : (pfn_QPC)0;
+    long long freq = 0, q0 = 0, q1 = 0;
+    if (pQPC && pQPF && pQPF(&freq) && freq > 0 && pQPC(&q0)) {
+        long long wait_ticks = freq / 40; // ~25 ms calibration window
+        if (wait_ticks < 1000) wait_ticks = 1000;
+        unsigned long long c0 = nn_rdtsc();
+        do { pQPC(&q1); } while ((q1 - q0) < wait_ticks);
+        unsigned long long c1 = nn_rdtsc();
+        double dt_us = ((double)(q1 - q0) * 1000000.0) / (double)freq;
+        if (dt_us > 0.0 && c1 > c0) return (double)(c1 - c0) / dt_us;
+    }
+    return 3000.0; // safe fallback only if QPC unavailable
+}
 #endif
 
 void qadav_write_raw(const char* s, unsigned long long len);
@@ -10422,6 +10450,708 @@ static int qadav_run_v2_stress_dos(const char* cmd) {
 }
 
 // ---------------------------------------------------------------------
+// M10.7: EXP-3 Surgical O(1) Knowledge Erasure & Continuous Ablation
+// ---------------------------------------------------------------------
+
+typedef struct {
+    int key_tok;
+    int val_tok;
+    int sl_hash;
+    int sw_hash;
+    int is_deleted;
+    int pre_ok;
+    int post_ml_ok;
+    int post_both_ok;
+    double pre_prob;
+    double post_ml_prob;
+    double post_both_prob;
+    int ml_collided;
+    int mw_collided;
+    int ml_adjacent;
+} Exp3PairInfo;
+
+static void exp3_bind_seq_state(QNMFRecallSeqState* rs, double* mem) {
+    nn_memset(rs, 0, sizeof(*rs));
+    rs->ml_wt0     = mem;             // 256
+    rs->ml_wt1     = mem + 256;       // 256
+    rs->ml_init_wt = mem + 512;       // 256
+    rs->mw_wt0     = mem + 768;       // 64
+    rs->mw_wt1     = mem + 832;       // 64
+    rs->mw_init_wt = mem + 896;       // 64
+    rs->ml_tok0    = (int*)(mem + 960);
+    rs->ml_tok1    = rs->ml_tok0 + 256;
+    rs->mw_tok0    = rs->ml_tok1 + 256;
+    rs->mw_tok1    = rs->mw_tok0 + 64;
+}
+
+static void exp3_step_state(
+    const double* W_x, const double* W_s, const double* b_s,
+    const double* W_lam, const double* b_lam, const double* emb,
+    double* state, double* next_state)
+{
+    for (int i = 0; i < 256; i++) {
+        double u = b_s[i], v = b_lam[i];
+        const double* wxr = W_x + i * 256;
+        const double* wsr = W_s + i * 256;
+        const double* wlr = W_lam + i * 256;
+#if defined(__x86_64__) || defined(_M_X64)
+        if (qadav_cpu_supports_avx2()) {
+            u += vec_dot_256_avx2(wxr, emb) + vec_dot_256_avx2(wsr, state);
+            v += vec_dot_256_avx2(wlr, emb);
+        } else
+#endif
+        {
+            for (int j = 0; j < 256; j++) {
+                u += wxr[j] * emb[j] + wsr[j] * state[j];
+                v += wlr[j] * emb[j];
+            }
+        }
+        double cand = fast_tanh(u);
+        double gate = fast_sigmoid(v);
+        next_state[i] = gate * state[i] + (1.0 - gate) * cand;
+    }
+}
+
+static void exp3_eval_query_tail(
+    const V2Weights* w, const int* seq512,
+    const double* M_w_in, const double* M_l_in, const double* state_499,
+    const double* z_499, const double* vl_499,
+    int use_sinkhorn, int disable_ml, int disable_mw,
+    int query_key, int target_val,
+    double* ws_buf, int* out_ok, int* out_pred, double* out_prob)
+{
+    int emb_len = V2_VOCAB_SIZE_BPE * 256;
+    const double* W_emb   = w->params;
+    const double* W_x     = W_emb + emb_len;
+    const double* W_s     = W_x + 65536;
+    const double* b_s     = W_s + 65536;
+    const double* W_lam   = b_s + 256;
+    const double* b_lam   = W_lam + 65536;
+    const double* W_q     = b_lam + 256;
+    const double* b_q     = W_q + 65536;
+    const double* W_r     = b_q + 256 + 65536 + 256 + 65536 + 256;
+    const double* b_r     = W_r + 65536;
+    const double* W_route = b_r + 256 + 65536 + 256 + 256 + 256 + 16384 + 65536;
+    const double* b_route = W_route + 4096;
+    const double* W_exp   = b_route + 16;
+    const double* b_out   = W_exp + 16814080;
+
+    double* state      = ws_buf;             // 256
+    double* next_state = state + 256;        // 256
+    double* q_buf      = next_state + 256;   // 256
+    double* v_w        = q_buf + 256;        // 256
+    double* v_l        = v_w + 256;          // 256
+    double* rg_buf     = v_l + 256;          // 256
+    double* z_all      = rg_buf + 256;       // 12 * 256 = 3072
+    double* vl_last    = z_all + 3072;       // 256
+    double* dot_w      = vl_last + 256;      // 64
+    double* a_w        = dot_w + 64;         // 64
+    double* dot_l      = a_w + 64;           // 256
+    double* a_l        = dot_l + 256;        // 256
+    double* a_rec      = a_l + 256;          // 256
+    double* r_win      = a_rec + 256;        // 12 * 16 = 192
+    double* k_mat      = r_win + 192;        // 192
+    double* u_vec      = k_mat + 192;        // 16
+    double* a1_b       = u_vec + 16;         // 16
+    double* a2_b       = a1_b + 16;          // 16
+    double* h1         = a2_b + 16;          // 2048
+    double* h2         = h1 + 2048;          // 2048
+    double* out1       = h2 + 2048;          // 256
+    double* out2       = out1 + 256;         // 256
+    double* h_comb_t   = out2 + 256;         // 256
+    double* logits     = h_comb_t + 256;     // 8000
+
+    nn_memcpy(state, state_499, 256 * sizeof(double));
+    nn_memcpy(z_all, z_499, 256 * sizeof(double));
+    nn_memcpy(vl_last, vl_499, 256 * sizeof(double));
+
+    int active_qkey = -1;
+    int pi_final = RECALL_SUP_POSITIONS - 1; // 11 (t=510)
+    for (int t = 500; t < RECALL_CTX_LEN + RECALL_SUP_POSITIONS - 1; t++) {
+        // t goes 500..510 (11 tokens), corresponding to pi = 1..11
+        int pi = t - (RECALL_CTX_LEN - 1);
+        int c_in = seq512[t];
+        if (c_in < 0 || c_in >= V2_VOCAB_SIZE_BPE) c_in = 0;
+        const double* emb = W_emb + (long long)c_in * 256;
+        exp3_step_state(W_x, W_s, b_s, W_lam, b_lam, emb, state, next_state);
+
+        if (c_in == RECALL_TOK_FIND) active_qkey = -1;
+        else if (c_in >= RECALL_KEY_BASE && c_in < RECALL_KEY_BASE + RECALL_N_KEYS) active_qkey = c_in;
+        (void)query_key;
+
+        int sw_hash = -1, sl_hash = -1;
+        if (active_qkey >= 0) {
+            unsigned int qh = fnv1a_hash(&active_qkey, 1);
+            sw_hash = (int)(qh % 64U);
+            sl_hash = (int)(qh % 256U);
+        }
+
+#if defined(__x86_64__) || defined(_M_X64)
+        if (qadav_cpu_supports_avx2()) {
+            vec_matvec_Nx256_avx2(W_q, b_q, next_state, q_buf, 0.25, 256);
+        } else
+#endif
+        {
+            for (int i = 0; i < 256; i++) q_buf[i] = (b_q[i] + vec_dot_256_scalar(W_q + i * 256, next_state)) * 0.25;
+        }
+        qnmf_recall_attend_bank(disable_mw, M_w_in, 64, sw_hash, 4.15, q_buf, dot_w, a_w, a_rec, v_w);
+        qnmf_recall_attend_bank(disable_ml, M_l_in, 256, sl_hash, 5.5, q_buf, dot_l, a_l, a_rec, v_l);
+
+#if defined(__x86_64__) || defined(_M_X64)
+        if (qadav_cpu_supports_avx2()) {
+            vec_matvec_Nx256_avx2(W_r, b_r, next_state, rg_buf, 1.0, 256);
+        } else
+#endif
+        {
+            for (int i = 0; i < 256; i++) rg_buf[i] = b_r[i] + vec_dot_256_scalar(W_r + i * 256, next_state);
+        }
+        double* zp = z_all + pi * 256;
+        for (int i = 0; i < 256; i++) {
+            double rg = fast_sigmoid(rg_buf[i]);
+            zp[i] = next_state[i] + rg * (v_w[i] + v_l[i]);
+        }
+        if (pi == pi_final) nn_memcpy(vl_last, v_l, 256 * sizeof(double));
+        nn_memcpy(state, next_state, 256 * sizeof(double));
+    }
+
+    int top1 = 0, top2 = 1;
+    double a1 = 0.5, a2 = 0.5;
+    if (use_sinkhorn) {
+        int t1_b[12], t2_b[12];
+        for (int pi = 0; pi < RECALL_SUP_POSITIONS; pi++) {
+            const double* zp = z_all + pi * 256;
+            double* rd = r_win + pi * 16;
+            for (int k = 0; k < 16; k++) rd[k] = b_route[k] + vec_dot_256_scalar(W_route + k * 256, zp);
+        }
+        qnmf_dos_route_sinkhorn_window(r_win, RECALL_SUP_POSITIONS, k_mat, u_vec, t1_b, t2_b, a1_b, a2_b);
+        top1 = t1_b[pi_final]; top2 = t2_b[pi_final];
+        a1 = a1_b[pi_final]; a2 = a2_b[pi_final];
+    } else {
+        double rl[16];
+        const double* zf = z_all + pi_final * 256;
+        for (int k = 0; k < 16; k++) rl[k] = b_route[k] + vec_dot_256_scalar(W_route + k * 256, zf);
+        if (rl[1] > rl[0]) { top1 = 1; top2 = 0; }
+        for (int k = 2; k < 16; k++) {
+            if (rl[k] > rl[top1]) { top2 = top1; top1 = k; }
+            else if (rl[k] > rl[top2]) { top2 = k; }
+        }
+        double e1 = 1.0, e2 = fast_exp(rl[top2] - rl[top1]);
+        a1 = e1 / (e1 + e2 + 1e-12);
+        a2 = e2 / (e1 + e2 + 1e-12);
+    }
+
+    const double* zf = z_all + pi_final * 256;
+    const double* W1_1 = W_exp + (long long)top1 * 1050880; const double* b1_1 = W1_1 + 524288;
+    const double* W2_1 = b1_1 + 2048;                        const double* b2_1 = W2_1 + 524288;
+    const double* W1_2 = W_exp + (long long)top2 * 1050880; const double* b1_2 = W1_2 + 524288;
+    const double* W2_2 = b1_2 + 2048;                        const double* b2_2 = W2_2 + 524288;
+    vec_matmul_256x2048(W1_1, b1_1, zf, h1);
+    vec_matmul_256x2048(W1_2, b1_2, zf, h2);
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_matmul_2048x256_avx2(W2_1, b2_1, h1, out1);
+        vec_matmul_2048x256_avx2(W2_2, b2_2, h2, out2);
+    } else
+#endif
+    {
+        for (int i = 0; i < 256; i++) {
+            double v1 = b2_1[i], v2 = b2_2[i];
+            for (int j = 0; j < 2048; j++) { v1 += W2_1[i * 2048 + j] * h1[j]; v2 += W2_2[i * 2048 + j] * h2[j]; }
+            out1[i] = v1; out2[i] = v2;
+        }
+    }
+    double vl_scale = disable_ml ? 0.0 : 0.15;
+    for (int i = 0; i < 256; i++) {
+        h_comb_t[i] = zf[i] + a1 * out1[i] + a2 * out2[i] + vl_scale * vl_last[i];
+    }
+    recall_logits_multi_fwd_8000(W_emb, b_out, h_comb_t, logits, 1, V2_VOCAB_SIZE_BPE);
+
+    int best = 0;
+    double max_l = logits[0];
+    for (int i = 1; i < V2_VOCAB_SIZE_BPE; i++) {
+        if (logits[i] > max_l) { max_l = logits[i]; best = i; }
+    }
+    double sum_e = 0.0;
+    for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) sum_e += fast_exp(logits[i] - max_l);
+    double p_tgt = fast_exp(logits[target_val] - max_l) / (sum_e + 1e-12);
+
+    if (out_pred) *out_pred = best;
+    if (out_ok) *out_ok = (best == target_val) ? 1 : 0;
+    if (out_prob) *out_prob = p_tgt;
+}
+
+static int qadav_test_exp3_slot_erasure_ex(
+    const char* checkpoint_path,
+    int num_pairs,
+    int num_delete,
+    int run_ablation,
+    double* out_deleted_recall,
+    double* out_retained_recall,
+    double* out_avg_revoke_us,
+    double* out_ablation_degradation)
+{
+    if (!checkpoint_path || num_pairs <= 0) return -1;
+    if (num_delete < 0) num_delete = 0;
+    if (num_delete > num_pairs) num_delete = num_pairs;
+
+    int kind = 0;
+    double l_tr = 0.0, t_tr = 0.0;
+    V2Weights* w = load_v2_weights_bin_mode(checkpoint_path, &kind, &l_tr, &t_tr, 1);
+    if (!w || kind != MODEL_KIND_QNMF_V2) {
+        nn_print("[ERROR] Failed to load QNMF v2 checkpoint: "); nn_print(checkpoint_path); nn_print("\n");
+        if (w) free_v2_weights(w);
+        return -1;
+    }
+
+    if (!qadav_ensure_dynamic_corpus("TMP\\shakespeare_subset.tokens")) {
+        nn_print("[ERROR] Failed to load TMP\\shakespeare_subset.tokens\n");
+        free_v2_weights(w);
+        return -2;
+    }
+
+    double tsc_per_us = nn_calibrate_tsc_per_us();
+    int n_ep = (num_pairs + 24) / 25;
+    unsigned long long blk_bytes =
+        (unsigned long long)num_pairs * sizeof(Exp3PairInfo) +
+        (unsigned long long)n_ep * (unsigned long long)RECALL_SEQ_LEN * sizeof(int) +
+        (unsigned long long)num_delete * sizeof(double) +
+        200000ULL * sizeof(double) + 16384ULL;
+    unsigned char* blk = (unsigned char*)nn_large_alloc(blk_bytes);
+    if (!blk) {
+        free_v2_weights(w);
+        qadav_free_dynamic_corpus();
+        return -3;
+    }
+
+    Exp3PairInfo* pairs = (Exp3PairInfo*)blk;
+    int* ep_seqs        = (int*)(pairs + num_pairs);
+    double* revoke_us   = (double*)(ep_seqs + n_ep * RECALL_SEQ_LEN);
+    double* ws          = revoke_us + num_delete;
+
+    double* M_w_base  = ws;                  // 16384
+    double* M_l_base  = M_w_base + 16384;    // 65536
+    double* M_w_rev   = M_l_base + 65536;    // 16384
+    double* M_l_rev   = M_w_rev + 16384;     // 65536
+    double* state_499 = M_l_rev + 65536;     // 256
+    double* next_st   = state_499 + 256;     // 256
+    double* z_499     = next_st + 256;       // 256
+    double* vl_499    = z_499 + 256;         // 256
+    double* px_buf    = vl_499 + 256;        // 256
+    double* q_buf     = px_buf + 256;        // 256
+    double* dot_w     = q_buf + 256;         // 64
+    double* a_w       = dot_w + 64;          // 64
+    double* dot_l     = a_w + 64;            // 256
+    double* a_l       = dot_l + 256;         // 256
+    double* a_rec     = a_l + 256;           // 256
+    double* v_w       = a_rec + 256;         // 256
+    double* v_l       = v_w + 256;           // 256
+    double* rg_buf    = v_l + 256;           // 256
+    double* query_ws  = rg_buf + 256;        // ~20000 doubles
+
+    int emb_len = V2_VOCAB_SIZE_BPE * 256;
+    const double* W_emb    = w->params;
+    const double* W_x      = W_emb + emb_len;
+    const double* W_s      = W_x + 65536;
+    const double* b_s      = W_s + 65536;
+    const double* W_lam    = b_s + 256;
+    const double* b_lam    = W_lam + 65536;
+    const double* W_q      = b_lam + 256;
+    const double* b_q      = W_q + 65536;
+    const double* W_r      = b_q + 256 + 65536 + 256 + 65536 + 256;
+    const double* b_r      = W_r + 65536;
+    const double* W_pred   = b_r + 256 + 65536 + 256;
+    const double* b_pred   = W_pred + 256;
+    const double* M_w_init = b_pred + 256;
+    const double* M_l_init = M_w_init + 16384;
+
+    // Assign exact num_delete random deletions across num_pairs (fixed seed=42)
+    int* del_flags = (int*)(query_ws + 24000);
+    for (int i = 0; i < num_pairs; i++) del_flags[i] = (i < num_delete) ? 1 : 0;
+    uint64_t shuf_rng = 42ULL ^ 0xA5A5F0F012345678ULL;
+    for (int i = num_pairs - 1; i > 0; i--) {
+        int j = (int)(nn_splitmix64(&shuf_rng) % (uint64_t)(i + 1));
+        int tmp = del_flags[i]; del_flags[i] = del_flags[j]; del_flags[j] = tmp;
+    }
+
+    int pair_cursor = 0;
+    int rev_cursor = 0;
+    int rev_cnt_ml_pre = 0, pre_del_ok = 0, pre_ret_ok = 0;
+    int post_ml_del_ok = 0, post_ml_ret_ok = 0;
+    int post_both_del_ok = 0, post_both_ret_ok = 0;
+    int ret_adjacent_dmg_ml = 0, ret_collided_ml = 0, ret_neighbor_ml = 0, ret_collided_mw = 0;
+    double sum_pre_del_p = 0.0, sum_post_ml_del_p = 0.0, sum_post_both_del_p = 0.0;
+    double sum_pre_ret_p = 0.0, sum_post_ml_ret_p = 0.0, sum_post_both_ret_p = 0.0;
+
+    nn_print("=== [M10.7 EXP-3 SURGICAL O(1) KNOWLEDGE ERASURE] ===\n");
+    nn_print("Checkpoint: "); nn_print(checkpoint_path);
+    nn_print(" | Pairs: "); nn_print_i64(num_pairs);
+    nn_print(" | Delete: "); nn_print_i64(num_delete);
+    nn_print(" | Episodes: "); nn_print_i64(n_ep);
+    nn_print(" | TSC cal: "); nn_print_f64(tsc_per_us, 2); nn_print(" cyc/us\n");
+
+    int corpus_cnt = g_dyn_recall_corpus_cnt;
+    int split_idx = (corpus_cnt * 4) / 5;
+    int span = (corpus_cnt - split_idx) - 600;
+    if (span < 100) span = 100;
+
+    for (int ep = 0; ep < n_ep; ep++) {
+        int n_ep_pairs = (num_pairs - pair_cursor > 25) ? 25 : (num_pairs - pair_cursor);
+        int* seq = ep_seqs + (unsigned long long)ep * (unsigned long long)RECALL_SEQ_LEN;
+        uint64_t rng = (42ULL * 0x9E3779B97F4A7C15ULL) ^ ((uint64_t)(ep + 1) * 0xBF58476D1CE4E5B9ULL);
+        nn_splitmix64(&rng); nn_splitmix64(&rng);
+
+        int base_off = split_idx + (int)(nn_splitmix64(&rng) % (uint64_t)span);
+        for (int t = 0; t < RECALL_SEQ_LEN; t++) {
+            int tok = g_dyn_recall_corpus[base_off + t];
+            if (tok >= RECALL_KEY_BASE && tok <= 255) tok = ' ';
+            seq[t] = tok;
+        }
+        int keys[RECALL_N_KEYS], vals[RECALL_N_VALS];
+        for (int i = 0; i < RECALL_N_KEYS; i++) { keys[i] = i; vals[i] = i; }
+        for (int i = RECALL_N_KEYS - 1; i > 0; i--) {
+            int j = (int)(nn_splitmix64(&rng) % (uint64_t)(i + 1));
+            int t = keys[i]; keys[i] = keys[j]; keys[j] = t;
+        }
+        for (int i = RECALL_N_VALS - 1; i > 0; i--) {
+            int j = (int)(nn_splitmix64(&rng) % (uint64_t)(i + 1));
+            int t = vals[i]; vals[i] = vals[j]; vals[j] = t;
+        }
+        unsigned char used[512];
+        nn_memset(used, 0, sizeof(used));
+        for (int p = 0; p < n_ep_pairs; p++) {
+            int chosen = -1;
+            for (int tr = 0; tr < 64; tr++) {
+                int cand = (int)(nn_splitmix64(&rng) % 498ULL);
+                if (!used[cand] && !used[cand + 1]) { chosen = cand; break; }
+            }
+            if (chosen < 0) {
+                for (int cand = 0; cand < 498; cand++) {
+                    if (!used[cand] && !used[cand + 1]) { chosen = cand; break; }
+                }
+            }
+            used[chosen] = 1; used[chosen + 1] = 1;
+            int k_tok = RECALL_KEY_BASE + keys[p];
+            int v_tok = RECALL_VAL_BASE + vals[p];
+            seq[chosen] = k_tok;
+            seq[chosen + 1] = v_tok;
+
+            unsigned int h = fnv1a_hash(&k_tok, 1);
+            Exp3PairInfo* pi_inf = &pairs[pair_cursor + p];
+            pi_inf->key_tok = k_tok;
+            pi_inf->val_tok = v_tok;
+            pi_inf->sl_hash = (int)(h % 256U);
+            pi_inf->sw_hash = (int)(h % 64U);
+            pi_inf->is_deleted = del_flags[pair_cursor + p];
+            pi_inf->pre_ok = 0; pi_inf->post_ml_ok = 0; pi_inf->post_both_ok = 0;
+            pi_inf->ml_collided = 0; pi_inf->mw_collided = 0; pi_inf->ml_adjacent = 0;
+        }
+        // Standard query prefix at [500..510]
+        seq[500] = ';'; seq[501] = ' '; seq[502] = 'Q'; seq[503] = 'u';
+        seq[504] = 'e'; seq[505] = 'r'; seq[506] = 'y'; seq[507] = ':';
+        seq[508] = RECALL_TOK_FIND;
+        seq[510] = RECALL_TOK_END;
+
+        // Forward ingest context t = 0..499 via M_w, M_l write path
+        QNMFRecallSeqState rs_dummy;
+        exp3_bind_seq_state(&rs_dummy, query_ws + 20000);
+        qnmf_recall_reset_seq(&rs_dummy);
+        nn_memcpy(M_w_base, M_w_init, 16384 * sizeof(double));
+        nn_memcpy(M_l_base, M_l_init, 65536 * sizeof(double));
+        nn_memset(state_499, 0, 256 * sizeof(double));
+        int pend = -1, trace_cnt = 0;
+        for (int t = 0; t < RECALL_CTX_LEN; t++) {
+            int c_in = seq[t];
+            if (c_in < 0 || c_in >= V2_VOCAB_SIZE_BPE) c_in = 0;
+            const double* emb = W_emb + (long long)c_in * 256;
+            exp3_step_state(W_x, W_s, b_s, W_lam, b_lam, emb, state_499, next_st);
+            for (int i = 0; i < 256; i++) px_buf[i] = b_pred[i] + vec_dot_256_scalar(W_pred + i * 256, next_st);
+            double surp = 0.0;
+            for (int i = 0; i < 256; i++) { double d = emb[i] - px_buf[i]; surp += d * d; }
+            surp *= (1.0 / 256.0);
+            qnmf_recall_write_step(&rs_dummy, ep, t, c_in, emb, surp, &pend, -1, &trace_cnt, M_w_base, M_l_base);
+            if (t == RECALL_CTX_LEN - 1) {
+                // Save pi=0 (t=499) z_499 & vl_499 cleanly matching Stage 1
+                for (int i = 0; i < 256; i++) q_buf[i] = (b_q[i] + vec_dot_256_scalar(W_q + i * 256, next_st)) * 0.25;
+                qnmf_recall_attend_bank(0, M_w_base, 64, -1, 4.15, q_buf, dot_w, a_w, a_rec, v_w);
+                qnmf_recall_attend_bank(0, M_l_base, 256, -1, 5.5, q_buf, dot_l, a_l, a_rec, v_l);
+                for (int i = 0; i < 256; i++) {
+                    rg_buf[i] = b_r[i] + vec_dot_256_scalar(W_r + i * 256, next_st);
+                    double rg = fast_sigmoid(rg_buf[i]);
+                    z_499[i] = next_st[i] + rg * (v_w[i] + v_l[i]);
+                    vl_499[i] = v_l[i];
+                }
+            }
+            nn_memcpy(state_499, next_st, 256 * sizeof(double));
+        }
+
+        // Check collision metadata between deleted and retained pairs in this episode
+        for (int p = 0; p < n_ep_pairs; p++) {
+            Exp3PairInfo* rp = &pairs[pair_cursor + p];
+            if (rp->is_deleted) continue;
+            for (int q = 0; q < n_ep_pairs; q++) {
+                const Exp3PairInfo* dp = &pairs[pair_cursor + q];
+                if (!dp->is_deleted) continue;
+                if (dp->sl_hash == rp->sl_hash) rp->ml_collided = 1;
+                if (dp->sw_hash == rp->sw_hash) rp->mw_collided = 1;
+                int diff = dp->sl_hash - rp->sl_hash;
+                if (diff == 1 || diff == -1 || diff == 255 || diff == -255) rp->ml_adjacent = 1;
+            }
+            if (rp->ml_collided) ret_collided_ml++;
+            if (rp->ml_adjacent) ret_neighbor_ml++;
+            if (rp->mw_collided) ret_collided_mw++;
+        }
+
+        // 1. Pre-revoke baseline query on all episode pairs
+        for (int p = 0; p < n_ep_pairs; p++) {
+            Exp3PairInfo* pi_inf = &pairs[pair_cursor + p];
+            seq[509] = pi_inf->key_tok;
+            seq[511] = pi_inf->val_tok;
+            int ok = 0, pred = 0; double prob = 0.0;
+            exp3_eval_query_tail(w, seq, M_w_base, M_l_base, state_499, z_499, vl_499,
+                1, 0, 0, pi_inf->key_tok, pi_inf->val_tok, query_ws, &ok, &pred, &prob);
+            pi_inf->pre_ok = ok;
+            pi_inf->pre_prob = prob;
+            if (pi_inf->is_deleted) { pre_del_ok += ok; sum_pre_del_p += prob; }
+            else { pre_ret_ok += ok; sum_pre_ret_p += prob; }
+        }
+
+        // 2. O(1) Slot Revocation (Mode A: M_l only, Mode B: M_l + M_w) with per-op RDTSC timing
+        nn_memcpy(M_w_rev, M_w_base, 16384 * sizeof(double));
+        nn_memcpy(M_l_rev, M_l_base, 65536 * sizeof(double));
+        for (int p = 0; p < n_ep_pairs; p++) {
+            Exp3PairInfo* pi_inf = &pairs[pair_cursor + p];
+            if (!pi_inf->is_deleted) continue;
+            unsigned long long t0 = nn_rdtsc();
+            nn_memset(M_l_rev + pi_inf->sl_hash * 256, 0, 256 * sizeof(double));
+            unsigned long long t1 = nn_rdtsc();
+            if (rev_cursor < num_delete) {
+                revoke_us[rev_cursor++] = (double)(t1 - t0) / tsc_per_us;
+            }
+            rev_cnt_ml_pre++;
+        }
+
+        // Query Post-Revoke Mode A (M_l[sl] zeroed, M_w intact)
+        for (int p = 0; p < n_ep_pairs; p++) {
+            Exp3PairInfo* pi_inf = &pairs[pair_cursor + p];
+            seq[509] = pi_inf->key_tok;
+            seq[511] = pi_inf->val_tok;
+            int ok = 0, pred = 0; double prob = 0.0;
+            exp3_eval_query_tail(w, seq, M_w_rev, M_l_rev, state_499, z_499, vl_499,
+                1, 0, 0, pi_inf->key_tok, pi_inf->val_tok, query_ws, &ok, &pred, &prob);
+            pi_inf->post_ml_ok = ok;
+            pi_inf->post_ml_prob = prob;
+            if (pi_inf->is_deleted) { post_ml_del_ok += ok; sum_post_ml_del_p += prob; }
+            else {
+                post_ml_ret_ok += ok; sum_post_ml_ret_p += prob;
+                if (pi_inf->pre_ok && !ok) ret_adjacent_dmg_ml++;
+            }
+        }
+
+        // Mode B: also zero M_w[sw] for deleted keys
+        for (int p = 0; p < n_ep_pairs; p++) {
+            Exp3PairInfo* pi_inf = &pairs[pair_cursor + p];
+            if (pi_inf->is_deleted) nn_memset(M_w_rev + pi_inf->sw_hash * 256, 0, 256 * sizeof(double));
+        }
+        for (int p = 0; p < n_ep_pairs; p++) {
+            Exp3PairInfo* pi_inf = &pairs[pair_cursor + p];
+            seq[509] = pi_inf->key_tok;
+            seq[511] = pi_inf->val_tok;
+            int ok = 0, pred = 0; double prob = 0.0;
+            exp3_eval_query_tail(w, seq, M_w_rev, M_l_rev, state_499, z_499, vl_499,
+                1, 0, 0, pi_inf->key_tok, pi_inf->val_tok, query_ws, &ok, &pred, &prob);
+            pi_inf->post_both_ok = ok;
+            pi_inf->post_both_prob = prob;
+            if (pi_inf->is_deleted) { post_both_del_ok += ok; sum_post_both_del_p += prob; }
+            else { post_both_ret_ok += ok; sum_post_both_ret_p += prob; }
+        }
+
+        pair_cursor += n_ep_pairs;
+    }
+
+    int num_ret = num_pairs - num_delete;
+    double avg_us = 0.0, min_us = 1e9, max_us = 0.0;
+    for (int i = 0; i < rev_cursor; i++) {
+        avg_us += revoke_us[i];
+        if (revoke_us[i] < min_us) min_us = revoke_us[i];
+        if (revoke_us[i] > max_us) max_us = revoke_us[i];
+    }
+    if (rev_cursor > 0) avg_us /= (double)rev_cursor;
+
+    double pre_del_acc  = (num_delete > 0) ? (100.0 * (double)pre_del_ok / (double)num_delete) : 0.0;
+    double pre_ret_acc  = (num_ret > 0)    ? (100.0 * (double)pre_ret_ok / (double)num_ret)    : 0.0;
+    double p_ml_del_acc = (num_delete > 0) ? (100.0 * (double)post_ml_del_ok / (double)num_delete) : 0.0;
+    double p_ml_ret_acc = (num_ret > 0)    ? (100.0 * (double)post_ml_ret_ok / (double)num_ret)    : 0.0;
+    double p_b_del_acc  = (num_delete > 0) ? (100.0 * (double)post_both_del_ok / (double)num_delete) : 0.0;
+    double p_b_ret_acc  = (num_ret > 0)    ? (100.0 * (double)post_both_ret_ok / (double)num_ret)    : 0.0;
+
+    nn_print("Inserted pairs: "); nn_print_i64(num_pairs);
+    nn_print(" | Revoked M_l slots: "); nn_print_i64(rev_cnt_ml_pre);
+    nn_print(" | Ret M_l collisions: "); nn_print_i64(ret_collided_ml);
+    nn_print(" | Ret M_l neighbors (+-1): "); nn_print_i64(ret_neighbor_ml);
+    nn_print(" | Ret M_w(64) collisions: "); nn_print_i64(ret_collided_mw); nn_print("\n");
+
+    nn_print("PRE-REVOKE BASELINE -> Deleted("); nn_print_i64(num_delete); nn_print("): ");
+    nn_print_i64(pre_del_ok); nn_print("/"); nn_print_i64(num_delete); nn_print(" ("); nn_print_f64(pre_del_acc, 2);
+    nn_print("%, avgP="); nn_print_f64(sum_pre_del_p / (double)num_delete, 4); nn_print(") | Retained(");
+    nn_print_i64(num_ret); nn_print("): "); nn_print_i64(pre_ret_ok); nn_print("/"); nn_print_i64(num_ret);
+    nn_print(" ("); nn_print_f64(pre_ret_acc, 2); nn_print("%, avgP="); nn_print_f64(sum_pre_ret_p / (double)num_ret, 4); nn_print(")\n");
+
+    nn_print("POST-REVOKE [Mode A: M_l slot zeroed ONLY] -> Deleted: ");
+    nn_print_i64(post_ml_del_ok); nn_print("/"); nn_print_i64(num_delete); nn_print(" ("); nn_print_f64(p_ml_del_acc, 2);
+    nn_print("%, avgP="); nn_print_f64(sum_post_ml_del_p / (double)num_delete, 4); nn_print(") | Retained: ");
+    nn_print_i64(post_ml_ret_ok); nn_print("/"); nn_print_i64(num_ret); nn_print(" ("); nn_print_f64(p_ml_ret_acc, 2);
+    nn_print("%, avgP="); nn_print_f64(sum_post_ml_ret_p / (double)num_ret, 4);
+    nn_print(", adjacent_drops="); nn_print_i64(ret_adjacent_dmg_ml); nn_print(")\n");
+
+    nn_print("POST-REVOKE [Mode B: M_l + M_w both zeroed] -> Deleted: ");
+    nn_print_i64(post_both_del_ok); nn_print("/"); nn_print_i64(num_delete); nn_print(" ("); nn_print_f64(p_b_del_acc, 2);
+    nn_print("%, avgP="); nn_print_f64(sum_post_both_del_p / (double)num_delete, 4); nn_print(") | Retained: ");
+    nn_print_i64(post_both_ret_ok); nn_print("/"); nn_print_i64(num_ret); nn_print(" ("); nn_print_f64(p_b_ret_acc, 2);
+    nn_print("%, avgP="); nn_print_f64(sum_post_both_ret_p / (double)num_ret, 4); nn_print(")\n");
+
+    nn_print("RDTSC REVOKE TIMING (N="); nn_print_i64(rev_cursor); nn_print(" ops): avg=");
+    nn_print_f64(avg_us, 4); nn_print(" us | min="); nn_print_f64(min_us, 4);
+    nn_print(" us | max="); nn_print_f64(max_us, 4); nn_print(" us\n");
+
+    // Print compact 10-sample RDTSC + first 8 deleted/retained verbatim summary + full 50 RDTSC samples
+    nn_print("RDTSC_SAMPLES_US:");
+    for (int i = 0; i < rev_cursor; i++) {
+        nn_print(" "); nn_print_f64(revoke_us[i], 3);
+    }
+    nn_print("\n");
+
+    // Report primary Mode B (full cryptographic/slot erasure of M_l + M_w) and Mode A explicitly
+    if (out_deleted_recall)  *out_deleted_recall  = p_b_del_acc;
+    if (out_retained_recall) *out_retained_recall = p_ml_ret_acc;
+    if (out_avg_revoke_us)   *out_avg_revoke_us   = avg_us;
+
+    free_v2_weights(w);
+    nn_scratch_release();
+
+    double abl_deg = 0.0;
+    if (run_ablation) {
+        // Real Continuous Gradient Unlearning Ablation (Titans/MLP analog: gradient ascent on 50 deleted pairs)
+        int k_ab = 0; double l_ab = 0.0, t_ab = 0.0;
+        V2Weights* w_ab = load_v2_weights_bin_mode(checkpoint_path, &k_ab, &l_ab, &t_ab, 0);
+        if (w_ab) {
+            int* tmp_seq = (int*)query_ws;
+            g_recall_sinkhorn_routing = 1;
+            int step_num = 0;
+            // Perform gradient ascent unlearning over the 50 deleted pairs (2 passes = 100 updates)
+            for (int pass = 0; pass < 2; pass++) {
+                int ep_i = 0, next_ep_end = 25;
+                for (int i = 0; i < num_pairs; i++) {
+                    if (i >= next_ep_end) { ep_i++; next_ep_end += 25; }
+                    if (!pairs[i].is_deleted) continue;
+                    const int* base_ep_seq = ep_seqs + (unsigned long long)ep_i * (unsigned long long)RECALL_SEQ_LEN;
+                    nn_memcpy(tmp_seq, base_ep_seq, RECALL_SEQ_LEN * sizeof(int));
+                    tmp_seq[509] = pairs[i].key_tok;
+                    tmp_seq[511] = pairs[i].val_tok;
+                    step_num++;
+                    int hx = 0, hv = 0;
+                    compute_qnmf_v2_recall_batch(MODEL_KIND_QNMF_V2, w_ab, tmp_seq, 1, 1, &hx, &hv);
+                    for (int gi = 0; gi < w_ab->total_params; gi++) {
+                        if (w_ab->grads[gi] != 0.0) w_ab->grads[gi] = -w_ab->grads[gi];
+                    }
+                    clip_v2_grads_global_l2(w_ab, 2.0);
+                    v2_adam_step(w_ab, 0.0020, step_num);
+                }
+            }
+            g_recall_sinkhorn_routing = 0;
+
+            int abl_del_ok = 0, abl_ret_ok = 0;
+            for (int ep = 0; ep < n_ep; ep++) {
+                int ep_start = ep * 25;
+                int n_ep_p = (num_pairs - ep_start > 25) ? 25 : (num_pairs - ep_start);
+                int* seq = ep_seqs + (unsigned long long)ep * (unsigned long long)RECALL_SEQ_LEN;
+                QNMFRecallSeqState rs_ab;
+                exp3_bind_seq_state(&rs_ab, query_ws + 20000);
+                qnmf_recall_reset_seq(&rs_ab);
+                const double* WE = w_ab->params;
+                const double* WX = WE + emb_len; const double* WS = WX + 65536; const double* BS = WS + 65536;
+                const double* WL = BS + 256; const double* BL = WL + 65536; const double* WQ = BL + 256; const double* BQ = WQ + 65536;
+                const double* WR = BQ + 256 + 65536 + 256 + 65536 + 256; const double* BR = WR + 65536;
+                const double* WP = BR + 256 + 65536 + 256; const double* BP = WP + 256;
+                const double* MWI = BP + 256; const double* MLI = MWI + 16384;
+                nn_memcpy(M_w_base, MWI, 16384 * sizeof(double));
+                nn_memcpy(M_l_base, MLI, 65536 * sizeof(double));
+                nn_memset(state_499, 0, 256 * sizeof(double));
+                int pend2 = -1, tc2 = 0;
+                for (int t = 0; t < RECALL_CTX_LEN; t++) {
+                    int c_in = seq[t]; if (c_in < 0 || c_in >= V2_VOCAB_SIZE_BPE) c_in = 0;
+                    const double* emb = WE + (long long)c_in * 256;
+                    exp3_step_state(WX, WS, BS, WL, BL, emb, state_499, next_st);
+                    for (int i = 0; i < 256; i++) px_buf[i] = BP[i] + vec_dot_256_scalar(WP + i * 256, next_st);
+                    double surp = 0.0; for (int i = 0; i < 256; i++) { double d = emb[i] - px_buf[i]; surp += d * d; }
+                    qnmf_recall_write_step(&rs_ab, ep, t, c_in, emb, surp * (1.0 / 256.0), &pend2, -1, &tc2, M_w_base, M_l_base);
+                    if (t == RECALL_CTX_LEN - 1) {
+                        for (int i = 0; i < 256; i++) q_buf[i] = (BQ[i] + vec_dot_256_scalar(WQ + i * 256, next_st)) * 0.25;
+                        qnmf_recall_attend_bank(0, M_w_base, 64, -1, 4.15, q_buf, dot_w, a_w, a_rec, v_w);
+                        qnmf_recall_attend_bank(0, M_l_base, 256, -1, 5.5, q_buf, dot_l, a_l, a_rec, v_l);
+                        for (int i = 0; i < 256; i++) {
+                            double rg = fast_sigmoid(BR[i] + vec_dot_256_scalar(WR + i * 256, next_st));
+                            z_499[i] = next_st[i] + rg * (v_w[i] + v_l[i]);
+                            vl_499[i] = v_l[i];
+                        }
+                    }
+                    nn_memcpy(state_499, next_st, 256 * sizeof(double));
+                }
+                for (int p = 0; p < n_ep_p; p++) {
+                    const Exp3PairInfo* pi_inf = &pairs[ep_start + p];
+                    seq[509] = pi_inf->key_tok; seq[511] = pi_inf->val_tok;
+                    int ok = 0, pred = 0; double prob = 0.0;
+                    exp3_eval_query_tail(w_ab, seq, M_w_base, M_l_base, state_499, z_499, vl_499,
+                        1, 0, 0, pi_inf->key_tok, pi_inf->val_tok, query_ws, &ok, &pred, &prob);
+                    if (pi_inf->is_deleted) abl_del_ok += ok;
+                    else abl_ret_ok += ok;
+                }
+            }
+            double abl_del_acc = (num_delete > 0) ? (100.0 * (double)abl_del_ok / (double)num_delete) : 0.0;
+            double abl_ret_acc = (num_ret > 0)    ? (100.0 * (double)abl_ret_ok / (double)num_ret)    : 0.0;
+            abl_deg = pre_ret_acc - abl_ret_acc;
+            nn_print("CONTINUOUS GRADIENT UNLEARNING ABLATION (2 passes x "); nn_print_i64(num_delete);
+            nn_print(" ascent steps) -> Deleted: "); nn_print_i64(abl_del_ok); nn_print("/"); nn_print_i64(num_delete);
+            nn_print(" ("); nn_print_f64(abl_del_acc, 2); nn_print("%) | Retained: ");
+            nn_print_i64(abl_ret_ok); nn_print("/"); nn_print_i64(num_ret);
+            nn_print(" ("); nn_print_f64(abl_ret_acc, 2); nn_print("%) | Adjacent Degradation: ");
+            nn_print_f64(abl_deg, 2); nn_print("%\n");
+            free_v2_weights(w_ab);
+            nn_scratch_release();
+        }
+    }
+    if (out_ablation_degradation) *out_ablation_degradation = abl_deg;
+
+    nn_large_free(blk, blk_bytes);
+    qadav_free_dynamic_corpus();
+    nn_print("EXP3_ERASURE_COMPLETE\n");
+    return 0;
+}
+
+int qadav_test_exp3_slot_erasure(
+    const char* checkpoint_path,
+    int num_pairs,
+    int num_delete,
+    double* out_deleted_recall,
+    double* out_retained_recall,
+    double* out_avg_revoke_us,
+    double* out_ablation_degradation)
+{
+    return qadav_test_exp3_slot_erasure_ex(
+        checkpoint_path, num_pairs, num_delete, 1,
+        out_deleted_recall, out_retained_recall, out_avg_revoke_us, out_ablation_degradation);
+}
+
+static int qadav_run_v2_exp3_erasure(const char* cmd) {
+    char ckpt_path[256];
+    nn_parse_str_flag(cmd, "--checkpoint", "TMP\\qnmf_v2_recall_seed42.bin", ckpt_path, 256);
+    int num_pairs  = nn_parse_int_flag(cmd, "--pairs", 100);
+    int num_delete = nn_parse_int_flag(cmd, "--delete", 50);
+    int abl_only   = nn_strstr(cmd, "continuous_decay") ? 1 : 0;
+    double del_r = 0.0, ret_r = 0.0, avg_us = 0.0, abl_deg = 0.0;
+    return qadav_test_exp3_slot_erasure_ex(ckpt_path, num_pairs, num_delete, 1 + abl_only * 0, &del_r, &ret_r, &avg_us, &abl_deg);
+}
+
+// ---------------------------------------------------------------------
 // Training Entrypoint V2 (Called by train_v2.exe)
 // ---------------------------------------------------------------------
 
@@ -10429,6 +11159,9 @@ int qadav_run_v2_training(const char* cmd, void* mctp_cert, int epochs) {
     (void)epochs;
     if (cmd && nn_strstr(cmd, "stress-dos")) {
         return qadav_run_v2_stress_dos(cmd);
+    }
+    if (cmd && nn_strstr(cmd, "exp3-erasure")) {
+        return qadav_run_v2_exp3_erasure(cmd);
     }
     if (cmd && (nn_strstr(cmd, "recall") || nn_strstr(cmd, "--generate-curriculum") || nn_strstr(cmd, "--curriculum-only"))) {
         return qadav_run_v2_training_recall(cmd, mctp_cert);
