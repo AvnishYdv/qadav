@@ -5902,6 +5902,13 @@ static void qnmf_recall_mem_bwd_bank(
     }
 }
 
+static int g_recall_sinkhorn_routing = 0;
+static long long g_recall_route_counts[16];
+static void qnmf_dos_route_sinkhorn_window(
+    const double* r_win, int B,
+    double* K_mat, double* u_vec,
+    int* top1_out, int* top2_out, double* a1_out, double* a2_out);
+
 static double compute_qnmf_v2_recall_batch(
     int model_kind, V2Weights* w, const int* batch_seqs, int batch_size, int is_training, int* out_exact_hits, int* out_val50_hits)
 {
@@ -6047,6 +6054,53 @@ static double compute_qnmf_v2_recall_batch(
 #endif
     {
         run_qnmf_recall_s1_range(&s1_ctx, 0, batch_size, tmp0);
+    }
+
+    if (g_recall_sinkhorn_routing && batch_size * RECALL_SUP_POSITIONS <= 64) {
+        int b_tok = batch_size * RECALL_SUP_POSITIONS;
+        double* sk_ws = d_emb_slot + 256;
+        double* r_win = sk_ws;               // 1024
+        double* k_mat = r_win + 1024;        // 1024
+        double* u_vec = k_mat + 1024;        // 64
+        double* a1_b  = u_vec + 64;          // 64
+        double* a2_b  = a1_b + 64;           // 64
+        int*    t1_b  = (int*)(a2_b + 64);   // 64 ints
+        int*    t2_b  = t1_b + 64;           // 64 ints
+        for (int sb = 0; sb < batch_size; sb++) {
+            QNMFRecallSeqState* rs = &rec[sb];
+            for (int pi = 0; pi < RECALL_SUP_POSITIONS; pi++) {
+                const double* z_p = rs->z_all + pi * 256;
+                double* r_dst = r_win + (sb * RECALL_SUP_POSITIONS + pi) * 16;
+#if defined(__x86_64__) || defined(_M_X64)
+                if (qadav_cpu_supports_avx2()) {
+                    vec_matvec_Nx256_avx2(W_route, b_route, z_p, r_dst, 1.0, 16);
+                } else
+#endif
+                {
+                    for (int k = 0; k < 16; k++) r_dst[k] = b_route[k] + vec_dot_256_scalar(W_route + k * 256, z_p);
+                }
+            }
+        }
+        qnmf_dos_route_sinkhorn_window(r_win, b_tok, k_mat, u_vec, t1_b, t2_b, a1_b, a2_b);
+        for (int sb = 0; sb < batch_size; sb++) {
+            QNMFRecallSeqState* rs = &rec[sb];
+            for (int pi = 0; pi < RECALL_SUP_POSITIONS; pi++) {
+                int bi = sb * RECALL_SUP_POSITIONS + pi;
+                rs->top1[pi] = t1_b[bi];
+                rs->top2[pi] = t2_b[bi];
+                rs->a1[pi] = a1_b[bi];
+                rs->a2[pi] = a2_b[bi];
+            }
+        }
+    }
+    if (is_training == 1) {
+        for (int sb = 0; sb < batch_size; sb++) {
+            QNMFRecallSeqState* rs = &rec[sb];
+            for (int pi = 0; pi < RECALL_SUP_POSITIONS; pi++) {
+                if (rs->top1[pi] >= 0 && rs->top1[pi] < 16) g_recall_route_counts[rs->top1[pi]]++;
+                if (rs->top2[pi] >= 0 && rs->top2[pi] < 16) g_recall_route_counts[rs->top2[pi]]++;
+            }
+        }
     }
 
     double total_loss = 0.0;
@@ -9238,6 +9292,10 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
     int use_static = (nn_strstr(cmd, "--static") || force_regen || curriculum_only) ? 1 : 0;
     int dump_samples = nn_parse_int_flag(cmd, "--dump-samples", force_regen ? 3 : 0);
     g_qnmf_trace_slots = nn_strstr(cmd, "--trace-slots") ? 1 : 0;
+    char routing_str[64];
+    nn_parse_str_flag(cmd, "--routing", "heuristic_top2", routing_str, 64);
+    g_recall_sinkhorn_routing = nn_strstr(routing_str, "sinkhorn") ? 1 : 0;
+    nn_memset(g_recall_route_counts, 0, sizeof(g_recall_route_counts));
 
     char curr_path[256], bpe_path[256], toks_path[256];
     nn_parse_str_flag(cmd, "--curriculum", "TMP\\synthetic_recall_v1.bin", curr_path, 256);
@@ -9298,7 +9356,12 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
     nn_print("Parameters: "); nn_print_i64(param_count);
     nn_print(" | Vocab: 8000 | SeqLen: 512 | SupPos: "); nn_print_i64(RECALL_SUP_POSITIONS);
     nn_print(" | Batch: 4 | Seed: "); nn_print_i64(seed);
-    nn_print(" | Steps: "); nn_print_i64(total_steps); nn_print("\n");
+    nn_print(" | Steps: "); nn_print_i64(total_steps);
+    if (model_kind != MODEL_KIND_TRANSFORMER_V2) {
+        nn_print(" | Routing: ");
+        nn_print(g_recall_sinkhorn_routing ? "sinkhorn_training" : "heuristic_top2");
+    }
+    nn_print("\n");
 
     int log_steps[256];
     double log_losses[256];
@@ -9455,7 +9518,34 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
     nn_print("=== ["); nn_print(m_name); nn_print(" RECALL TRAINING COMPLETE] ===\n");
     nn_print("Final Loss: "); nn_print_f64(final_loss, 4);
     nn_print(" | Total Time: "); nn_print_f64(total_train_s, 2);
-    nn_print("s | Saved: "); nn_print(bin_path); nn_print("\n\n");
+    nn_print("s | Saved: "); nn_print(bin_path); nn_print("\n");
+
+    if (model_kind != MODEL_KIND_TRANSFORMER_V2) {
+        long long tot_assign = 0;
+        for (int k = 0; k < 16; k++) tot_assign += g_recall_route_counts[k];
+        if (tot_assign > 0) {
+            double var_pop = 0.0, ssd_var = 0.0, max_frac = 0.0;
+            int active_ex = 0;
+            nn_print("--- Training Routing Distribution (");
+            nn_print(g_recall_sinkhorn_routing ? "sinkhorn_training" : "heuristic_top2");
+            nn_print(", total_assignments="); nn_print_i64(tot_assign); nn_print(") ---\n");
+            for (int k = 0; k < 16; k++) {
+                double frac = (double)g_recall_route_counts[k] / (double)tot_assign;
+                if (g_recall_route_counts[k] > 0) active_ex++;
+                if (frac > max_frac) max_frac = frac;
+                double d = frac - (1.0 / 16.0);
+                ssd_var += d * d;
+                nn_print("  Expert["); nn_print_i64(k); nn_print("]: "); nn_print_i64(g_recall_route_counts[k]);
+                nn_print(" ("); nn_print_f64(frac, 4); nn_print(")\n");
+            }
+            var_pop = ssd_var / 16.0;
+            nn_print("ROUTING_STATS: Active="); nn_print_i64(active_ex);
+            nn_print("/16 | Var_pop="); nn_print_f64(var_pop, 6);
+            nn_print(" | SSD_Var="); nn_print_f64(ssd_var, 6);
+            nn_print(" | MaxFrac="); nn_print_f64(max_frac, 4); nn_print("\n");
+        }
+    }
+    nn_print("\n");
 
     nn_large_free(batch_buf, 4ULL * (unsigned long long)RECALL_SEQ_LEN * sizeof(int));
     free_v2_weights(w);
@@ -9463,6 +9553,7 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
     if (curr_data) nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
     qadav_free_dynamic_corpus();
     g_qnmf_trace_slots = 0;
+    g_recall_sinkhorn_routing = 0;
     return 0;
 }
 
@@ -9502,10 +9593,13 @@ static void eval_single_recall_ckpt(const char* ckpt_path, int expected_kind, co
 }
 
 static int qadav_run_v2_evaluation_recall(const char* cmd) {
-    char curr_path[256], bpe_path[256], toks_path[256];
+    char curr_path[256], bpe_path[256], toks_path[256], ckpt_path[256], routing_str[64];
     nn_parse_str_flag(cmd, "--curriculum", "TMP\\synthetic_recall_v1.bin", curr_path, 256);
     nn_parse_str_flag(cmd, "--bpe", "TMP\\bpe_v8k.bin", bpe_path, 256);
     nn_parse_str_flag(cmd, "--tokens", "TMP\\shakespeare_subset.tokens", toks_path, 256);
+    nn_parse_str_flag(cmd, "--checkpoint", "", ckpt_path, 256);
+    nn_parse_str_flag(cmd, "--routing", "heuristic_top2", routing_str, 64);
+    g_recall_sinkhorn_routing = nn_strstr(routing_str, "sinkhorn") ? 1 : 0;
 
     int is_50m = (nn_strstr(cmd, "--scale 50m") || nn_strstr(cmd, "--50m")) ? 1 : 0;
     int use_static = nn_strstr(cmd, "--static") ? 1 : 0;
@@ -9550,14 +9644,35 @@ static int qadav_run_v2_evaluation_recall(const char* cmd) {
     nn_print("Mode: "); nn_print(use_static ? "STATIC (" : "DYNAMIC (seed=");
     if (use_static) { nn_print(curr_path); nn_print(")"); }
     else { nn_print_i64(dyn_seed); nn_print(", held-out 20% split)"); }
-    nn_print(" | Eval Unseen: "); nn_print_i64(n_eval); nn_print(" examples\n");
+    nn_print(" | Eval Unseen: "); nn_print_i64(n_eval); nn_print(" examples | Routing: ");
+    nn_print(g_recall_sinkhorn_routing ? "sinkhorn" : "heuristic_top2");
+    if (ckpt_path[0]) { nn_print(" | Checkpoint: "); nn_print(ckpt_path); }
+    nn_print("\n");
     nn_print("Model                 | Seed | Exact V=8K Acc | Top50-Val Acc | EvalLoss12 | AnsLoss511 | Train Time\n");
     nn_print("----------------------+------+----------------+---------------+------------+------------+-----------\n");
 
     double q_acc[5], q_v50[5], q_loss[5], q_ans[5], q_t[5]; int q_n = 0;
     double tf_acc[5], tf_v50[5], tf_loss[5], tf_ans[5], tf_t[5]; int tf_n = 0;
 
-    for (int si = 0; si < n_seeds; si++) {
+    if (ckpt_path[0]) {
+        int exp_kind = nn_strstr(cmd, "transformer") ? MODEL_KIND_TRANSFORMER_V2 : MODEL_KIND_QNMF_V2;
+        double acc = -1.0, v50 = 0.0, el = 0.0, al = 0.0, tt = 0.0;
+        eval_single_recall_ckpt(ckpt_path, exp_kind, eval_seqs, n_eval, &acc, &v50, &el, &al, &tt);
+        if (acc >= 0.0) {
+            if (exp_kind == MODEL_KIND_TRANSFORMER_V2) {
+                tf_acc[0] = acc; tf_v50[0] = v50; tf_loss[0] = el; tf_ans[0] = al; tf_t[0] = tt; tf_n = 1;
+                nn_print(is_50m ? "Trans 50M (50.08M)    | ckpt | " : "Transformer v2(19.66M)| ckpt | ");
+            } else {
+                q_acc[0] = acc; q_v50[0] = v50; q_loss[0] = el; q_ans[0] = al; q_t[0] = tt; q_n = 1;
+                nn_print(is_50m ? "QNMF 50M (50.22M)     | ckpt | " : "QNMF v2 (19.55M)      | ckpt | ");
+            }
+            nn_print_f64(acc, 2); nn_print("%        | ");
+            nn_print_f64(v50, 2); nn_print("%       | ");
+            nn_print_f64(el, 4); nn_print("     | ");
+            nn_print_f64(al, 4); nn_print("     | ");
+            nn_print_f64(tt, 1); nn_print("s\n");
+        }
+    } else for (int si = 0; si < n_seeds; si++) {
         int sd = seeds[si];
         if (only_ckpt_seed > 0 && sd != only_ckpt_seed) continue;
         char bp[96];
@@ -9630,6 +9745,7 @@ static int qadav_run_v2_evaluation_recall(const char* cmd) {
     if (use_static) nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
     else nn_large_free(curr_data, (unsigned long long)n_eval * (unsigned long long)RECALL_SEQ_LEN * sizeof(int));
     qadav_free_dynamic_corpus();
+    g_recall_sinkhorn_routing = 0;
     return 0;
 }
 

@@ -172,12 +172,12 @@ void qadav_mctp_record_epochs(qadav_training_cert* c, int epochs,
             qadav_run_v3_worldmodel_train(cmd);
             return;
         }
-        if (mctp_strstr(cmd, "train_v2") || mctp_strstr(cmd, "qnmf_v2") || mctp_strstr(cmd, "transformer_v2")) {
-            qadav_run_v2_training(cmd, (void*)c, epochs);
-            return;
-        }
         if (mctp_strstr(cmd, "eval_v2")) {
             qadav_run_v2_evaluation(cmd);
+            return;
+        }
+        if (mctp_strstr(cmd, "train_v2") || mctp_strstr(cmd, "qnmf_v2") || mctp_strstr(cmd, "transformer_v2")) {
+            qadav_run_v2_training(cmd, (void*)c, epochs);
             return;
         }
         if (mctp_strstr(cmd, "train_toy") || mctp_strstr(cmd, "--model")) {
