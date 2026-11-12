@@ -10450,8 +10450,15 @@ static int qadav_run_v2_stress_dos(const char* cmd) {
 }
 
 // ---------------------------------------------------------------------
-// M10.7: EXP-3 Surgical O(1) Knowledge Erasure & Continuous Ablation
+// M10.7 / M10.8: EXP-3 Surgical O(1) Knowledge Erasure & Abstention Mask
 // ---------------------------------------------------------------------
+
+#define EXP3_ABSTAIN_TOKEN (-1)
+
+typedef struct {
+    int slot_has_value;
+    int is_revoked;
+} SlotMeta;
 
 typedef struct {
     int key_tok;
@@ -10518,6 +10525,7 @@ static void exp3_eval_query_tail(
     const double* z_499, const double* vl_499,
     int use_sinkhorn, int disable_ml, int disable_mw,
     int query_key, int target_val,
+    const SlotMeta* ml_meta, const SlotMeta* mw_meta, int abstain_mask,
     double* ws_buf, int* out_ok, int* out_pred, double* out_prob)
 {
     int emb_len = V2_VOCAB_SIZE_BPE * 256;
@@ -10660,6 +10668,18 @@ static void exp3_eval_query_tail(
             out1[i] = v1; out2[i] = v2;
         }
     }
+    if (abstain_mask && ml_meta && mw_meta && query_key >= 0) {
+        unsigned int qh = fnv1a_hash(&query_key, 1);
+        int q_sl = (int)(qh % 256U);
+        int q_sw = (int)(qh % 64U);
+        if (ml_meta[q_sl].is_revoked && mw_meta[q_sw].is_revoked) {
+            if (out_pred) *out_pred = EXP3_ABSTAIN_TOKEN;
+            if (out_ok) *out_ok = 0;
+            if (out_prob) *out_prob = 0.0;
+            return;
+        }
+    }
+
     double vl_scale = disable_ml ? 0.0 : 0.15;
     for (int i = 0; i < 256; i++) {
         h_comb_t[i] = zf[i] + a1 * out1[i] + a2 * out2[i] + vl_scale * vl_last[i];
@@ -10684,6 +10704,8 @@ static int qadav_test_exp3_slot_erasure_ex(
     const char* checkpoint_path,
     int num_pairs,
     int num_delete,
+    int revoke_mode,
+    int abstain_mask,
     int run_ablation,
     double* out_deleted_recall,
     double* out_retained_recall,
@@ -10714,6 +10736,7 @@ static int qadav_test_exp3_slot_erasure_ex(
     unsigned long long blk_bytes =
         (unsigned long long)num_pairs * sizeof(Exp3PairInfo) +
         (unsigned long long)n_ep * (unsigned long long)RECALL_SEQ_LEN * sizeof(int) +
+        (256ULL + 64ULL) * sizeof(SlotMeta) +
         (unsigned long long)num_delete * sizeof(double) +
         200000ULL * sizeof(double) + 16384ULL;
     unsigned char* blk = (unsigned char*)nn_large_alloc(blk_bytes);
@@ -10725,7 +10748,9 @@ static int qadav_test_exp3_slot_erasure_ex(
 
     Exp3PairInfo* pairs = (Exp3PairInfo*)blk;
     int* ep_seqs        = (int*)(pairs + num_pairs);
-    double* revoke_us   = (double*)(ep_seqs + n_ep * RECALL_SEQ_LEN);
+    SlotMeta* ml_meta   = (SlotMeta*)(ep_seqs + n_ep * RECALL_SEQ_LEN);
+    SlotMeta* mw_meta   = ml_meta + 256;
+    double* revoke_us   = (double*)(mw_meta + 64);
     double* ws          = revoke_us + num_delete;
 
     double* M_w_base  = ws;                  // 16384
@@ -10775,18 +10800,19 @@ static int qadav_test_exp3_slot_erasure_ex(
 
     int pair_cursor = 0;
     int rev_cursor = 0;
-    int rev_cnt_ml_pre = 0, pre_del_ok = 0, pre_ret_ok = 0;
-    int post_ml_del_ok = 0, post_ml_ret_ok = 0;
-    int post_both_del_ok = 0, post_both_ret_ok = 0;
-    int ret_adjacent_dmg_ml = 0, ret_collided_ml = 0, ret_neighbor_ml = 0, ret_collided_mw = 0;
-    double sum_pre_del_p = 0.0, sum_post_ml_del_p = 0.0, sum_post_both_del_p = 0.0;
-    double sum_pre_ret_p = 0.0, sum_post_ml_ret_p = 0.0, sum_post_both_ret_p = 0.0;
+    int rev_cnt_pre = 0, pre_del_ok = 0, pre_ret_ok = 0;
+    int post_del_ok = 0, post_ret_ok = 0;
+    int post_del_abstain = 0, post_ret_abstain = 0;
+    int ret_adjacent_dmg = 0, ret_collided_ml = 0, ret_neighbor_ml = 0, ret_collided_mw = 0;
+    double sum_pre_del_p = 0.0, sum_post_del_p = 0.0;
+    double sum_pre_ret_p = 0.0, sum_post_ret_p = 0.0;
 
-    nn_print("=== [M10.7 EXP-3 SURGICAL O(1) KNOWLEDGE ERASURE] ===\n");
+    nn_print("=== [M10.8 EXP-3 SURGICAL O(1) ERASURE + ABSTENTION MASK] ===\n");
     nn_print("Checkpoint: "); nn_print(checkpoint_path);
     nn_print(" | Pairs: "); nn_print_i64(num_pairs);
     nn_print(" | Delete: "); nn_print_i64(num_delete);
-    nn_print(" | Episodes: "); nn_print_i64(n_ep);
+    nn_print(" | RevokeMode: "); nn_print(revoke_mode ? "both(M_l+M_w)" : "ml-only");
+    nn_print(" | AbstainMask: "); nn_print(abstain_mask ? "ON" : "OFF");
     nn_print(" | TSC cal: "); nn_print_f64(tsc_per_us, 2); nn_print(" cyc/us\n");
 
     int corpus_cnt = g_dyn_recall_corpus_cnt;
@@ -10884,6 +10910,15 @@ static int qadav_test_exp3_slot_erasure_ex(
             nn_memcpy(state_499, next_st, 256 * sizeof(double));
         }
 
+        // Initialize per-slot metadata after context writes
+        nn_memset(ml_meta, 0, 256 * sizeof(SlotMeta));
+        nn_memset(mw_meta, 0, 64 * sizeof(SlotMeta));
+        for (int p = 0; p < n_ep_pairs; p++) {
+            const Exp3PairInfo* pi_inf = &pairs[pair_cursor + p];
+            ml_meta[pi_inf->sl_hash].slot_has_value = 1;
+            mw_meta[pi_inf->sw_hash].slot_has_value = 1;
+        }
+
         // Check collision metadata between deleted and retained pairs in this episode
         for (int p = 0; p < n_ep_pairs; p++) {
             Exp3PairInfo* rp = &pairs[pair_cursor + p];
@@ -10908,14 +10943,15 @@ static int qadav_test_exp3_slot_erasure_ex(
             seq[511] = pi_inf->val_tok;
             int ok = 0, pred = 0; double prob = 0.0;
             exp3_eval_query_tail(w, seq, M_w_base, M_l_base, state_499, z_499, vl_499,
-                1, 0, 0, pi_inf->key_tok, pi_inf->val_tok, query_ws, &ok, &pred, &prob);
+                1, 0, 0, pi_inf->key_tok, pi_inf->val_tok, ml_meta, mw_meta, abstain_mask,
+                query_ws, &ok, &pred, &prob);
             pi_inf->pre_ok = ok;
             pi_inf->pre_prob = prob;
             if (pi_inf->is_deleted) { pre_del_ok += ok; sum_pre_del_p += prob; }
             else { pre_ret_ok += ok; sum_pre_ret_p += prob; }
         }
 
-        // 2. O(1) Slot Revocation (Mode A: M_l only, Mode B: M_l + M_w) with per-op RDTSC timing
+        // 2. O(1) Slot Revocation with per-op RDTSC timing
         nn_memcpy(M_w_rev, M_w_base, 16384 * sizeof(double));
         nn_memcpy(M_l_rev, M_l_base, 65536 * sizeof(double));
         for (int p = 0; p < n_ep_pairs; p++) {
@@ -10923,46 +10959,41 @@ static int qadav_test_exp3_slot_erasure_ex(
             if (!pi_inf->is_deleted) continue;
             unsigned long long t0 = nn_rdtsc();
             nn_memset(M_l_rev + pi_inf->sl_hash * 256, 0, 256 * sizeof(double));
+            ml_meta[pi_inf->sl_hash].is_revoked = 1;
+            ml_meta[pi_inf->sl_hash].slot_has_value = 0;
+            if (revoke_mode) {
+                nn_memset(M_w_rev + pi_inf->sw_hash * 256, 0, 256 * sizeof(double));
+                mw_meta[pi_inf->sw_hash].is_revoked = 1;
+                mw_meta[pi_inf->sw_hash].slot_has_value = 0;
+            }
             unsigned long long t1 = nn_rdtsc();
             if (rev_cursor < num_delete) {
                 revoke_us[rev_cursor++] = (double)(t1 - t0) / tsc_per_us;
             }
-            rev_cnt_ml_pre++;
+            rev_cnt_pre++;
         }
 
-        // Query Post-Revoke Mode A (M_l[sl] zeroed, M_w intact)
+        // 3. Query Post-Revoke under configured revoke_mode + abstain_mask
         for (int p = 0; p < n_ep_pairs; p++) {
             Exp3PairInfo* pi_inf = &pairs[pair_cursor + p];
             seq[509] = pi_inf->key_tok;
             seq[511] = pi_inf->val_tok;
             int ok = 0, pred = 0; double prob = 0.0;
             exp3_eval_query_tail(w, seq, M_w_rev, M_l_rev, state_499, z_499, vl_499,
-                1, 0, 0, pi_inf->key_tok, pi_inf->val_tok, query_ws, &ok, &pred, &prob);
-            pi_inf->post_ml_ok = ok;
-            pi_inf->post_ml_prob = prob;
-            if (pi_inf->is_deleted) { post_ml_del_ok += ok; sum_post_ml_del_p += prob; }
-            else {
-                post_ml_ret_ok += ok; sum_post_ml_ret_p += prob;
-                if (pi_inf->pre_ok && !ok) ret_adjacent_dmg_ml++;
+                1, 0, 0, pi_inf->key_tok, pi_inf->val_tok, ml_meta, mw_meta, abstain_mask,
+                query_ws, &ok, &pred, &prob);
+            if (revoke_mode) { pi_inf->post_both_ok = ok; pi_inf->post_both_prob = prob; }
+            else { pi_inf->post_ml_ok = ok; pi_inf->post_ml_prob = prob; }
+            if (pi_inf->is_deleted) {
+                post_del_ok += ok;
+                sum_post_del_p += prob;
+                if (pred == EXP3_ABSTAIN_TOKEN) post_del_abstain++;
+            } else {
+                post_ret_ok += ok;
+                sum_post_ret_p += prob;
+                if (pred == EXP3_ABSTAIN_TOKEN) post_ret_abstain++;
+                if (pi_inf->pre_ok && !ok) ret_adjacent_dmg++;
             }
-        }
-
-        // Mode B: also zero M_w[sw] for deleted keys
-        for (int p = 0; p < n_ep_pairs; p++) {
-            Exp3PairInfo* pi_inf = &pairs[pair_cursor + p];
-            if (pi_inf->is_deleted) nn_memset(M_w_rev + pi_inf->sw_hash * 256, 0, 256 * sizeof(double));
-        }
-        for (int p = 0; p < n_ep_pairs; p++) {
-            Exp3PairInfo* pi_inf = &pairs[pair_cursor + p];
-            seq[509] = pi_inf->key_tok;
-            seq[511] = pi_inf->val_tok;
-            int ok = 0, pred = 0; double prob = 0.0;
-            exp3_eval_query_tail(w, seq, M_w_rev, M_l_rev, state_499, z_499, vl_499,
-                1, 0, 0, pi_inf->key_tok, pi_inf->val_tok, query_ws, &ok, &pred, &prob);
-            pi_inf->post_both_ok = ok;
-            pi_inf->post_both_prob = prob;
-            if (pi_inf->is_deleted) { post_both_del_ok += ok; sum_post_both_del_p += prob; }
-            else { post_both_ret_ok += ok; sum_post_both_ret_p += prob; }
         }
 
         pair_cursor += n_ep_pairs;
@@ -10979,50 +11010,43 @@ static int qadav_test_exp3_slot_erasure_ex(
 
     double pre_del_acc  = (num_delete > 0) ? (100.0 * (double)pre_del_ok / (double)num_delete) : 0.0;
     double pre_ret_acc  = (num_ret > 0)    ? (100.0 * (double)pre_ret_ok / (double)num_ret)    : 0.0;
-    double p_ml_del_acc = (num_delete > 0) ? (100.0 * (double)post_ml_del_ok / (double)num_delete) : 0.0;
-    double p_ml_ret_acc = (num_ret > 0)    ? (100.0 * (double)post_ml_ret_ok / (double)num_ret)    : 0.0;
-    double p_b_del_acc  = (num_delete > 0) ? (100.0 * (double)post_both_del_ok / (double)num_delete) : 0.0;
-    double p_b_ret_acc  = (num_ret > 0)    ? (100.0 * (double)post_both_ret_ok / (double)num_ret)    : 0.0;
+    double post_del_acc = (num_delete > 0) ? (100.0 * (double)post_del_ok / (double)num_delete) : 0.0;
+    double post_ret_acc = (num_ret > 0)    ? (100.0 * (double)post_ret_ok / (double)num_ret)    : 0.0;
 
     nn_print("Inserted pairs: "); nn_print_i64(num_pairs);
-    nn_print(" | Revoked M_l slots: "); nn_print_i64(rev_cnt_ml_pre);
+    nn_print(" | Revoked ops: "); nn_print_i64(rev_cnt_pre);
     nn_print(" | Ret M_l collisions: "); nn_print_i64(ret_collided_ml);
     nn_print(" | Ret M_l neighbors (+-1): "); nn_print_i64(ret_neighbor_ml);
     nn_print(" | Ret M_w(64) collisions: "); nn_print_i64(ret_collided_mw); nn_print("\n");
 
     nn_print("PRE-REVOKE BASELINE -> Deleted("); nn_print_i64(num_delete); nn_print("): ");
     nn_print_i64(pre_del_ok); nn_print("/"); nn_print_i64(num_delete); nn_print(" ("); nn_print_f64(pre_del_acc, 2);
-    nn_print("%, avgP="); nn_print_f64(sum_pre_del_p / (double)num_delete, 4); nn_print(") | Retained(");
+    nn_print("%, avgP="); nn_print_f64(sum_pre_del_p / (double)(num_delete > 0 ? num_delete : 1), 4); nn_print(") | Retained(");
     nn_print_i64(num_ret); nn_print("): "); nn_print_i64(pre_ret_ok); nn_print("/"); nn_print_i64(num_ret);
-    nn_print(" ("); nn_print_f64(pre_ret_acc, 2); nn_print("%, avgP="); nn_print_f64(sum_pre_ret_p / (double)num_ret, 4); nn_print(")\n");
+    nn_print(" ("); nn_print_f64(pre_ret_acc, 2); nn_print("%, avgP="); nn_print_f64(sum_pre_ret_p / (double)(num_ret > 0 ? num_ret : 1), 4); nn_print(")\n");
 
-    nn_print("POST-REVOKE [Mode A: M_l slot zeroed ONLY] -> Deleted: ");
-    nn_print_i64(post_ml_del_ok); nn_print("/"); nn_print_i64(num_delete); nn_print(" ("); nn_print_f64(p_ml_del_acc, 2);
-    nn_print("%, avgP="); nn_print_f64(sum_post_ml_del_p / (double)num_delete, 4); nn_print(") | Retained: ");
-    nn_print_i64(post_ml_ret_ok); nn_print("/"); nn_print_i64(num_ret); nn_print(" ("); nn_print_f64(p_ml_ret_acc, 2);
-    nn_print("%, avgP="); nn_print_f64(sum_post_ml_ret_p / (double)num_ret, 4);
-    nn_print(", adjacent_drops="); nn_print_i64(ret_adjacent_dmg_ml); nn_print(")\n");
+    nn_print("POST-REVOKE ["); nn_print(revoke_mode ? "both(M_l+M_w)" : "ml-only");
+    nn_print(abstain_mask ? " + abstain-mask" : " + no-abstain-mask"); nn_print("] -> Deleted: ");
+    nn_print_i64(post_del_ok); nn_print("/"); nn_print_i64(num_delete); nn_print(" ("); nn_print_f64(post_del_acc, 2);
+    nn_print("%, abstain="); nn_print_i64(post_del_abstain); nn_print("/"); nn_print_i64(num_delete);
+    nn_print(", avgP="); nn_print_f64(sum_post_del_p / (double)(num_delete > 0 ? num_delete : 1), 4);
+    nn_print(") | Retained: "); nn_print_i64(post_ret_ok); nn_print("/"); nn_print_i64(num_ret); nn_print(" ("); nn_print_f64(post_ret_acc, 2);
+    nn_print("%, abstain="); nn_print_i64(post_ret_abstain); nn_print("/"); nn_print_i64(num_ret);
+    nn_print(", adjacent_drops="); nn_print_i64(ret_adjacent_dmg); nn_print(")\n");
 
-    nn_print("POST-REVOKE [Mode B: M_l + M_w both zeroed] -> Deleted: ");
-    nn_print_i64(post_both_del_ok); nn_print("/"); nn_print_i64(num_delete); nn_print(" ("); nn_print_f64(p_b_del_acc, 2);
-    nn_print("%, avgP="); nn_print_f64(sum_post_both_del_p / (double)num_delete, 4); nn_print(") | Retained: ");
-    nn_print_i64(post_both_ret_ok); nn_print("/"); nn_print_i64(num_ret); nn_print(" ("); nn_print_f64(p_b_ret_acc, 2);
-    nn_print("%, avgP="); nn_print_f64(sum_post_both_ret_p / (double)num_ret, 4); nn_print(")\n");
+    nn_print("DELETED_RECALL="); nn_print_f64(post_del_acc, 2);
+    nn_print("% | RETAINED_RECALL="); nn_print_f64(post_ret_acc, 2);
+    nn_print("% | ABSTAIN_COUNT="); nn_print_i64(post_del_abstain);
+    nn_print("/"); nn_print_i64(num_delete);
+    nn_print(" | ADJACENT_DROPS="); nn_print_i64(ret_adjacent_dmg); nn_print("\n");
 
     nn_print("RDTSC REVOKE TIMING (N="); nn_print_i64(rev_cursor); nn_print(" ops): avg=");
     nn_print_f64(avg_us, 4); nn_print(" us | min="); nn_print_f64(min_us, 4);
     nn_print(" us | max="); nn_print_f64(max_us, 4); nn_print(" us\n");
 
-    // Print compact 10-sample RDTSC + first 8 deleted/retained verbatim summary + full 50 RDTSC samples
-    nn_print("RDTSC_SAMPLES_US:");
-    for (int i = 0; i < rev_cursor; i++) {
-        nn_print(" "); nn_print_f64(revoke_us[i], 3);
-    }
-    nn_print("\n");
-
-    // Report primary Mode B (full cryptographic/slot erasure of M_l + M_w) and Mode A explicitly
-    if (out_deleted_recall)  *out_deleted_recall  = p_b_del_acc;
-    if (out_retained_recall) *out_retained_recall = p_ml_ret_acc;
+    // Report primary post-revoke deleted/retained recall and RDTSC latency
+    if (out_deleted_recall)  *out_deleted_recall  = post_del_acc;
+    if (out_retained_recall) *out_retained_recall = post_ret_acc;
     if (out_avg_revoke_us)   *out_avg_revoke_us   = avg_us;
 
     free_v2_weights(w);
@@ -11101,7 +11125,9 @@ static int qadav_test_exp3_slot_erasure_ex(
                     seq[509] = pi_inf->key_tok; seq[511] = pi_inf->val_tok;
                     int ok = 0, pred = 0; double prob = 0.0;
                     exp3_eval_query_tail(w_ab, seq, M_w_base, M_l_base, state_499, z_499, vl_499,
-                        1, 0, 0, pi_inf->key_tok, pi_inf->val_tok, query_ws, &ok, &pred, &prob);
+                        1, 0, 0, pi_inf->key_tok, pi_inf->val_tok,
+                        (const SlotMeta*)0, (const SlotMeta*)0, 0,
+                        query_ws, &ok, &pred, &prob);
                     if (pi_inf->is_deleted) abl_del_ok += ok;
                     else abl_ret_ok += ok;
                 }
@@ -11137,18 +11163,25 @@ int qadav_test_exp3_slot_erasure(
     double* out_ablation_degradation)
 {
     return qadav_test_exp3_slot_erasure_ex(
-        checkpoint_path, num_pairs, num_delete, 1,
+        checkpoint_path, num_pairs, num_delete, 1, 1, 1,
         out_deleted_recall, out_retained_recall, out_avg_revoke_us, out_ablation_degradation);
 }
 
 static int qadav_run_v2_exp3_erasure(const char* cmd) {
-    char ckpt_path[256];
+    char ckpt_path[256], rev_mode_str[32];
     nn_parse_str_flag(cmd, "--checkpoint", "TMP\\qnmf_v2_recall_seed42.bin", ckpt_path, 256);
+    nn_parse_str_flag(cmd, "--revoke-mode", "both", rev_mode_str, 32);
+    int revoke_mode = nn_strstr(rev_mode_str, "ml-only") ? 0 : 1;
+    int abstain_mask = 1;
+    if (cmd && nn_strstr(cmd, "--no-abstain-mask")) abstain_mask = 0;
+    else if (cmd && nn_strstr(cmd, "--abstain-mask")) abstain_mask = 1;
     int num_pairs  = nn_parse_int_flag(cmd, "--pairs", 100);
     int num_delete = nn_parse_int_flag(cmd, "--delete", 50);
-    int abl_only   = nn_strstr(cmd, "continuous_decay") ? 1 : 0;
+    int run_abl = (cmd && (nn_strstr(cmd, "--ablation") || nn_strstr(cmd, "continuous_decay"))) ? 1 : 0;
     double del_r = 0.0, ret_r = 0.0, avg_us = 0.0, abl_deg = 0.0;
-    return qadav_test_exp3_slot_erasure_ex(ckpt_path, num_pairs, num_delete, 1 + abl_only * 0, &del_r, &ret_r, &avg_us, &abl_deg);
+    return qadav_test_exp3_slot_erasure_ex(
+        ckpt_path, num_pairs, num_delete, revoke_mode, abstain_mask, run_abl,
+        &del_r, &ret_r, &avg_us, &abl_deg);
 }
 
 // ---------------------------------------------------------------------
