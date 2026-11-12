@@ -39,47 +39,59 @@ process sha3_ct_compare⦅Sha3Digest a ⸴ Sha3Digest b⦆ → int64 ⟦
 ⟧
 
 // Keccak-f[1600] Permutation: 24 Rounds over 5x5 Matrix of 64-bit Words
+// Keccak-f[1600] Permutation: 24 Rounds over 5x5 Matrix of 64-bit Words
 process keccak_f1600_step⦅KeccakState s ⸴ int64 round_idx⦆ → KeccakState ⟦
-    // 1. Theta Step: Parity of 5 Columns
-    int64 C0 ↦ s.s0 ⊻ s.s5 ⊻ s.s10 ⊻ s.s15 ⊻ s.s20 ·
-    int64 C1 ↦ s.s1 ⊻ s.s6 ⊻ s.s11 ⊻ s.s16 ⊻ s.s21 ·
-    int64 C2 ↦ s.s2 ⊻ s.s7 ⊻ s.s12 ⊻ s.s17 ⊻ s.s22 ·
-    int64 C3 ↦ s.s3 ⊻ s.s8 ⊻ s.s13 ⊻ s.s18 ⊻ s.s23 ·
-    int64 C4 ↦ s.s4 ⊻ s.s9 ⊻ s.s14 ⊻ s.s19 ⊻ s.s24 ·
+    // 0. Unpack 25 state words from record s
+    int64 s0 ↦ s.s0 · int64 s1 ↦ s.s1 · int64 s2 ↦ s.s2 · int64 s3 ↦ s.s3 · int64 s4 ↦ s.s4 ·
+    int64 s5 ↦ s.s5 · int64 s6 ↦ s.s6 · int64 s7 ↦ s.s7 · int64 s8 ↦ s.s8 · int64 s9 ↦ s.s9 ·
+    int64 s10 ↦ s.s10 · int64 s11 ↦ s.s11 · int64 s12 ↦ s.s12 · int64 s13 ↦ s.s13 · int64 s14 ↦ s.s14 ·
+    int64 s15 ↦ s.s15 · int64 s16 ↦ s.s16 · int64 s17 ↦ s.s17 · int64 s18 ↦ s.s18 · int64 s19 ↦ s.s19 ·
+    int64 s20 ↦ s.s20 · int64 s21 ↦ s.s21 · int64 s22 ↦ s.s22 · int64 s23 ↦ s.s23 · int64 s24 ↦ s.s24 ·
 
-    int64 D0 ↦ C4 ⊻ rol64⦅C1 ⸴ 1⦆ ·
-    int64 D1 ↦ C0 ⊻ rol64⦅C2 ⸴ 1⦆ ·
-    int64 D2 ↦ C1 ⊻ rol64⦅C3 ⸴ 1⦆ ·
-    int64 D3 ↦ C2 ⊻ rol64⦅C4 ⸴ 1⦆ ·
-    int64 D4 ↦ C3 ⊻ rol64⦅C0 ⸴ 1⦆ ·
+    // 1. Theta Step: Parity of 5 Columns
+    int64 C0 ↦ s0 ⊻ s5 ⊻ s10 ⊻ s15 ⊻ s20 ·
+    int64 C1 ↦ s1 ⊻ s6 ⊻ s11 ⊻ s16 ⊻ s21 ·
+    int64 C2 ↦ s2 ⊻ s7 ⊻ s12 ⊻ s17 ⊻ s22 ·
+    int64 C3 ↦ s3 ⊻ s8 ⊻ s13 ⊻ s18 ⊻ s23 ·
+    int64 C4 ↦ s4 ⊻ s9 ⊻ s14 ⊻ s19 ⊻ s24 ·
+
+    int64 R1 ↦ rol64⦅C1 ⸴ 1⦆ ·
+    int64 D0 ↦ C4 ⊻ R1 ·
+    int64 R2 ↦ rol64⦅C2 ⸴ 1⦆ ·
+    int64 D1 ↦ C0 ⊻ R2 ·
+    int64 R3 ↦ rol64⦅C3 ⸴ 1⦆ ·
+    int64 D2 ↦ C1 ⊻ R3 ·
+    int64 R4 ↦ rol64⦅C4 ⸴ 1⦆ ·
+    int64 D3 ↦ C2 ⊻ R4 ·
+    int64 R0 ↦ rol64⦅C0 ⸴ 1⦆ ·
+    int64 D4 ↦ C3 ⊻ R0 ·
 
     // 2. Rho & Pi Step: Direct Register Transfers with Fixed Rotations
-    int64 B0  ↦ s.s0 ⊻ D0 ·
-    int64 B10 ↦ rol64⦅s.s1  ⊻ D1 ⸴ 1⦆ ·
-    int64 B7  ↦ rol64⦅s.s10 ⊻ D0 ⸴ 3⦆ ·
-    int64 B11 ↦ rol64⦅s.s7  ⊻ D2 ⸴ 6⦆ ·
-    int64 B17 ↦ rol64⦅s.s11 ⊻ D1 ⸴ 10⦆ ·
-    int64 B18 ↦ rol64⦅s.s17 ⊻ D2 ⸴ 15⦆ ·
-    int64 B3  ↦ rol64⦅s.s18 ⊻ D3 ⸴ 21⦆ ·
-    int64 B5  ↦ rol64⦅s.s3  ⊻ D3 ⸴ 28⦆ ·
-    int64 B16 ↦ rol64⦅s.s5  ⊻ D0 ⸴ 36⦆ ·
-    int64 B8  ↦ rol64⦅s.s16 ⊻ D1 ⸴ 45⦆ ·
-    int64 B21 ↦ rol64⦅s.s8  ⊻ D3 ⸴ 55⦆ ·
-    int64 B24 ↦ rol64⦅s.s21 ⊻ D1 ⸴ 2⦆ ·
-    int64 B4  ↦ rol64⦅s.s24 ⊻ D4 ⸴ 14⦆ ·
-    int64 B15 ↦ rol64⦅s.s4  ⊻ D4 ⸴ 27⦆ ·
-    int64 B23 ↦ rol64⦅s.s15 ⊻ D0 ⸴ 41⦆ ·
-    int64 B19 ↦ rol64⦅s.s23 ⊻ D3 ⸴ 56⦆ ·
-    int64 B13 ↦ rol64⦅s.s19 ⊻ D4 ⸴ 8⦆ ·
-    int64 B12 ↦ rol64⦅s.s13 ⊻ D3 ⸴ 25⦆ ·
-    int64 B2  ↦ rol64⦅s.s12 ⊻ D2 ⸴ 43⦆ ·
-    int64 B20 ↦ rol64⦅s.s2  ⊻ D2 ⸴ 62⦆ ·
-    int64 B14 ↦ rol64⦅s.s20 ⊻ D0 ⸴ 18⦆ ·
-    int64 B22 ↦ rol64⦅s.s14 ⊻ D4 ⸴ 39⦆ ·
-    int64 B9  ↦ rol64⦅s.s22 ⊻ D2 ⸴ 61⦆ ·
-    int64 B6  ↦ rol64⦅s.s9  ⊻ D4 ⸴ 20⦆ ·
-    int64 B1  ↦ rol64⦅s.s6  ⊻ D1 ⸴ 44⦆ ·
-
+    int64 B0  ↦ s0 ⊻ D0 ·
+    int64 T1  ↦ s1  ⊻ D1 · int64 B10 ↦ rol64⦅T1  ⸴ 1⦆ ·
+    int64 T10 ↦ s10 ⊻ D0 · int64 B7  ↦ rol64⦅T10 ⸴ 3⦆ ·
+    int64 T7  ↦ s7  ⊻ D2 · int64 B11 ↦ rol64⦅T7  ⸴ 6⦆ ·
+    int64 T11 ↦ s11 ⊻ D1 · int64 B17 ↦ rol64⦅T11 ⸴ 10⦆ ·
+    int64 T17 ↦ s17 ⊻ D2 · int64 B18 ↦ rol64⦅T17 ⸴ 15⦆ ·
+    int64 T18 ↦ s18 ⊻ D3 · int64 B3  ↦ rol64⦅T18 ⸴ 21⦆ ·
+    int64 T3  ↦ s3  ⊻ D3 · int64 B5  ↦ rol64⦅T3  ⸴ 28⦆ ·
+    int64 T5  ↦ s5  ⊻ D0 · int64 B16 ↦ rol64⦅T5  ⸴ 36⦆ ·
+    int64 T16 ↦ s16 ⊻ D1 · int64 B8  ↦ rol64⦅T16 ⸴ 45⦆ ·
+    int64 T8  ↦ s8  ⊻ D3 · int64 B21 ↦ rol64⦅T8  ⸴ 55⦆ ·
+    int64 T21 ↦ s21 ⊻ D1 · int64 B24 ↦ rol64⦅T21 ⸴ 2⦆ ·
+    int64 T24 ↦ s24 ⊻ D4 · int64 B4  ↦ rol64⦅T24 ⸴ 14⦆ ·
+    int64 T4  ↦ s4  ⊻ D4 · int64 B15 ↦ rol64⦅T4  ⸴ 27⦆ ·
+    int64 T15 ↦ s15 ⊻ D0 · int64 B23 ↦ rol64⦅T15 ⸴ 41⦆ ·
+    int64 T23 ↦ s23 ⊻ D3 · int64 B19 ↦ rol64⦅T23 ⸴ 56⦆ ·
+    int64 T19 ↦ s19 ⊻ D4 · int64 B13 ↦ rol64⦅T19 ⸴ 8⦆ ·
+    int64 T13 ↦ s13 ⊻ D3 · int64 B12 ↦ rol64⦅T13 ⸴ 25⦆ ·
+    int64 T12 ↦ s12 ⊻ D2 · int64 B2  ↦ rol64⦅T12 ⸴ 43⦆ ·
+    int64 T2  ↦ s2  ⊻ D2 · int64 B20 ↦ rol64⦅T2  ⸴ 62⦆ ·
+    int64 T20 ↦ s20 ⊻ D0 · int64 B14 ↦ rol64⦅T20 ⸴ 18⦆ ·
+    int64 T14 ↦ s14 ⊻ D4 · int64 B22 ↦ rol64⦅T14 ⸴ 39⦆ ·
+    int64 T22 ↦ s22 ⊻ D2 · int64 B9  ↦ rol64⦅T22 ⸴ 61⦆ ·
+    int64 T9  ↦ s9  ⊻ D4 · int64 B6  ↦ rol64⦅T9  ⸴ 20⦆ ·
+    int64 T6  ↦ s6  ⊻ D1 · int64 B1  ↦ rol64⦅T6  ⸴ 44⦆ ·
     // 3. Chi Step: Non-Linear Mapping via Bitwise Invert & AND
     KeccakState next_s ↦ record_init KeccakState ⟦
         s0  ↦ B0  ⊻ ⦅¬B1  ∧ B2⦆ ⸴

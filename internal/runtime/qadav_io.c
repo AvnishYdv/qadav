@@ -379,6 +379,7 @@ typedef struct {
 #define MAX_TOKENS 16384
 static qadav_token_t g_tokens[MAX_TOKENS];
 static long long g_token_count = 0;
+static char g_reg_is_i1[65536];
 
 static int get_tok_code(const char *kind) {
   if (io_str_eq(kind, "PROCESS"))
@@ -461,6 +462,8 @@ static int get_tok_code(const char *kind) {
     return 38;
   if (io_str_eq(kind, "OR"))
     return 39;
+  if (io_str_eq(kind, "NOT"))
+    return 40;
   return 0;
 }
 
@@ -588,8 +591,8 @@ static int g_has_dynamic_io = 0;
 typedef struct {
   char name[32];
   int field_count;
-  char field_names[16][32];
-  char field_types[16][32];
+  char field_names[64][32];
+  char field_types[64][32];
 } QadavRecordDecl;
 
 #define MAX_RECORDS 32
@@ -610,10 +613,12 @@ static int g_var_decl_count = 0;
 typedef struct {
   char type_name[32];
   int field_count;
-  char field_names[8][32];
-  char field_val_strs[8][64];
-  long long field_val_ints[8];
-  int field_kinds[8]; // 0=int, 1=str, 2=ident/var, 3=logic (affirm=1, deny=0)
+  char field_names[64][32];
+  char field_val_strs[64][64];
+  long long field_val_ints[64];
+  int field_kinds[64]; // 0=int, 1=str, 2=ident/var, 3=logic (affirm=1, deny=0), 4=expr
+  int expr_start[64];
+  int expr_end[64];
 } qadav_rec_init_info_t;
 
 static qadav_rec_init_info_t g_rec_inits[32];
@@ -656,6 +661,9 @@ long long qadav_record_imm_int(long long val) {
 
 long long qadav_tokenize_file(const char *path) {
   g_token_count = 0;
+  for (int i = 0; i < 65536; i++) {
+    g_reg_is_i1[i] = 0;
+  }
   qadav_str_table_reset();
   g_has_dynamic_io = 0;
   g_current_rec_init_walk_idx = 0;
@@ -1165,6 +1173,12 @@ long long qadav_tokenize_file(const char *path) {
       col += 2;
       continue;
     }
+    if (c == 0xc2 && (unsigned char)buf[i + 1] == 0xac) {
+      add_tok("NOT", "¬", line, tok_col);
+      i += 2;
+      col += 2;
+      continue;
+    }
 
     if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
       char id[64];
@@ -1223,6 +1237,18 @@ long long qadav_tokenize_file(const char *path) {
         add_tok("LOGIC", id, line, tok_col);
       else if (io_str_eq(id, "tensor"))
         add_tok("TENSOR", id, line, tok_col);
+      else if (io_str_eq(id, "not"))
+        add_tok("NOT", id, line, tok_col);
+      else if (io_str_eq(id, "xor"))
+        add_tok("OP", id, line, tok_col);
+      else if (io_str_eq(id, "and"))
+        add_tok("AND", id, line, tok_col);
+      else if (io_str_eq(id, "or"))
+        add_tok("OR", id, line, tok_col);
+      else if (io_str_eq(id, "shl"))
+        add_tok("OP", id, line, tok_col);
+      else if (io_str_eq(id, "lshr"))
+        add_tok("OP", id, line, tok_col);
       else
         add_tok("IDENT", id, line, tok_col);
       continue;
@@ -1325,7 +1351,7 @@ long long qadav_tokenize_file(const char *path) {
           if (g_tokens[scan].kind_code == 2 && scan + 2 < g_token_count &&
               g_tokens[scan + 1].kind_code == 11) {
             int fi = rd->field_count;
-            if (fi < 16) {
+            if (fi < 64) {
               int fki = 0;
               while (g_tokens[scan].literal[fki] && fki < 31) {
                 rd->field_names[fi][fki] = g_tokens[scan].literal[fki];
@@ -1369,53 +1395,73 @@ long long qadav_tokenize_file(const char *path) {
       if (scan < g_token_count && g_tokens[scan].kind_code == 20) {
         scan++;
         while (scan < g_token_count && g_tokens[scan].kind_code != 21) {
-          if (g_tokens[scan].kind_code == 2 && scan + 2 < g_token_count &&
+          if (g_tokens[scan].kind_code == 2 && scan + 1 < g_token_count &&
               g_tokens[scan + 1].kind_code == 11) {
             int fi = ri->field_count;
-            if (fi < 8) {
+            if (fi < 64) {
               int fki = 0;
               while (g_tokens[scan].literal[fki] && fki < 31) {
                 ri->field_names[fi][fki] = g_tokens[scan].literal[fki];
                 fki++;
               }
               ri->field_names[fi][fki] = '\0';
-              int val_tok = scan + 2;
-              int vk = g_tokens[val_tok].kind_code;
-              if (vk == 3) {
-                ri->field_kinds[fi] = 1;
-                int vi = 0;
-                while (g_tokens[val_tok].literal[vi] && vi < 63) {
-                  ri->field_val_strs[fi][vi] = g_tokens[val_tok].literal[vi];
-                  vi++;
-                }
-                ri->field_val_strs[fi][vi] = '\0';
-              } else if (vk == 4) {
-                ri->field_kinds[fi] = 0;
-                ri->field_val_ints[fi] =
-                    io_parse_int(g_tokens[val_tok].literal);
-              } else if (vk == 2) {
-                if (qadav_is_affirm_ident(g_tokens[val_tok].literal)) {
-                  ri->field_kinds[fi] = 3;
-                  ri->field_val_ints[fi] = 1;
-                } else if (qadav_is_deny_ident(g_tokens[val_tok].literal)) {
-                  ri->field_kinds[fi] = 3;
-                  ri->field_val_ints[fi] = 0;
-                } else {
-                  ri->field_kinds[fi] = 2;
+              int expr_start = scan + 2;
+              int expr_end = expr_start;
+              int p_depth = 0;
+              while (expr_end < g_token_count) {
+                int kc = g_tokens[expr_end].kind_code;
+                if (kc == 22) p_depth++;
+                else if (kc == 23) p_depth--;
+                else if (p_depth == 0 && (kc == 24 || kc == 25 || kc == 21))
+                  break;
+                expr_end++;
+              }
+              int num_toks = expr_end - expr_start;
+              if (num_toks == 1) {
+                int val_tok = expr_start;
+                int vk = g_tokens[val_tok].kind_code;
+                if (vk == 3) {
+                  ri->field_kinds[fi] = 1;
                   int vi = 0;
                   while (g_tokens[val_tok].literal[vi] && vi < 63) {
                     ri->field_val_strs[fi][vi] = g_tokens[val_tok].literal[vi];
                     vi++;
                   }
                   ri->field_val_strs[fi][vi] = '\0';
+                } else if (vk == 4) {
+                  ri->field_kinds[fi] = 0;
+                  ri->field_val_ints[fi] =
+                      io_parse_int(g_tokens[val_tok].literal);
+                } else if (vk == 2) {
+                  if (qadav_is_affirm_ident(g_tokens[val_tok].literal)) {
+                    ri->field_kinds[fi] = 3;
+                    ri->field_val_ints[fi] = 1;
+                  } else if (qadav_is_deny_ident(g_tokens[val_tok].literal)) {
+                    ri->field_kinds[fi] = 3;
+                    ri->field_val_ints[fi] = 0;
+                  } else {
+                    ri->field_kinds[fi] = 2;
+                    int vi = 0;
+                    while (g_tokens[val_tok].literal[vi] && vi < 63) {
+                      ri->field_val_strs[fi][vi] = g_tokens[val_tok].literal[vi];
+                      vi++;
+                    }
+                    ri->field_val_strs[fi][vi] = '\0';
+                  }
                 }
+              } else {
+                ri->field_kinds[fi] = 4;
+                ri->expr_start[fi] = expr_start;
+                ri->expr_end[fi] = expr_end;
               }
               ri->field_count++;
-            }
-            scan += 3;
-            if (scan < g_token_count && (g_tokens[scan].kind_code == 24 ||
-                                         g_tokens[scan].kind_code == 25))
+              scan = expr_end;
+              if (scan < g_token_count && (g_tokens[scan].kind_code == 24 ||
+                                           g_tokens[scan].kind_code == 25))
+                scan++;
+            } else {
               scan++;
+            }
           } else {
             scan++;
           }
@@ -1681,6 +1727,12 @@ const char *qadav_format_binop(const char *op, long long res_temp, long long t1,
   while (*p2)
     buf[bi++] = *p2++;
   const char *norm_op = op;
+  int is_i1 = 0;
+  if ((t1 >= 0 && t1 < 65536 && g_reg_is_i1[t1]) ||
+      (t2 >= 0 && t2 < 65536 && g_reg_is_i1[t2]) ||
+      qadav_get_last_emit_kind() == 4) {
+    is_i1 = 1;
+  }
   const char *op_type = "i64";
   if (op[0] == 's' && op[1] == 'u' && op[2] == 'b')
     norm_op = "sub";
@@ -1722,14 +1774,37 @@ const char *qadav_format_binop(const char *op, long long res_temp, long long t1,
     norm_op = "icmp sle";
   else if (((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x88 &&
             (unsigned char)op[2] == 0xa8) ||
-           io_str_eq(op, "or")) {
+           io_str_eq(op, "or") || io_str_eq(op, "vee") || io_str_eq(op, "∨")) {
     norm_op = "or";
-    op_type = "i1";
+    op_type = is_i1 ? "i1" : "i64";
   } else if (((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x88 &&
               (unsigned char)op[2] == 0xa7) ||
-             io_str_eq(op, "and")) {
+             io_str_eq(op, "and") || io_str_eq(op, "wedge") || io_str_eq(op, "∧")) {
     norm_op = "and";
-    op_type = "i1";
+    op_type = is_i1 ? "i1" : "i64";
+  } else if (((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x8a &&
+              (unsigned char)op[2] == 0xbb) ||
+             io_str_eq(op, "xor") || io_str_eq(op, "xvee") || io_str_eq(op, "⊻")) {
+    norm_op = "xor";
+    op_type = is_i1 ? "i1" : "i64";
+  } else if (((unsigned char)op[0] == 0xc2 && (unsigned char)op[1] == 0xac) ||
+             io_str_eq(op, "not") || io_str_eq(op, "neg") || io_str_eq(op, "¬")) {
+    norm_op = "xor";
+    op_type = is_i1 ? "i1" : "i64";
+  } else if (io_str_eq(op, "shl") || io_str_eq(op, "<<") ||
+             ((unsigned char)op[0] == 0xc2 && (unsigned char)op[1] == 0xab)) {
+    norm_op = "shl";
+    op_type = "i64";
+  } else if (io_str_eq(op, "lshr") || io_str_eq(op, ">>") ||
+             ((unsigned char)op[0] == 0xc2 && (unsigned char)op[1] == 0xbb)) {
+    norm_op = "lshr";
+    op_type = "i64";
+  }
+  if (res_temp >= 0 && res_temp < 65536) {
+    if (io_str_starts_with(norm_op, "icmp") || io_str_eq(op_type, "i1"))
+      g_reg_is_i1[res_temp] = 1;
+    else
+      g_reg_is_i1[res_temp] = 0;
   }
   while (*norm_op)
     buf[bi++] = *norm_op++;
@@ -3469,6 +3544,48 @@ const char *qadav_format_binop_imm(const char *op, long long res_temp,
   else if ((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x89 &&
            (unsigned char)op[2] == 0xbc)
     op_str = "icmp sle i64";
+  int is_i1 = (left_reg >= 0 && left_reg < 65536 && g_reg_is_i1[left_reg]);
+  if (qadav_get_last_emit_kind() == 4)
+    is_i1 = 1;
+  int is_not_i1 = 0;
+  if (((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x88 &&
+       (unsigned char)op[2] == 0xa8) ||
+      io_str_eq(op, "or") || io_str_eq(op, "vee") || io_str_eq(op, "∨")) {
+    op_str = is_i1 ? "or i1" : "or i64";
+    is_not_i1 = is_i1;
+  } else if (((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x88 &&
+              (unsigned char)op[2] == 0xa7) ||
+             io_str_eq(op, "and") || io_str_eq(op, "wedge") || io_str_eq(op, "∧")) {
+    op_str = is_i1 ? "and i1" : "and i64";
+    is_not_i1 = is_i1;
+  } else if (((unsigned char)op[0] == 0xe2 && (unsigned char)op[1] == 0x8a &&
+              (unsigned char)op[2] == 0xbb) ||
+             io_str_eq(op, "xor") || io_str_eq(op, "xvee") || io_str_eq(op, "⊻")) {
+    op_str = is_i1 ? "xor i1" : "xor i64";
+    is_not_i1 = is_i1;
+  } else if (((unsigned char)op[0] == 0xc2 && (unsigned char)op[1] == 0xac) ||
+             io_str_eq(op, "not") || io_str_eq(op, "neg") || io_str_eq(op, "¬")) {
+    if (is_i1) {
+      op_str = "xor i1";
+      is_not_i1 = 1;
+    } else {
+      op_str = "xor i64";
+      imm_val = -1;
+    }
+  } else if (io_str_eq(op, "shl") || io_str_eq(op, "<<") ||
+             ((unsigned char)op[0] == 0xc2 && (unsigned char)op[1] == 0xab))
+    op_str = "shl i64";
+  else if (io_str_eq(op, "lshr") || io_str_eq(op, ">>") ||
+             ((unsigned char)op[0] == 0xc2 && (unsigned char)op[1] == 0xbb))
+    op_str = "lshr i64";
+
+  if (res_temp >= 0 && res_temp < 65536) {
+    if (io_str_starts_with(op_str, "icmp") || is_not_i1)
+      g_reg_is_i1[res_temp] = 1;
+    else
+      g_reg_is_i1[res_temp] = 0;
+  }
+
   while (*op_str)
     buf[bi++] = *op_str++;
   buf[bi++] = ' ';
@@ -3481,7 +3598,14 @@ const char *qadav_format_binop_imm(const char *op, long long res_temp,
   }
   buf[bi++] = ',';
   buf[bi++] = ' ';
-  append_num(buf, &bi, imm_val);
+  if (is_not_i1) {
+    buf[bi++] = 't';
+    buf[bi++] = 'r';
+    buf[bi++] = 'u';
+    buf[bi++] = 'e';
+  } else {
+    append_num(buf, &bi, imm_val);
+  }
   buf[bi] = '\0';
   return buf;
 }
@@ -4421,6 +4545,8 @@ const char *qadav_format_icmp_eq_ptr(long long res_temp, long long t1,
     buf[bi++] = *p3++;
   append_num(buf, &bi, t2);
   buf[bi] = '\0';
+  if (res_temp >= 0 && res_temp < 65536)
+    g_reg_is_i1[res_temp] = 1;
   return buf;
 }
 
@@ -5710,6 +5836,90 @@ long long qadav_is_logic_type(const char *t) {
   return 0;
 }
 
+static long long emit_rec_expr(int start, int end, long long *temp_counter) {
+  while (start < end && g_tokens[start].kind_code == 22 && g_tokens[end - 1].kind_code == 23) {
+    int p_d = 1;
+    int k = start + 1;
+    while (k < end - 1 && p_d > 0) {
+      if (g_tokens[k].kind_code == 22) p_d++;
+      else if (g_tokens[k].kind_code == 23) p_d--;
+      k++;
+    }
+    if (p_d == 1) {
+      start++;
+      end--;
+    } else {
+      break;
+    }
+  }
+  if (start >= end) return 0;
+
+  if (end == start + 1) {
+    int kc = g_tokens[start].kind_code;
+    if (kc == 4) {
+      long long reg = (*temp_counter)++;
+      char buf[128];
+      int bi = 0;
+      const char *p = "  %t";
+      while (*p) buf[bi++] = *p++;
+      append_num(buf, &bi, reg);
+      const char *p2 = " = add i64 0, ";
+      while (*p2) buf[bi++] = *p2++;
+      append_num(buf, &bi, io_parse_int(g_tokens[start].literal));
+      buf[bi] = '\0';
+      qadav_emit_text(buf);
+      return reg;
+    } else if (kc == 2) {
+      long long reg = (*temp_counter)++;
+      const char *load = qadav_format_load_type(g_tokens[start].literal, "i64", reg);
+      qadav_emit_text(load);
+      return reg;
+    }
+  }
+
+  int split_idx = -1;
+  int split_prec = 999;
+  int p_depth = 0;
+  for (int k = end - 1; k >= start; k--) {
+    int kc = g_tokens[k].kind_code;
+    if (kc == 23) p_depth++;
+    else if (kc == 22) p_depth--;
+    else if (p_depth == 0) {
+      const char *lit = g_tokens[k].literal;
+      int prec = 0;
+      if (kc == 39 || io_str_eq(lit, "∨") || io_str_eq(lit, "or")) prec = 1;
+      else if (io_str_eq(lit, "⊻") || io_str_eq(lit, "xor")) prec = 2;
+      else if (kc == 38 || io_str_eq(lit, "∧") || io_str_eq(lit, "and")) prec = 3;
+      else if (kc == 13 || kc == 14 || kc == 16 || kc == 17 || kc == 18 || kc == 19) prec = 4;
+      else if (kc == 15 || io_str_eq(lit, "⊕") || io_str_eq(lit, "⊖")) prec = 5;
+      else if (io_str_eq(lit, "⊗") || io_str_eq(lit, "⊘")) prec = 6;
+      if (prec > 0 && prec < split_prec) {
+        split_prec = prec;
+        split_idx = k;
+      }
+    }
+  }
+
+  if (split_idx > start && split_idx < end) {
+    long long l_reg = emit_rec_expr(start, split_idx, temp_counter);
+    long long r_reg = emit_rec_expr(split_idx + 1, end, temp_counter);
+    long long res_reg = (*temp_counter)++;
+    const char *line = qadav_format_binop(g_tokens[split_idx].literal, res_reg, l_reg, r_reg);
+    qadav_emit_text(line);
+    return res_reg;
+  }
+
+  if (g_tokens[start].kind_code == 40 || io_str_eq(g_tokens[start].literal, "¬") || io_str_eq(g_tokens[start].literal, "not")) {
+    long long inner_reg = emit_rec_expr(start + 1, end, temp_counter);
+    long long res_reg = (*temp_counter)++;
+    const char *xor_line = qadav_format_binop_imm("xor", res_reg, inner_reg, -1);
+    qadav_emit_text(xor_line);
+    return res_reg;
+  }
+
+  return 0;
+}
+
 long long qadav_emit_record_init(const char *type_name, long long field_count,
                                  long long temp_id) {
   long long temp_counter = temp_id;
@@ -5770,6 +5980,11 @@ long long qadav_emit_record_init(const char *type_name, long long field_count,
       long long zext_reg = temp_counter++;
       const char *s =
           qadav_format_record_set_field_i64_reg(rec_reg, i, zext_reg);
+      qadav_emit_text(s);
+    } else if (ri->field_kinds[i] == 4) {
+      long long val_reg = emit_rec_expr(ri->expr_start[i], ri->expr_end[i], &temp_counter);
+      const char *s =
+          qadav_format_record_set_field_i64_reg(rec_reg, i, val_reg);
       qadav_emit_text(s);
     }
   }
