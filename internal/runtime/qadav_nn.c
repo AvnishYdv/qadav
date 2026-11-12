@@ -9634,11 +9634,686 @@ static int qadav_run_v2_evaluation_recall(const char* cmd) {
 }
 
 // ---------------------------------------------------------------------
+// M10.5: Sparse Routing DoS Stress Harness (EXP-4: Sinkhorn vs Top-2)
+// ---------------------------------------------------------------------
+
+typedef struct {
+    int model_kind;
+    int routing_mode; // 0=sinkhorn, 1=heuristic_top2
+    int seq_len;
+    int chunk_seqs;
+    int s_start;
+    int s_end;
+    const int* seq_toks;
+    const double* W_emb;
+    const double* W_x;
+    const double* W_s;
+    const double* b_s;
+    const double* W_lam;
+    const double* b_lam;
+    const double* W_q;
+    const double* b_q;
+    const double* W_r;
+    const double* b_r;
+    const double* W_pred;
+    const double* b_pred;
+    const double* M_w_init;
+    const double* M_l_init;
+    const double* W_route;
+    const double* b_route;
+    double* z_all;
+    double* r_all;
+    double* p1_tmp; // per worker: ~180K doubles
+} QNMFDosS1Ctx;
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma"), noinline))
+static void qnmf_dos_p1_p2_step_avx2(
+    int model_kind,
+    const double* restrict W_x, const double* restrict W_s, const double* restrict b_s,
+    const double* restrict W_lam, const double* restrict b_lam,
+    const double* restrict W_q, const double* restrict b_q,
+    const double* restrict W_r, const double* restrict b_r,
+    const double* restrict W_pred, const double* restrict b_pred,
+    const double* restrict W_route, const double* restrict b_route,
+    const double* restrict emb, int t,
+    double* restrict state, double* restrict M_w, double* restrict M_l,
+    double* restrict next_state, double* restrict q, double* restrict v_w,
+    double* restrict v_l, double* restrict z_out, double* restrict r_out,
+    double* restrict scratch)
+{
+    double* dot_w = scratch;       // 64
+    double* a_w   = dot_w + 64;    // 64
+    double* dot_l = a_w + 64;      // 256
+    double* a_l   = dot_l + 256;   // 256
+
+    const __m256d c_half = _mm256_set1_pd(0.5);
+    const __m256d c_one  = _mm256_set1_pd(1.0);
+    for (int i = 0; i < 256; i += 4) {
+        const double* wx0 = W_x + (i + 0) * 256; const double* wx1 = W_x + (i + 1) * 256;
+        const double* wx2 = W_x + (i + 2) * 256; const double* wx3 = W_x + (i + 3) * 256;
+        const double* ws0 = W_s + (i + 0) * 256; const double* ws1 = W_s + (i + 1) * 256;
+        const double* ws2 = W_s + (i + 2) * 256; const double* ws3 = W_s + (i + 3) * 256;
+        const double* wl0 = W_lam + (i + 0) * 256; const double* wl1 = W_lam + (i + 1) * 256;
+        const double* wl2 = W_lam + (i + 2) * 256; const double* wl3 = W_lam + (i + 3) * 256;
+        __m256d au0 = _mm256_setzero_pd(), av0 = _mm256_setzero_pd();
+        __m256d au1 = _mm256_setzero_pd(), av1 = _mm256_setzero_pd();
+        __m256d au2 = _mm256_setzero_pd(), av2 = _mm256_setzero_pd();
+        __m256d au3 = _mm256_setzero_pd(), av3 = _mm256_setzero_pd();
+        for (int j = 0; j < 256; j += 4) {
+            __m256d ev = _mm256_loadu_pd(emb + j);
+            __m256d sv = _mm256_loadu_pd(state + j);
+            au0 = _mm256_fmadd_pd(_mm256_loadu_pd(wx0 + j), ev, au0); au0 = _mm256_fmadd_pd(_mm256_loadu_pd(ws0 + j), sv, au0);
+            au1 = _mm256_fmadd_pd(_mm256_loadu_pd(wx1 + j), ev, au1); au1 = _mm256_fmadd_pd(_mm256_loadu_pd(ws1 + j), sv, au1);
+            au2 = _mm256_fmadd_pd(_mm256_loadu_pd(wx2 + j), ev, au2); au2 = _mm256_fmadd_pd(_mm256_loadu_pd(ws2 + j), sv, au2);
+            au3 = _mm256_fmadd_pd(_mm256_loadu_pd(wx3 + j), ev, au3); au3 = _mm256_fmadd_pd(_mm256_loadu_pd(ws3 + j), sv, au3);
+            av0 = _mm256_fmadd_pd(_mm256_loadu_pd(wl0 + j), ev, av0);
+            av1 = _mm256_fmadd_pd(_mm256_loadu_pd(wl1 + j), ev, av1);
+            av2 = _mm256_fmadd_pd(_mm256_loadu_pd(wl2 + j), ev, av2);
+            av3 = _mm256_fmadd_pd(_mm256_loadu_pd(wl3 + j), ev, av3);
+        }
+        __m256d u4 = _mm256_add_pd(_mm256_loadu_pd(b_s + i), _mm256_set_pd(avx2_hsum_pd(au3), avx2_hsum_pd(au2), avx2_hsum_pd(au1), avx2_hsum_pd(au0)));
+        __m256d v4 = _mm256_add_pd(_mm256_loadu_pd(b_lam + i), _mm256_set_pd(avx2_hsum_pd(av3), avx2_hsum_pd(av2), avx2_hsum_pd(av1), avx2_hsum_pd(av0)));
+        __m256d c4 = avx2_fast_tanh4(u4);
+        __m256d g4 = _mm256_fmadd_pd(c_half, avx2_fast_tanh4(_mm256_mul_pd(c_half, v4)), c_half);
+        __m256d s4 = _mm256_loadu_pd(state + i);
+        _mm256_storeu_pd(next_state + i, _mm256_fmadd_pd(g4, s4, _mm256_mul_pd(_mm256_sub_pd(c_one, g4), c4)));
+    }
+
+    vec_matvec_Nx256_avx2(W_q, b_q, next_state, q, 0.0625, 256);
+
+    if (model_kind != MODEL_KIND_QNMF_V2_NO_MW) {
+        vec_matvec_Nx256_avx2(M_w, (const double*)0, q, dot_w, 1.0, 64);
+        double max_dw = dot_w[0];
+        for (int s = 1; s < 64; s++) if (dot_w[s] > max_dw) max_dw = dot_w[s];
+        __m256d vmax = _mm256_set1_pd(max_dw), vsum = _mm256_setzero_pd();
+        for (int s = 0; s < 64; s += 4) {
+            __m256d e = avx2_fast_exp4(_mm256_sub_pd(_mm256_loadu_pd(dot_w + s), vmax));
+            _mm256_storeu_pd(a_w + s, e);
+            vsum = _mm256_add_pd(vsum, e);
+        }
+        vec_weighted_sum_Nx256_avx2(M_w, a_w, 1.0 / (avx2_hsum_pd(vsum) + 1e-12), v_w, 64);
+    } else {
+        nn_memset(v_w, 0, 256 * sizeof(double));
+    }
+
+    if (model_kind != MODEL_KIND_QNMF_V2_NO_ML) {
+        vec_matvec_Nx256_avx2(M_l, (const double*)0, q, dot_l, 1.0, 256);
+        double max_dl = dot_l[0];
+        for (int s = 1; s < 256; s++) if (dot_l[s] > max_dl) max_dl = dot_l[s];
+        __m256d vmax = _mm256_set1_pd(max_dl), vsum = _mm256_setzero_pd();
+        for (int s = 0; s < 256; s += 4) {
+            __m256d e = avx2_fast_exp4(_mm256_sub_pd(_mm256_loadu_pd(dot_l + s), vmax));
+            _mm256_storeu_pd(a_l + s, e);
+            vsum = _mm256_add_pd(vsum, e);
+        }
+        vec_weighted_sum_Nx256_avx2(M_l, a_l, 1.0 / (avx2_hsum_pd(vsum) + 1e-12), v_l, 256);
+    } else {
+        nn_memset(v_l, 0, 256 * sizeof(double));
+    }
+
+    double* rg_buf = dot_l;
+    double* px_buf = a_l;
+    vec_matvec_Nx256_avx2(W_r, b_r, next_state, rg_buf, 1.0, 256);
+    for (int i = 0; i < 256; i += 4) {
+        __m256d rg = avx2_fast_tanh4(_mm256_mul_pd(c_half, _mm256_loadu_pd(rg_buf + i)));
+        __m256d sig = _mm256_fmadd_pd(c_half, rg, c_half);
+        __m256d vw = _mm256_add_pd(_mm256_loadu_pd(v_w + i), _mm256_loadu_pd(v_l + i));
+        __m256d ns = _mm256_loadu_pd(next_state + i);
+        _mm256_storeu_pd(z_out + i, _mm256_fmadd_pd(sig, vw, ns));
+    }
+
+    vec_matvec_Nx256_avx2(W_pred, b_pred, next_state, px_buf, 1.0, 256);
+    double surprise = 0.0;
+    for (int i = 0; i < 256; i++) {
+        double d = emb[i] - px_buf[i];
+        surprise += d * d;
+    }
+    surprise *= (1.0 / 256.0);
+    if (surprise > 0.04) {
+        double* tmw = M_w + (t % 64) * 256;
+        __m256d c85 = _mm256_set1_pd(0.85), c15 = _mm256_set1_pd(0.15);
+        for (int j = 0; j < 256; j += 4) {
+            _mm256_storeu_pd(tmw + j, _mm256_fmadd_pd(c15, _mm256_loadu_pd(emb + j), _mm256_mul_pd(c85, _mm256_loadu_pd(tmw + j))));
+        }
+        if (surprise > 0.08) {
+            double* tml = M_l + ((t / 2) % 256) * 256;
+            __m256d c50 = _mm256_set1_pd(0.5);
+            for (int j = 0; j < 256; j += 4) {
+                _mm256_storeu_pd(tml + j, _mm256_mul_pd(c50, _mm256_add_pd(_mm256_loadu_pd(tml + j), _mm256_loadu_pd(emb + j))));
+            }
+        }
+    }
+    vec_matvec_Nx256_avx2(W_route, b_route, z_out, r_out, 1.0, 16);
+}
+#endif
+
+static void qnmf_dos_s1_worker_range(QNMFDosS1Ctx* c, int s_begin, int s_end, double* tmp) {
+    double* M_w        = tmp;                 // 16384
+    double* M_l        = M_w + 16384;         // 65536
+    double* state      = M_l + 65536;         // 256
+    double* next_state = state + 256;         // 256
+    double* q_buf      = next_state + 256;    // 256
+    double* v_w        = q_buf + 256;         // 256
+    double* v_l        = v_w + 256;           // 256
+    double* scratch    = v_l + 256;           // 1024
+
+    for (int sb = s_begin; sb < s_end; sb++) {
+        nn_memcpy(M_w, c->M_w_init, 16384 * sizeof(double));
+        nn_memcpy(M_l, c->M_l_init, 65536 * sizeof(double));
+        nn_memset(state, 0, 256 * sizeof(double));
+        const int* seq = c->seq_toks + (long long)sb * c->seq_len;
+
+        for (int t = 0; t < c->seq_len; t++) {
+            int tok = seq[t];
+            if (tok < 0 || tok >= V2_VOCAB_SIZE_BPE) tok = 0;
+            const double* emb = c->W_emb + (long long)tok * 256;
+            int tid = sb * c->seq_len + t;
+            double* z_dst = c->z_all + (long long)tid * 256;
+            double* r_dst = c->r_all + (long long)tid * 16;
+#if defined(__x86_64__) || defined(_M_X64)
+            if (qadav_cpu_supports_avx2()) {
+                qnmf_dos_p1_p2_step_avx2(
+                    c->model_kind, c->W_x, c->W_s, c->b_s, c->W_lam, c->b_lam,
+                    c->W_q, c->b_q, c->W_r, c->b_r, c->W_pred, c->b_pred, c->W_route, c->b_route,
+                    emb, t, state, M_w, M_l, next_state, q_buf, v_w, v_l, z_dst, r_dst, scratch);
+            } else
+#endif
+            {
+                // Scalar fallback
+                for (int i = 0; i < 256; i++) {
+                    double u = c->b_s[i], v = c->b_lam[i];
+                    for (int j = 0; j < 256; j++) {
+                        u += c->W_x[i * 256 + j] * emb[j] + c->W_s[i * 256 + j] * state[j];
+                        v += c->W_lam[i * 256 + j] * emb[j];
+                    }
+                    double ca = fast_tanh(u), ga = fast_sigmoid(v);
+                    next_state[i] = ga * state[i] + (1.0 - ga) * ca;
+                }
+                for (int i = 0; i < 256; i++) z_dst[i] = next_state[i];
+                for (int k = 0; k < 16; k++) r_dst[k] = c->b_route[k] + vec_dot_256_scalar(c->W_route + k * 256, z_dst);
+            }
+            nn_memcpy(state, next_state, 256 * sizeof(double));
+        }
+    }
+}
+
+static void qnmf_dos_s1_mt_cb(void* ctx_ptr) {
+    QNMFDosS1Ctx* c = (QNMFDosS1Ctx*)ctx_ptr;
+    int mid = c->s_end;
+    qnmf_dos_s1_worker_range(c, mid, c->chunk_seqs, c->p1_tmp + 90000);
+}
+
+// Sinkhorn-Knopp Optimal Transport Routing (QNMF_MATH_SPEC §3.2):
+// Solves entropy-regularized OT plan P* = diag(u) exp(-C/eps) diag(v) over B tokens x 16 experts
+// in tau=5 scaling steps, then assigns Top-2 distinct experts subject to uniform capacity limit
+// ceil(2*B/16) with deterministic index rotation on ties.
+static void qnmf_dos_route_sinkhorn_window(
+    const double* r_win, int B,
+    double* K_mat, double* u_vec,
+    int* top1_out, int* top2_out, double* a1_out, double* a2_out)
+{
+    const double eps = 0.5;
+    const double inv_eps = 1.0 / eps;
+    const double target_u = 1.0 / (double)B;
+    const double target_v = 1.0 / 16.0;
+    double v_vec[16];
+    for (int k = 0; k < 16; k++) v_vec[k] = target_v;
+
+    for (int i = 0; i < B; i++) {
+        const double* ri = r_win + i * 16;
+        double r_max = ri[0];
+        for (int k = 1; k < 16; k++) if (ri[k] > r_max) r_max = ri[k];
+        double* Ki = K_mat + i * 16;
+        for (int k = 0; k < 16; k++) {
+            Ki[k] = fast_exp((ri[k] - r_max) * inv_eps);
+        }
+        u_vec[i] = target_u;
+    }
+
+    for (int iter = 0; iter < 5; iter++) {
+        for (int i = 0; i < B; i++) {
+            const double* Ki = K_mat + i * 16;
+            double s = 0.0;
+            for (int k = 0; k < 16; k++) s += Ki[k] * v_vec[k];
+            u_vec[i] = target_u / (s + 1e-12);
+        }
+        double col_sum[16];
+        for (int k = 0; k < 16; k++) col_sum[k] = 0.0;
+        for (int i = 0; i < B; i++) {
+            const double* Ki = K_mat + i * 16;
+            double ui = u_vec[i];
+            for (int k = 0; k < 16; k++) col_sum[k] += Ki[k] * ui;
+        }
+        for (int k = 0; k < 16; k++) {
+            v_vec[k] = target_v / (col_sum[k] + 1e-12);
+        }
+    }
+
+    int cap = (2 * B + 15) / 16;
+    int rem_cap[16];
+    for (int k = 0; k < 16; k++) rem_cap[k] = cap;
+
+    for (int i = 0; i < B; i++) {
+        const double* Ki = K_mat + i * 16;
+        double ui = u_vec[i];
+        double p_row[16];
+        for (int k = 0; k < 16; k++) p_row[k] = ui * Ki[k] * v_vec[k];
+
+        int rot = (i * 2) % 16;
+        int best1 = -1, best2 = -1;
+        double v1 = -1.0, v2 = -1.0;
+        for (int s = 0; s < 16; s++) {
+            int k = (rot + s) % 16;
+            if (rem_cap[k] <= 0) continue;
+            double p = p_row[k];
+            if (p > v1 + 1e-12) { best1 = k; v1 = p; }
+        }
+        if (best1 < 0) best1 = rot;
+        rem_cap[best1]--;
+
+        for (int s = 0; s < 16; s++) {
+            int k = (rot + s) % 16;
+            if (k == best1 || rem_cap[k] <= 0) continue;
+            double p = p_row[k];
+            if (p > v2 + 1e-12) { best2 = k; v2 = p; }
+        }
+        if (best2 < 0) {
+            for (int s = 0; s < 16; s++) {
+                int k = (rot + s) % 16;
+                if (k != best1) { best2 = k; v2 = p_row[k]; break; }
+            }
+        }
+        rem_cap[best2]--;
+
+        double psum = v1 + v2 + 1e-12;
+        top1_out[i] = best1;
+        top2_out[i] = best2;
+        a1_out[i]   = v1 / psum;
+        a2_out[i]   = v2 / psum;
+    }
+}
+
+static int qadav_stress_repetition_dos_ex(
+    const char* model_path,
+    int num_repeated,
+    int seq_len,
+    int routing_mode,
+    int use_varied_baseline,
+    const char* bpe_path,
+    const char* toks_path,
+    double* out_variance,
+    double* out_max_expert_frac,
+    double* out_latency_ms)
+{
+    if (!model_path || num_repeated <= 0 || seq_len <= 0) return -1;
+    if (bpe_load(bpe_path && bpe_path[0] ? bpe_path : "TMP\\bpe_v8k.bin") != 0) {
+        nn_print("[ERROR] Failed to load BPE vocab for DoS stress test.\n");
+        return -1;
+    }
+
+    int tok_ids[8];
+    int n_enc = bpe_encode("the", 3, tok_ids, 8);
+    int rep_tok = (n_enc > 0) ? tok_ids[0] : 116;
+
+    int kind = MODEL_KIND_QNMF_V2;
+    double ckpt_loss = 0.0, ckpt_time = 0.0;
+    V2Weights* w = load_v2_weights_bin_mode(model_path, &kind, &ckpt_loss, &ckpt_time, 1);
+    if (!w) {
+        nn_print("[ERROR] Failed to load checkpoint: "); nn_print(model_path); nn_print("\n");
+        return -1;
+    }
+
+    // Optional varied corpus for baseline latency comparison (TEST F)
+    int* corp = (int*)0;
+    int corp_cnt = 0;
+    if (use_varied_baseline) {
+        corp = qadav_load_bpe_tokens((toks_path && toks_path[0]) ? toks_path : "TMP\\shakespeare_subset.tokens", &corp_cnt);
+        if (!corp || corp_cnt < seq_len + 16) {
+            nn_print("[ERROR] Failed to load varied token corpus for baseline latency test.\n");
+            free_v2_weights(w);
+            return -1;
+        }
+    }
+
+    nn_print("=== [M10.5 EXP-4 REPETITION DOS STRESS TEST] ===\n");
+    nn_print("Checkpoint: "); nn_print(model_path);
+    nn_print(" | Params: "); nn_print_i64(w->total_params);
+    nn_print(" | Kind: "); nn_print_i64(kind);
+    nn_print("\n");
+
+    if (kind == MODEL_KIND_TRANSFORMER_V2) {
+        int chunk_seqs = 4;
+        int* seq_buf = (int*)qadav_alloc((unsigned long long)chunk_seqs * seq_len * sizeof(int));
+        if (!seq_buf) { free_v2_weights(w); if (corp) nn_large_free(corp, (unsigned long long)corp_cnt * sizeof(int)); return -1; }
+        DWORD t0 = nn_get_ticks();
+        int done = 0;
+        while (done < num_repeated) {
+            int b = (num_repeated - done >= chunk_seqs) ? chunk_seqs : (num_repeated - done);
+            for (int sb = 0; sb < b; sb++) {
+                int* s = seq_buf + sb * seq_len;
+                for (int t = 0; t < seq_len; t++) {
+                    s[t] = use_varied_baseline ? corp[((done + sb) * 31 + t) % corp_cnt] : rep_tok;
+                }
+            }
+            int hx = 0, hv = 0;
+            compute_transformer_v2_recall_batch(w, seq_buf, b, 0, &hx, &hv);
+            done += b;
+        }
+        DWORD t1 = nn_get_ticks();
+        double elapsed_ms = (double)(t1 - t0);
+        nn_print("Model: Transformer v2 (dense self-attention, no MoE) | Repeats="); nn_print_i64(num_repeated);
+        nn_print(" x "); nn_print_i64(seq_len); nn_print(" | Time="); nn_print_f64(elapsed_ms, 1); nn_print(" ms\n");
+        nn_print("Routing Collapse: N/A (Transformer doesn't have MoE routing collapse)\n");
+        if (out_variance) *out_variance = 0.0;
+        if (out_max_expert_frac) *out_max_expert_frac = 0.0;
+        if (out_latency_ms) *out_latency_ms = elapsed_ms;
+        qadav_free(seq_buf);
+        if (corp) nn_large_free(corp, (unsigned long long)corp_cnt * sizeof(int));
+        free_v2_weights(w);
+        nn_scratch_release();
+        return 0;
+    }
+
+    nn_print("Routing Mode: ");
+    nn_print(routing_mode == 0 ? "sinkhorn (OT P3, tau=5, eps=0.5, cap=2*B/K)" : "heuristic_top2 (M10.4 unguided Top-2 softmax)");
+    nn_print(" | Input: ");
+    if (use_varied_baseline) {
+        nn_print("VARIED natural BPE sequences\n");
+    } else {
+        nn_print("REPEATED 'the' BPE_ID="); nn_print_i64(rep_tok);
+        nn_print(" (enc_len="); nn_print_i64(n_enc); nn_print(")\n");
+    }
+    nn_print("Repeats: "); nn_print_i64(num_repeated); nn_print(" | SeqLen: "); nn_print_i64(seq_len); nn_print("\n");
+
+    int emb_len = V2_VOCAB_SIZE_BPE * 256;
+    const double* W_emb    = w->params;
+    const double* W_x      = W_emb + emb_len;
+    const double* W_s      = W_x + 65536;
+    const double* b_s      = W_s + 65536;
+    const double* W_lam    = b_s + 256;
+    const double* b_lam    = W_lam + 65536;
+    const double* W_q      = b_lam + 256;
+    const double* b_q      = W_q + 65536;
+    const double* W_r      = b_q + 256 + 65536 + 256 + 65536 + 256;
+    const double* b_r      = W_r + 65536;
+    const double* W_f      = b_r + 256;
+    const double* b_f      = W_f + 65536;
+    const double* W_pred   = b_f + 256;
+    const double* b_pred   = W_pred + 256;
+    const double* M_w_init = b_pred + 256;
+    const double* M_l_init = M_w_init + 16384;
+    const double* W_route  = M_l_init + 65536;
+    const double* b_route  = W_route + 4096;
+    const double* W_exp    = b_route + 16;
+
+    int max_chunk_seqs = 8;
+    int max_chunk_N = max_chunk_seqs * seq_len;
+    unsigned long long d_need =
+        (unsigned long long)max_chunk_N * 256ULL + // z_all
+        (unsigned long long)max_chunk_N * 256ULL + // hcomb_all
+        (unsigned long long)max_chunk_N * 256ULL + // hcomb_t1
+        (unsigned long long)max_chunk_N * 16ULL  + // r_all
+        (unsigned long long)max_chunk_N * 2ULL   + // a1_all, a2_all
+        (unsigned long long)seq_len * 17ULL      + // Sinkhorn K_mat (seq_len*16) + u_vec (seq_len)
+        131072ULL                                + // h_eval_tile + h_eval_tile_t1 (65536*2)
+        180000ULL;                                 // p1_tmp (2 workers * 90000)
+    unsigned long long i_need = (unsigned long long)max_chunk_N * 18ULL + (unsigned long long)max_chunk_N;
+    double* ws = (double*)nn_scratch_acquire(d_need * sizeof(double) + i_need * sizeof(int) + 4096ULL);
+    if (!ws) {
+        if (corp) nn_large_free(corp, (unsigned long long)corp_cnt * sizeof(int));
+        free_v2_weights(w);
+        return -1;
+    }
+
+    double* z_all          = ws;
+    double* hcomb_all      = z_all + (unsigned long long)max_chunk_N * 256ULL;
+    double* hcomb_t1       = hcomb_all + (unsigned long long)max_chunk_N * 256ULL;
+    double* r_all          = hcomb_t1 + (unsigned long long)max_chunk_N * 256ULL;
+    double* a1_all         = r_all + (unsigned long long)max_chunk_N * 16ULL;
+    double* a2_all         = a1_all + max_chunk_N;
+    double* sk_kmat        = a2_all + max_chunk_N;
+    double* sk_uvec        = sk_kmat + (unsigned long long)seq_len * 16ULL;
+    double* h_eval_tile    = sk_uvec + seq_len;
+    double* h_eval_tile_t1 = h_eval_tile + 65536ULL;
+    double* p1_tmp         = h_eval_tile_t1 + 65536ULL;
+    int*    ibuf           = (int*)(p1_tmp + 180000ULL);
+    int*    top1_all       = ibuf;
+    int*    top2_all       = top1_all + max_chunk_N;
+    int*    exp_list       = top2_all + max_chunk_N;
+    int*    seq_toks       = exp_list + 16 * max_chunk_N;
+
+    long long hist[16];
+    for (int k = 0; k < 16; k++) hist[k] = 0;
+
+    DWORD t_start = nn_get_ticks();
+    int done = 0;
+    int next_log = (num_repeated >= 1000) ? 1000 : num_repeated;
+
+    while (done < num_repeated) {
+        int c_seqs = (num_repeated - done >= max_chunk_seqs) ? max_chunk_seqs : (num_repeated - done);
+        int chunk_N = c_seqs * seq_len;
+
+        for (int sb = 0; sb < c_seqs; sb++) {
+            int* dst = seq_toks + sb * seq_len;
+            if (use_varied_baseline) {
+                int base = (((done + sb) * 197) % (corp_cnt - seq_len - 1));
+                for (int t = 0; t < seq_len; t++) dst[t] = corp[base + t];
+            } else {
+                for (int t = 0; t < seq_len; t++) dst[t] = rep_tok;
+            }
+        }
+
+        // 1. Parallel P1 + P2 + Router Logits across 2 threads
+        QNMFDosS1Ctx ctx;
+        ctx.model_kind = kind;
+        ctx.routing_mode = routing_mode;
+        ctx.seq_len = seq_len;
+        ctx.chunk_seqs = c_seqs;
+        ctx.seq_toks = seq_toks;
+        ctx.W_emb = W_emb; ctx.W_x = W_x; ctx.W_s = W_s; ctx.b_s = b_s;
+        ctx.W_lam = W_lam; ctx.b_lam = b_lam; ctx.W_q = W_q; ctx.b_q = b_q;
+        ctx.W_r = W_r; ctx.b_r = b_r; ctx.W_pred = W_pred; ctx.b_pred = b_pred;
+        ctx.M_w_init = M_w_init; ctx.M_l_init = M_l_init;
+        ctx.W_route = W_route; ctx.b_route = b_route;
+        ctx.z_all = z_all; ctx.r_all = r_all; ctx.p1_tmp = p1_tmp;
+
+        int mid = c_seqs / 2;
+        ctx.s_start = 0; ctx.s_end = mid;
+#ifdef _WIN32
+        if (c_seqs >= 2 && nn_mt_ensure()) {
+            g_nn_mt.task_kind = 5;
+            g_nn_mt.custom_fn = qnmf_dos_s1_mt_cb;
+            g_nn_mt.custom_ctx = &ctx;
+            __sync_synchronize();
+            g_nn_mt.pSetEvent(g_nn_mt.ev_start);
+            qnmf_dos_s1_worker_range(&ctx, 0, mid, p1_tmp);
+            g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
+            __sync_synchronize();
+        } else
+#endif
+        {
+            qnmf_dos_s1_worker_range(&ctx, 0, c_seqs, p1_tmp);
+        }
+
+        // 2. Expert Routing Assignment + Histogram Recording
+        int exp_cnt[16];
+        for (int k = 0; k < 16; k++) exp_cnt[k] = 0;
+
+        if (routing_mode == 0) {
+            for (int sb = 0; sb < c_seqs; sb++) {
+                int off = sb * seq_len;
+                qnmf_dos_route_sinkhorn_window(
+                    r_all + (long long)off * 16, seq_len,
+                    sk_kmat, sk_uvec,
+                    top1_all + off, top2_all + off, a1_all + off, a2_all + off);
+            }
+        } else {
+            for (int tid = 0; tid < chunk_N; tid++) {
+                const double* rl = r_all + (long long)tid * 16;
+                int top1 = 0, top2 = 1;
+                if (rl[1] > rl[0]) { top1 = 1; top2 = 0; }
+                for (int k = 2; k < 16; k++) {
+                    if (rl[k] > rl[top1]) { top2 = top1; top1 = k; }
+                    else if (rl[k] > rl[top2]) { top2 = k; }
+                }
+                double e1 = 1.0, e2 = fast_exp(rl[top2] - rl[top1]);
+                top1_all[tid] = top1; top2_all[tid] = top2;
+                a1_all[tid] = e1 / (e1 + e2 + 1e-12);
+                a2_all[tid] = e2 / (e1 + e2 + 1e-12);
+            }
+        }
+
+        for (int tid = 0; tid < chunk_N; tid++) {
+            int t1 = top1_all[tid], t2 = top2_all[tid];
+            exp_list[t1 * chunk_N + exp_cnt[t1]++] = (tid << 1) | 0;
+            exp_list[t2 * chunk_N + exp_cnt[t2]++] = (tid << 1) | 1;
+            hist[t1]++;
+            hist[t2]++;
+        }
+
+        // 3. Sparse Top-2 Expert Forward Execution (2-thread AVX2 GEMM)
+        nn_memcpy(hcomb_all, z_all, (unsigned long long)chunk_N * 256ULL * sizeof(double));
+        unsigned char exp_assign[16];
+        {
+            int order[16];
+            for (int k = 0; k < 16; k++) { order[k] = k; exp_assign[k] = 0; }
+            for (int i = 0; i < 16; i++) {
+                for (int j = i + 1; j < 16; j++) {
+                    if (exp_cnt[order[j]] > exp_cnt[order[i]]) {
+                        int tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+                    }
+                }
+            }
+            int l0 = 0, l1 = 0;
+            for (int i = 0; i < 16; i++) {
+                int k = order[i];
+                if (l0 <= l1) { exp_assign[k] = 0; l0 += exp_cnt[k]; }
+                else { exp_assign[k] = 1; l1 += exp_cnt[k]; }
+            }
+        }
+
+#ifdef _WIN32
+        if (nn_mt_ensure()) {
+            nn_memset(hcomb_t1, 0, (unsigned long long)chunk_N * 256ULL * sizeof(double));
+            g_nn_mt.task_kind   = 2;
+            g_nn_mt.W_exp       = W_exp;
+            g_nn_mt.z_all       = z_all;
+            g_nn_mt.out_base    = hcomb_t1;
+            g_nn_mt.h1_all      = (double*)0;
+            g_nn_mt.h2_all      = (double*)0;
+            g_nn_mt.h_eval_base = h_eval_tile_t1;
+            g_nn_mt.exp_cnt     = exp_cnt;
+            g_nn_mt.exp_list    = exp_list;
+            g_nn_mt.exp_assign  = exp_assign;
+            g_nn_mt.a1_all      = a1_all;
+            g_nn_mt.a2_all      = a2_all;
+            g_nn_mt.chunk_N     = chunk_N;
+            g_nn_mt.is_training = 0;
+            __sync_synchronize();
+            g_nn_mt.pSetEvent(g_nn_mt.ev_start);
+            run_qnmf_s2_experts_avx2(exp_assign, 0, W_exp, z_all, hcomb_all, (double*)0, (double*)0,
+                h_eval_tile, exp_cnt, exp_list, a1_all, a2_all, chunk_N, 0);
+            g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
+            __sync_synchronize();
+            vec_add_inplace_avx2(hcomb_all, hcomb_t1, chunk_N * 256);
+        } else
+#endif
+        {
+            run_qnmf_s2_experts_avx2((const unsigned char*)0, 0, W_exp, z_all, hcomb_all, (double*)0, (double*)0,
+                h_eval_tile, exp_cnt, exp_list, a1_all, a2_all, chunk_N, 0);
+        }
+
+        done += c_seqs;
+        if (done >= next_log && done < num_repeated) {
+            double el_s = (double)(nn_get_ticks() - t_start) / 1000.0;
+            nn_print("  [STRESS-PROGRESS] "); nn_print_i64(done); nn_print("/"); nn_print_i64(num_repeated);
+            nn_print(" | Elapsed="); nn_print_f64(el_s, 1); nn_print("s\n");
+            next_log += 1000;
+        }
+    }
+
+    DWORD t_end = nn_get_ticks();
+    double latency_ms = (double)(t_end - t_start);
+
+    long long total_routed = (long long)num_repeated * (long long)seq_len * 2LL;
+    double mean_f = 1.0 / 16.0;
+    double ssd = 0.0, max_f = 0.0;
+    nn_print("--- Expert Load Histogram (16 experts, total_assignments="); nn_print_i64(total_routed); nn_print(") ---\n");
+    for (int k = 0; k < 16; k++) {
+        double fk = (double)hist[k] / (double)total_routed;
+        double d = fk - mean_f;
+        ssd += d * d;
+        if (fk > max_f) max_f = fk;
+        nn_print("  Expert["); nn_print_i64(k); nn_print("]: count="); nn_print_i64(hist[k]);
+        nn_print(" | frac="); nn_print_f64(fk, 6); nn_print("\n");
+    }
+    double var_pop = ssd / 16.0;
+    double cv = qadav_sqrt(var_pop) / mean_f;
+
+    nn_print("RESULTS: Var_pop="); nn_print_f64(var_pop, 6);
+    nn_print(" | SSD_Var="); nn_print_f64(ssd, 6);
+    nn_print(" | CV="); nn_print_f64(cv, 4);
+    nn_print(" | MaxFrac="); nn_print_f64(max_f, 6);
+    nn_print(" | TotalTime_ms="); nn_print_f64(latency_ms, 1);
+    nn_print(" | ms_per_pass="); nn_print_f64(latency_ms / (double)num_repeated, 3);
+    nn_print("\nSTRESS_DOS_COMPLETE\n");
+
+    if (out_variance) *out_variance = ssd;
+    if (out_max_expert_frac) *out_max_expert_frac = max_f;
+    if (out_latency_ms) *out_latency_ms = latency_ms;
+
+    if (corp) nn_large_free(corp, (unsigned long long)corp_cnt * sizeof(int));
+    nn_scratch_release();
+    free_v2_weights(w);
+    return 0;
+}
+
+int qadav_stress_repetition_dos(
+    const char* model_path,
+    int num_repeated,
+    int seq_len,
+    double* out_variance,
+    double* out_max_expert_frac,
+    double* out_latency_ms)
+{
+    return qadav_stress_repetition_dos_ex(
+        model_path, num_repeated, seq_len,
+        0, 0, "TMP\\bpe_v8k.bin", "TMP\\shakespeare_subset.tokens",
+        out_variance, out_max_expert_frac, out_latency_ms);
+}
+
+static int qadav_run_v2_stress_dos(const char* cmd) {
+    char ckpt_path[256], routing_str[64], bpe_path[256], toks_path[256];
+    const char* def_ckpt = (cmd && nn_strstr(cmd, "transformer")) ? "TMP\\transformer_v2_recall_seed42.bin" : "TMP\\qnmf_v2_recall_seed42.bin";
+    nn_parse_str_flag(cmd, "--checkpoint", def_ckpt, ckpt_path, 256);
+    nn_parse_str_flag(cmd, "--routing", "sinkhorn", routing_str, 64);
+    nn_parse_str_flag(cmd, "--bpe", "TMP\\bpe_v8k.bin", bpe_path, 256);
+    nn_parse_str_flag(cmd, "--tokens", "TMP\\shakespeare_subset.tokens", toks_path, 256);
+
+    int repeats = nn_parse_int_flag(cmd, "--repeats", 10000);
+    int seq_len = nn_parse_int_flag(cmd, "--seq-len", 512);
+    int routing_mode = 0;
+    if (nn_strstr(routing_str, "heuristic") || nn_strstr(routing_str, "top2") || nn_strstr(routing_str, "softmax") || nn_strstr(routing_str, "m10_4")) {
+        routing_mode = 1;
+    }
+    int use_varied = (cmd && (nn_strstr(cmd, "--baseline") || nn_strstr(cmd, "--varied"))) ? 1 : 0;
+
+    double var_out = 0.0, max_out = 0.0, lat_out = 0.0;
+    return qadav_stress_repetition_dos_ex(
+        ckpt_path, repeats, seq_len, routing_mode, use_varied, bpe_path, toks_path,
+        &var_out, &max_out, &lat_out);
+}
+
+// ---------------------------------------------------------------------
 // Training Entrypoint V2 (Called by train_v2.exe)
 // ---------------------------------------------------------------------
 
 int qadav_run_v2_training(const char* cmd, void* mctp_cert, int epochs) {
     (void)epochs;
+    if (cmd && nn_strstr(cmd, "stress-dos")) {
+        return qadav_run_v2_stress_dos(cmd);
+    }
     if (cmd && (nn_strstr(cmd, "recall") || nn_strstr(cmd, "--generate-curriculum") || nn_strstr(cmd, "--curriculum-only"))) {
         return qadav_run_v2_training_recall(cmd, mctp_cert);
     }
