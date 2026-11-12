@@ -1842,20 +1842,35 @@ int  bpe_vocab_size(void);
 #define TRANSFORMER_V2_PARAM_COUNT     17671040
 #define QNMF_V2_NO_ML_PARAM_COUNT      17492112
 #define QNMF_V2_NO_MW_PARAM_COUNT      17541264
-#define QNMF_V2_BPE_PARAM_COUNT        19547984
-#define TRANSFORMER_V2_BPE_PARAM_COUNT 19661376
+#define QNMF_V2_BPE_PARAM_COUNT         19547984
+#define TRANSFORMER_V2_BPE_PARAM_COUNT  19661376
+#define QNMF_50M_DIM                    384
+#define QNMF_50M_FF                     3712
+#define QNMF_50M_EXP_SIZE               2854912
+#define QNMF_50M_BPE_PARAM_COUNT        50217808
+#define TRANSFORMER_50M_DIM             384
+#define TRANSFORMER_50M_HEADS           12
+#define TRANSFORMER_50M_HEAD_DIM        32
+#define TRANSFORMER_50M_LAYERS          4
+#define TRANSFORMER_50M_LAY_STRIDE      11700096
+#define TRANSFORMER_50M_BPE_PARAM_COUNT 50077760
 
-#define RECALL_SEQ_LEN   512
-#define RECALL_CTX_LEN   500
-#define RECALL_N_KEYS    50
-#define RECALL_N_VALS    50
-#define RECALL_KEY_BASE  128
-#define RECALL_VAL_BASE  178
-#define RECALL_TOK_FIND  228
-#define RECALL_TOK_END   229
-#define RECALL_N_TRAIN   800
-#define RECALL_N_EVAL    200
-#define RECALL_N_TOTAL   1000
+#define RECALL_SEQ_LEN       512
+#define RECALL_CTX_LEN       500
+#define RECALL_SUP_POSITIONS 12
+#define RECALL_BPTT_LEN      16
+#define RECALL_N_KEYS        50
+#define RECALL_N_VALS        50
+#define RECALL_KEY_BASE      128
+#define RECALL_VAL_BASE      178
+#define RECALL_TOK_FIND      228
+#define RECALL_TOK_END       229
+#define RECALL_N_TRAIN       800
+#define RECALL_N_EVAL        200
+#define RECALL_N_TOTAL       1000
+
+typedef unsigned int       uint32_t;
+typedef unsigned long long uint64_t;
 
 typedef void* (__stdcall *pfn_VirtualAlloc)(void*, unsigned long long, DWORD, DWORD);
 typedef BOOL  (__stdcall *pfn_VirtualFree)(void*, unsigned long long, DWORD);
@@ -1924,22 +1939,59 @@ typedef struct {
     int alloc_params;
     int num_adam_blks;
     int use_f32_moments;
+    int use_compact_50m;
+    int num_v_blks16;
     double* params;
     double* grads;
     double* m;
     double* v;
     float* m_f32;
     float* v_f32;
+    float* params_f32;
+    float* grads_f32;
+    unsigned short* m_bf16;
+    float* v_blk16_f32;
     unsigned char* adam_blk_active;
 } V2Weights;
 
-static V2Weights* alloc_v2_weights(int count) {
+static V2Weights* alloc_v2_weights_mode(int count, int eval_only) {
     V2Weights* w = (V2Weights*)qadav_alloc(sizeof(V2Weights));
     if (!w) return (V2Weights*)0;
     nn_memset(w, 0, sizeof(V2Weights));
     w->total_params = count;
     w->alloc_params = count;
     w->num_adam_blks = (count + 63) / 64;
+    if (count >= 40000000) {
+        w->use_compact_50m = 1;
+        w->num_v_blks16 = (count + 15) / 16;
+        unsigned long long psz = (unsigned long long)count * sizeof(float);
+        unsigned long long msz = (unsigned long long)count * sizeof(unsigned short);
+        unsigned long long vsz = (unsigned long long)w->num_v_blks16 * sizeof(float);
+        w->params_f32 = (float*)nn_large_alloc(psz);
+        if (!eval_only) {
+            w->grads_f32 = (float*)nn_large_alloc(psz);
+            w->m_bf16 = (unsigned short*)nn_large_alloc(msz);
+            w->v_blk16_f32 = (float*)nn_large_alloc(vsz);
+            w->adam_blk_active = (unsigned char*)qadav_alloc((unsigned long long)w->num_adam_blks);
+        }
+        if (!w->params_f32 || (!eval_only && (!w->grads_f32 || !w->m_bf16 || !w->v_blk16_f32 || !w->adam_blk_active))) {
+            if (w->params_f32) nn_large_free(w->params_f32, psz);
+            if (w->grads_f32) nn_large_free(w->grads_f32, psz);
+            if (w->m_bf16) nn_large_free(w->m_bf16, msz);
+            if (w->v_blk16_f32) nn_large_free(w->v_blk16_f32, vsz);
+            if (w->adam_blk_active) qadav_free(w->adam_blk_active);
+            qadav_free(w);
+            return (V2Weights*)0;
+        }
+        nn_memset(w->params_f32, 0, psz);
+        if (!eval_only) {
+            nn_memset(w->grads_f32, 0, psz);
+            nn_memset(w->m_bf16, 0, msz);
+            nn_memset(w->v_blk16_f32, 0, vsz);
+            nn_memset(w->adam_blk_active, 0, (unsigned long long)w->num_adam_blks);
+        }
+        return w;
+    }
     w->use_f32_moments = (count > 18000000) ? 1 : 0;
     unsigned long long sz = (unsigned long long)count * sizeof(double);
     unsigned long long msz = w->use_f32_moments ? ((unsigned long long)count * sizeof(float)) : sz;
@@ -1978,8 +2030,24 @@ static V2Weights* alloc_v2_weights(int count) {
     return w;
 }
 
+static V2Weights* alloc_v2_weights(int count) {
+    return alloc_v2_weights_mode(count, 0);
+}
+
 static void free_v2_weights(V2Weights* w) {
     if (!w) return;
+    if (w->use_compact_50m) {
+        unsigned long long psz = (unsigned long long)w->alloc_params * sizeof(float);
+        unsigned long long msz = (unsigned long long)w->alloc_params * sizeof(unsigned short);
+        unsigned long long vsz = (unsigned long long)w->num_v_blks16 * sizeof(float);
+        if (w->params_f32) nn_large_free(w->params_f32, psz);
+        if (w->grads_f32) nn_large_free(w->grads_f32, psz);
+        if (w->m_bf16) nn_large_free(w->m_bf16, msz);
+        if (w->v_blk16_f32) nn_large_free(w->v_blk16_f32, vsz);
+        if (w->adam_blk_active) qadav_free(w->adam_blk_active);
+        qadav_free(w);
+        return;
+    }
     unsigned long long sz = (unsigned long long)w->alloc_params * sizeof(double);
     unsigned long long msz = (unsigned long long)w->alloc_params * sizeof(float);
     if (w->params) nn_large_free(w->params, sz);
@@ -1993,9 +2061,18 @@ static void free_v2_weights(V2Weights* w) {
 }
 
 static void init_qnmf_v2_params(V2Weights* w) {
-    int emb_end = (w->total_params > 18000000) ? (V2_VOCAB_SIZE_BPE * 256) : 0;
+    int is_bpe = (w->total_params > 18000000) ? 1 : 0;
+    int emb_end = is_bpe ? (V2_VOCAB_SIZE_BPE * 256) : 0;
+    int wq_start = emb_end + 197120;
+    int wq_end   = wq_start + 65536;
     for (int i = 0; i < w->total_params; i++) {
-        w->params[i] = (i < emb_end) ? ((nn_rand_uniform() * 2.0 - 1.0) * 0.22) : nn_rand_xavier(256, 256);
+        if (i < emb_end) {
+            w->params[i] = (nn_rand_uniform() * 2.0 - 1.0) * 0.22;
+        } else if (is_bpe && i >= wq_start && i < wq_end) {
+            w->params[i] = (nn_rand_uniform() * 2.0 - 1.0) * 0.25;
+        } else {
+            w->params[i] = nn_rand_xavier(256, 256);
+        }
     }
 }
 
@@ -2003,6 +2080,30 @@ static void init_transformer_v2_params(V2Weights* w) {
     int emb_end = (w->total_params > 18000000) ? (V2_VOCAB_SIZE_BPE * 256) : 0;
     for (int i = 0; i < w->total_params; i++) {
         w->params[i] = (i < emb_end) ? ((nn_rand_uniform() * 2.0 - 1.0) * 0.22) : nn_rand_xavier(256, 256);
+    }
+}
+
+static void init_qnmf_50m_params(V2Weights* w) {
+    int emb_end = V2_VOCAB_SIZE_BPE * QNMF_50M_DIM;
+    int wq_start = emb_end + (QNMF_50M_DIM * QNMF_50M_DIM) * 3 + QNMF_50M_DIM * 2;
+    int wq_end   = wq_start + (QNMF_50M_DIM * QNMF_50M_DIM);
+    for (int i = 0; i < w->total_params; i++) {
+        if (i < emb_end) {
+            w->params_f32[i] = (float)((nn_rand_uniform() * 2.0 - 1.0) * 0.22);
+        } else if (i >= wq_start && i < wq_end) {
+            w->params_f32[i] = (float)((nn_rand_uniform() * 2.0 - 1.0) * 0.25);
+        } else {
+            w->params_f32[i] = (float)nn_rand_xavier(QNMF_50M_DIM, QNMF_50M_DIM);
+        }
+    }
+}
+
+static void init_transformer_50m_params(V2Weights* w) {
+    int emb_end = V2_VOCAB_SIZE_BPE * TRANSFORMER_50M_DIM;
+    for (int i = 0; i < w->total_params; i++) {
+        w->params_f32[i] = (i < emb_end)
+            ? (float)((nn_rand_uniform() * 2.0 - 1.0) * 0.22)
+            : (float)nn_rand_xavier(TRANSFORMER_50M_DIM, TRANSFORMER_50M_DIM);
     }
 }
 
@@ -3051,6 +3152,210 @@ static double nn_cosine_lr(double lr_max, double lr_min, int step, int total_ste
     return lr_min + (lr_max - lr_min) * 0.5 * (1.0 + c);
 }
 
+static long long nn_count_active_grads_f32(const float* grads, int count, unsigned char* blk_active) {
+    long long active = 0;
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        const __m256 abs_mask = _mm256_castsi256_ps(_mm256_set1_epi32(0x7FFFFFFF));
+        const __m256 thresh = _mm256_set1_ps(1e-12f);
+        int full_blks = count / 64;
+        for (int b = 0; b < full_blks; b++) {
+            const float* gp = grads + b * 64;
+            if (b * 64 + 128 < count) _mm_prefetch((const char*)(gp + 128), _MM_HINT_T0);
+            __m256 any_nz = _mm256_setzero_ps();
+            for (int k = 0; k < 64; k += 32) {
+                __m256 g0 = _mm256_loadu_ps(gp + k);
+                __m256 g1 = _mm256_loadu_ps(gp + k + 8);
+                __m256 g2 = _mm256_loadu_ps(gp + k + 16);
+                __m256 g3 = _mm256_loadu_ps(gp + k + 24);
+                any_nz = _mm256_or_ps(any_nz, _mm256_or_ps(_mm256_or_ps(g0, g1), _mm256_or_ps(g2, g3)));
+                int m0 = _mm256_movemask_ps(_mm256_cmp_ps(_mm256_and_ps(g0, abs_mask), thresh, _CMP_GT_OQ));
+                int m1 = _mm256_movemask_ps(_mm256_cmp_ps(_mm256_and_ps(g1, abs_mask), thresh, _CMP_GT_OQ));
+                int m2 = _mm256_movemask_ps(_mm256_cmp_ps(_mm256_and_ps(g2, abs_mask), thresh, _CMP_GT_OQ));
+                int m3 = _mm256_movemask_ps(_mm256_cmp_ps(_mm256_and_ps(g3, abs_mask), thresh, _CMP_GT_OQ));
+                unsigned int packed = (unsigned int)(m0 | (m1 << 8) | (m2 << 16) | (m3 << 24));
+                if (packed) active += (long long)__builtin_popcount(packed);
+            }
+            if (blk_active && !blk_active[b]) {
+                __m256i nzi = _mm256_castps_si256(any_nz);
+                if (!_mm256_testz_si256(nzi, nzi)) blk_active[b] = 1;
+            }
+        }
+        for (int i = full_blks * 64; i < count; i++) {
+            float g = grads[i];
+            if (g != 0.0f && blk_active) blk_active[full_blks] = 1;
+            if (g < 0.0f) g = -g;
+            if (g > 1e-12f) active++;
+        }
+        return active;
+    }
+#endif
+    for (int i = 0; i < count; i++) {
+        float g = grads[i];
+        if (g != 0.0f && blk_active) blk_active[i >> 6] = 1;
+        if (g < 0.0f) g = -g;
+        if (g > 1e-12f) active++;
+    }
+    return active;
+}
+
+static inline float nn_bf16_to_f32(unsigned short u) {
+    union { unsigned int i; float f; } cv;
+    cv.i = ((unsigned int)u) << 16;
+    return cv.f;
+}
+
+static inline unsigned short nn_f32_to_bf16(float f) {
+    union { unsigned int i; float f; } cv;
+    cv.f = f;
+    unsigned int rnd = 0x7FFFU + ((cv.i >> 16) & 1U);
+    return (unsigned short)((cv.i + rnd) >> 16);
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma"), noinline))
+static void vec_adam_update_50m_blk_avx2(
+    float* restrict params, float* restrict grads,
+    unsigned short* restrict m_bf16, float* restrict v_blk16,
+    const unsigned char* restrict blk_active,
+    int blk_offset, int count, float alpha)
+{
+    const __m256 v_beta1 = _mm256_set1_ps(0.9f);
+    const __m256 v_1mb1  = _mm256_set1_ps(0.1f);
+    const __m256 v_gmax  = _mm256_set1_ps(5.0f);
+    const __m256 v_gmin  = _mm256_set1_ps(-5.0f);
+    const __m256 v_alpha = _mm256_set1_ps(alpha);
+    const __m256 v_wd    = _mm256_set1_ps(0.001f);
+    const __m256 v_zero  = _mm256_setzero_ps();
+    const __m256i v_one  = _mm256_set1_epi32(1);
+    const __m256i v_0x7f = _mm256_set1_epi32(0x7FFF);
+
+    int full_blks = count / 64;
+    for (int b = 0; b < full_blks; b++) {
+        int gb = blk_offset + b;
+        if (blk_active && !blk_active[gb]) continue;
+        int base = b * 64;
+        for (int sb = 0; sb < 4; sb++) {
+            int off = base + sb * 16;
+            int vb_idx = gb * 4 + sb;
+            __m256 g0 = _mm256_max_ps(v_gmin, _mm256_min_ps(v_gmax, _mm256_loadu_ps(grads + off)));
+            __m256 g1 = _mm256_max_ps(v_gmin, _mm256_min_ps(v_gmax, _mm256_loadu_ps(grads + off + 8)));
+            __m256 sq = _mm256_fmadd_ps(g0, g0, _mm256_mul_ps(g1, g1));
+            __m128 slo = _mm256_castps256_ps128(sq);
+            __m128 shi = _mm256_extractf128_ps(sq, 1);
+            __m128 s4 = _mm_add_ps(slo, shi);
+            __m128 s2 = _mm_hadd_ps(s4, s4);
+            __m128 s1 = _mm_hadd_ps(s2, s2);
+            float mean_sq = _mm_cvtss_f32(s1) * (1.0f / 16.0f);
+
+            float vb = 0.999f * v_blk16[vb_idx] + 0.001f * mean_sq;
+            v_blk16[vb_idx] = vb;
+            float inv_denom = 1.0f / ((float)qadav_sqrt((double)vb) + 1e-8f);
+            __m256 v_inv_d = _mm256_set1_ps(inv_denom);
+
+            __m256 m0 = _mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i*)(m_bf16 + off))), 16));
+            __m256 m1 = _mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(_mm_loadu_si128((const __m128i*)(m_bf16 + off + 8))), 16));
+            m0 = _mm256_fmadd_ps(v_beta1, m0, _mm256_mul_ps(v_1mb1, g0));
+            m1 = _mm256_fmadd_ps(v_beta1, m1, _mm256_mul_ps(v_1mb1, g1));
+
+            __m256 p0 = _mm256_loadu_ps(params + off);
+            __m256 p1 = _mm256_loadu_ps(params + off + 8);
+            __m256 u0 = _mm256_fmadd_ps(m0, v_inv_d, _mm256_mul_ps(v_wd, p0));
+            __m256 u1 = _mm256_fmadd_ps(m1, v_inv_d, _mm256_mul_ps(v_wd, p1));
+            p0 = _mm256_fnmadd_ps(v_alpha, u0, p0);
+            p1 = _mm256_fnmadd_ps(v_alpha, u1, p1);
+            _mm256_storeu_ps(params + off, p0);
+            _mm256_storeu_ps(params + off + 8, p1);
+
+            __m256i mi0 = _mm256_castps_si256(m0);
+            __m256i mi1 = _mm256_castps_si256(m1);
+            __m256i b0 = _mm256_add_epi32(v_0x7f, _mm256_and_si256(_mm256_srli_epi32(mi0, 16), v_one));
+            __m256i b1 = _mm256_add_epi32(v_0x7f, _mm256_and_si256(_mm256_srli_epi32(mi1, 16), v_one));
+            __m256i r0 = _mm256_srli_epi32(_mm256_add_epi32(mi0, b0), 16);
+            __m256i r1 = _mm256_srli_epi32(_mm256_add_epi32(mi1, b1), 16);
+            __m256i pk = _mm256_permute4x64_epi64(_mm256_packus_epi32(r0, r1), 0xD8);
+            _mm256_storeu_si256((__m256i*)(m_bf16 + off), pk);
+
+            _mm256_storeu_ps(grads + off, v_zero);
+            _mm256_storeu_ps(grads + off + 8, v_zero);
+        }
+    }
+    int rem_start = full_blks * 64;
+    for (int i = rem_start; i < count; i += 16) {
+        int end = (i + 16 <= count) ? (i + 16) : count;
+        int vb_idx = (blk_offset * 4) + (i / 16);
+        float sum_sq = 0.0f;
+        for (int j = i; j < end; j++) {
+            float g = grads[j];
+            if (g > 5.0f) g = 5.0f; if (g < -5.0f) g = -5.0f;
+            sum_sq += g * g;
+        }
+        float vb = 0.999f * v_blk16[vb_idx] + 0.001f * (sum_sq / (float)(end - i));
+        v_blk16[vb_idx] = vb;
+        float inv_d = 1.0f / ((float)qadav_sqrt((double)vb) + 1e-8f);
+        for (int j = i; j < end; j++) {
+            float g = grads[j];
+            if (g > 5.0f) g = 5.0f; if (g < -5.0f) g = -5.0f;
+            float m = 0.9f * nn_bf16_to_f32(m_bf16[j]) + 0.1f * g;
+            params[j] -= alpha * (m * inv_d + 0.001f * params[j]);
+            m_bf16[j] = nn_f32_to_bf16(m);
+            grads[j] = 0.0f;
+        }
+    }
+}
+#endif
+
+static void vec_adam_update_50m_blk_scalar(
+    float* params, float* grads, unsigned short* m_bf16, float* v_blk16,
+    const unsigned char* blk_active, int blk_offset, int count, float alpha)
+{
+    for (int i = 0; i < count; i += 16) {
+        int b = blk_offset + (i / 64);
+        if (blk_active && !blk_active[b]) continue;
+        int end = (i + 16 <= count) ? (i + 16) : count;
+        int vb_idx = (blk_offset * 4) + (i / 16);
+        float sum_sq = 0.0f;
+        for (int j = i; j < end; j++) {
+            float g = grads[j];
+            if (g > 5.0f) g = 5.0f; if (g < -5.0f) g = -5.0f;
+            sum_sq += g * g;
+        }
+        float vb = 0.999f * v_blk16[vb_idx] + 0.001f * (sum_sq / (float)(end - i));
+        v_blk16[vb_idx] = vb;
+        float inv_d = 1.0f / ((float)qadav_sqrt((double)vb) + 1e-8f);
+        for (int j = i; j < end; j++) {
+            float g = grads[j];
+            if (g > 5.0f) g = 5.0f; if (g < -5.0f) g = -5.0f;
+            float m = 0.9f * nn_bf16_to_f32(m_bf16[j]) + 0.1f * g;
+            params[j] -= alpha * (m * inv_d + 0.001f * params[j]);
+            m_bf16[j] = nn_f32_to_bf16(m);
+            grads[j] = 0.0f;
+        }
+    }
+}
+
+typedef struct {
+    float* params;
+    float* grads;
+    unsigned short* m_bf16;
+    float* v_blk16;
+    const unsigned char* blk_active;
+    int blk_offset;
+    int count;
+    float alpha;
+} Adam50MMTCtx;
+
+static void adam_50m_worker_cb(void* ctx_ptr) {
+    Adam50MMTCtx* c = (Adam50MMTCtx*)ctx_ptr;
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_adam_update_50m_blk_avx2(c->params, c->grads, c->m_bf16, c->v_blk16, c->blk_active, c->blk_offset, c->count, c->alpha);
+        return;
+    }
+#endif
+    vec_adam_update_50m_blk_scalar(c->params, c->grads, c->m_bf16, c->v_blk16, c->blk_active, c->blk_offset, c->count, c->alpha);
+}
+
 static void v2_adam_step(V2Weights* w, double lr, int step) {
     const double beta1 = 0.9;
     const double beta2 = 0.999;
@@ -3066,6 +3371,54 @@ static void v2_adam_step(V2Weights* w, double lr, int step) {
     if (alpha > lr * 5.0) alpha = lr * 5.0;
 
     int total = w->total_params;
+    if (w->use_compact_50m) {
+        long long active_count = nn_count_active_grads_f32(w->grads_f32, total, w->adam_blk_active);
+        double active_fraction = (double)active_count / (double)total;
+        int use_mt = (active_fraction > 0.25) ? 1 : 0;
+        if (step == 1 || step == 2000) {
+            nn_print("  [Adam-50M] Step "); nn_print_i64(step);
+            nn_print(" active_fraction="); nn_print_f64(active_fraction, 6);
+            nn_print(" ("); nn_print_i64(active_count); nn_print("/"); nn_print_i64(total);
+            nn_print(") | mt="); nn_print_i64(use_mt); nn_print("\n");
+        }
+        float af = (float)alpha;
+#ifdef _WIN32
+        if (use_mt && total >= 65536 && nn_mt_ensure()) {
+            int half = ((total / 2) / 64) * 64;
+            Adam50MMTCtx mc;
+            mc.params = w->params_f32 + half;
+            mc.grads  = w->grads_f32 + half;
+            mc.m_bf16 = w->m_bf16 + half;
+            mc.v_blk16 = w->v_blk16_f32;
+            mc.blk_active = w->adam_blk_active;
+            mc.blk_offset = half / 64;
+            mc.count = total - half;
+            mc.alpha = af;
+            g_nn_mt.task_kind = 5;
+            g_nn_mt.custom_fn = adam_50m_worker_cb;
+            g_nn_mt.custom_ctx = &mc;
+            __sync_synchronize();
+            g_nn_mt.pSetEvent(g_nn_mt.ev_start);
+#if defined(__x86_64__) || defined(_M_X64)
+            if (qadav_cpu_supports_avx2())
+                vec_adam_update_50m_blk_avx2(w->params_f32, w->grads_f32, w->m_bf16, w->v_blk16_f32, w->adam_blk_active, 0, half, af);
+            else
+#endif
+                vec_adam_update_50m_blk_scalar(w->params_f32, w->grads_f32, w->m_bf16, w->v_blk16_f32, w->adam_blk_active, 0, half, af);
+            g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
+            __sync_synchronize();
+            return;
+        }
+#endif
+#if defined(__x86_64__) || defined(_M_X64)
+        if (qadav_cpu_supports_avx2()) {
+            vec_adam_update_50m_blk_avx2(w->params_f32, w->grads_f32, w->m_bf16, w->v_blk16_f32, w->adam_blk_active, 0, total, af);
+            return;
+        }
+#endif
+        vec_adam_update_50m_blk_scalar(w->params_f32, w->grads_f32, w->m_bf16, w->v_blk16_f32, w->adam_blk_active, 0, total, af);
+        return;
+    }
     long long active_count = nn_count_active_grads(w->grads, total, w->adam_blk_active);
     double active_fraction = (double)active_count / (double)total;
     int use_mt = (active_fraction > 0.30) ? 1 : 0;
@@ -4129,7 +4482,7 @@ static void save_v2_weights_bin(const char* filepath, int kind, V2Weights* w, do
 #ifdef _WIN32
     HANDLE hFile = CreateFileA(filepath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (hFile == INVALID_HANDLE_VALUE) return;
-    char magic[4] = { 'Q', 'N', 'M', '2' };
+    char magic[4] = { 'Q', 'N', 'M', w->use_compact_50m ? '3' : '2' };
     DWORD written = 0;
     WriteFile(hFile, magic, 4, &written, 0);
     WriteFile(hFile, &kind, 4, &written, 0);
@@ -4138,20 +4491,27 @@ static void save_v2_weights_bin(const char* filepath, int kind, V2Weights* w, do
     WriteFile(hFile, &train_time, 8, &written, 0);
 
     // Stream out parameters
-    DWORD total_bytes = (DWORD)(w->total_params * sizeof(double));
-    WriteFile(hFile, w->params, total_bytes, &written, 0);
+    if (w->use_compact_50m) {
+        DWORD total_bytes = (DWORD)(w->total_params * sizeof(float));
+        WriteFile(hFile, w->params_f32, total_bytes, &written, 0);
+    } else {
+        DWORD total_bytes = (DWORD)(w->total_params * sizeof(double));
+        WriteFile(hFile, w->params, total_bytes, &written, 0);
+    }
     CloseHandle(hFile);
 #endif
 }
 
-static V2Weights* load_v2_weights_bin(const char* filepath, int* out_kind, double* out_loss, double* out_time) {
+static V2Weights* load_v2_weights_bin_mode(const char* filepath, int* out_kind, double* out_loss, double* out_time, int eval_only) {
 #ifdef _WIN32
     HANDLE hFile = CreateFileA(filepath, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
     if (hFile == INVALID_HANDLE_VALUE) return (V2Weights*)0;
     char magic[4] = {0};
     DWORD read = 0;
     ReadFile(hFile, magic, 4, &read, 0);
-    if (magic[0] != 'Q' || magic[1] != 'N' || magic[2] != 'M' || magic[3] != '2') {
+    int is_v3 = (magic[0] == 'Q' && magic[1] == 'N' && magic[2] == 'M' && magic[3] == '3') ? 1 : 0;
+    int is_v2 = (magic[0] == 'Q' && magic[1] == 'N' && magic[2] == 'M' && magic[3] == '2') ? 1 : 0;
+    if (!is_v2 && !is_v3) {
         CloseHandle(hFile);
         return (V2Weights*)0;
     }
@@ -4162,21 +4522,27 @@ static V2Weights* load_v2_weights_bin(const char* filepath, int* out_kind, doubl
     ReadFile(hFile, &loss, 8, &read, 0);
     ReadFile(hFile, &t_time, 8, &read, 0);
 
-    if (count <= 0 || count > 25000000) {
+    int max_cnt = is_v3 ? 60000000 : 25000000;
+    if (count <= 0 || count > max_cnt) {
         CloseHandle(hFile);
         return (V2Weights*)0;
     }
 
     int alloc_count = count;
-    if (alloc_count < QNMF_V2_PARAM_COUNT && kind != MODEL_KIND_TRANSFORMER_V2) {
+    if (!is_v3 && alloc_count < QNMF_V2_PARAM_COUNT && kind != MODEL_KIND_TRANSFORMER_V2) {
         alloc_count = QNMF_V2_PARAM_COUNT;
     }
-    V2Weights* w = alloc_v2_weights(alloc_count);
+    V2Weights* w = alloc_v2_weights_mode(alloc_count, eval_only);
     if (!w) { CloseHandle(hFile); return (V2Weights*)0; }
     w->total_params = count;
 
-    DWORD total_bytes = (DWORD)(count * sizeof(double));
-    ReadFile(hFile, w->params, total_bytes, &read, 0);
+    if (is_v3) {
+        DWORD total_bytes = (DWORD)(count * sizeof(float));
+        ReadFile(hFile, w->params_f32, total_bytes, &read, 0);
+    } else {
+        DWORD total_bytes = (DWORD)(count * sizeof(double));
+        ReadFile(hFile, w->params, total_bytes, &read, 0);
+    }
     CloseHandle(hFile);
 
     if (out_kind) *out_kind = kind;
@@ -4186,6 +4552,10 @@ static V2Weights* load_v2_weights_bin(const char* filepath, int* out_kind, doubl
 #else
     return (V2Weights*)0;
 #endif
+}
+
+static V2Weights* load_v2_weights_bin(const char* filepath, int* out_kind, double* out_loss, double* out_time) {
+    return load_v2_weights_bin_mode(filepath, out_kind, out_loss, out_time, 0);
 }
 
 // ---------------------------------------------------------------------
@@ -4582,9 +4952,147 @@ dump_section:
 #endif
 }
 
+static unsigned int fnv1a_hash(const int* key_tokens, int n) {
+    unsigned int h = 2166136261U;
+    for (int i = 0; i < n; i++) {
+        unsigned int v = (unsigned int)key_tokens[i];
+        h ^= (v & 0xFFU);         h *= 16777619U;
+        h ^= ((v >> 8) & 0xFFU);  h *= 16777619U;
+        h ^= ((v >> 16) & 0xFFU); h *= 16777619U;
+        h ^= ((v >> 24) & 0xFFU); h *= 16777619U;
+    }
+    h ^= (h >> 16);
+    return h;
+}
+
+static uint64_t nn_splitmix64(uint64_t* state) {
+    uint64_t z = (*state += 0x9E3779B97F4A7C15ULL);
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31);
+}
+
+static int* g_dyn_recall_corpus = (int*)0;
+static int  g_dyn_recall_corpus_cnt = 0;
+static char g_dyn_recall_corpus_path[256] = "TMP\\shakespeare_subset.tokens";
+
+static void qadav_free_dynamic_corpus(void) {
+    if (g_dyn_recall_corpus) {
+        nn_large_free(g_dyn_recall_corpus, (unsigned long long)g_dyn_recall_corpus_cnt * sizeof(int));
+        g_dyn_recall_corpus = (int*)0;
+        g_dyn_recall_corpus_cnt = 0;
+    }
+}
+
+static int qadav_ensure_dynamic_corpus(const char* tokens_path) {
+    if (g_dyn_recall_corpus && g_dyn_recall_corpus_cnt >= 5000) return 1;
+    const char* path = (tokens_path && tokens_path[0]) ? tokens_path : g_dyn_recall_corpus_path;
+    int cnt = 0;
+    int* buf = qadav_load_bpe_tokens(path, &cnt);
+    if (!buf || cnt < 5000) {
+        if (buf) nn_large_free(buf, (unsigned long long)cnt * sizeof(int));
+        return 0;
+    }
+    g_dyn_recall_corpus = buf;
+    g_dyn_recall_corpus_cnt = cnt;
+    return 1;
+}
+
+static void qadav_generate_dynamic_recall_batch_ex(
+    uint32_t* tokens, uint32_t* targets,
+    int batch_size, int seq_len,
+    uint64_t rng_seed, uint64_t step, int is_eval)
+{
+    if (!tokens || batch_size <= 0 || seq_len < 64) return;
+    if (!qadav_ensure_dynamic_corpus(g_dyn_recall_corpus_path)) return;
+
+    int corpus_cnt = g_dyn_recall_corpus_cnt;
+    int split_idx = (corpus_cnt * 4) / 5; // strictly disjoint: 0..split_idx-1 train, split_idx..cnt-1 eval
+    int lo = is_eval ? split_idx : 0;
+    int span = (is_eval ? (corpus_cnt - split_idx) : split_idx) - (seq_len + 80);
+    if (span < 100) span = 100;
+
+    int ctx_limit = seq_len - 12; // [0..499] when seq_len=512
+    for (int b = 0; b < batch_size; b++) {
+        uint64_t rng = (rng_seed * 0x9E3779B97F4A7C15ULL) ^
+                       ((step + 1ULL) * 0xBF58476D1CE4E5B9ULL) ^
+                       ((uint64_t)b * 0x94D049BB133111EBULL) ^
+                       (is_eval ? 0x4556414C999ULL : 0x54524149000ULL);
+        nn_splitmix64(&rng);
+        nn_splitmix64(&rng);
+
+        uint32_t* seq = tokens + (unsigned long long)b * (unsigned long long)seq_len;
+        int base_off = lo + (int)(nn_splitmix64(&rng) % (uint64_t)span);
+        for (int t = 0; t < seq_len; t++) {
+            int tok = g_dyn_recall_corpus[base_off + t];
+            if (tok >= RECALL_KEY_BASE && tok <= 255) tok = g_dyn_recall_corpus[lo + ((base_off + t + 37) % span)];
+            if (tok >= RECALL_KEY_BASE && tok <= 255) tok = ' ';
+            seq[t] = (uint32_t)tok;
+        }
+
+        int n_pairs = 20 + (int)(nn_splitmix64(&rng) % 6ULL); // 20..25 pairs
+        int keys[RECALL_N_KEYS], vals[RECALL_N_VALS];
+        for (int i = 0; i < RECALL_N_KEYS; i++) { keys[i] = i; vals[i] = i; }
+        for (int i = RECALL_N_KEYS - 1; i > 0; i--) {
+            int j = (int)(nn_splitmix64(&rng) % (uint64_t)(i + 1));
+            int tmp = keys[i]; keys[i] = keys[j]; keys[j] = tmp;
+        }
+        for (int i = RECALL_N_VALS - 1; i > 0; i--) {
+            int j = (int)(nn_splitmix64(&rng) % (uint64_t)(i + 1));
+            int tmp = vals[i]; vals[i] = vals[j]; vals[j] = tmp;
+        }
+
+        unsigned char used[512];
+        nn_memset(used, 0, sizeof(used));
+        int max_pos = ctx_limit - 1; // 498 for ctx_limit=500 -> pairs occupy [pos, pos+1] in [0..499]
+        for (int p = 0; p < n_pairs; p++) {
+            int chosen = -1;
+            for (int tries = 0; tries < 64; tries++) {
+                int cand = (int)(nn_splitmix64(&rng) % (uint64_t)max_pos);
+                if (!used[cand] && !used[cand + 1]) { chosen = cand; break; }
+            }
+            if (chosen < 0) {
+                for (int cand = 0; cand < max_pos; cand++) {
+                    if (!used[cand] && !used[cand + 1]) { chosen = cand; break; }
+                }
+            }
+            if (chosen >= 0) {
+                used[chosen] = 1;
+                used[chosen + 1] = 1;
+                seq[chosen]     = (uint32_t)(RECALL_KEY_BASE + keys[p]);
+                seq[chosen + 1] = (uint32_t)(RECALL_VAL_BASE + vals[p]);
+            }
+        }
+
+        int q_idx = (int)(nn_splitmix64(&rng) % (uint64_t)n_pairs);
+        int q_key = keys[q_idx];
+        int q_val = vals[q_idx];
+
+        // Fixed universal query template [seq_len-12 .. seq_len-2] + answer target [seq_len-1]
+        seq[seq_len - 12] = ';'; seq[seq_len - 11] = ' '; seq[seq_len - 10] = 'Q'; seq[seq_len - 9] = 'u';
+        seq[seq_len - 8]  = 'e'; seq[seq_len - 7]  = 'r'; seq[seq_len - 6]  = 'y'; seq[seq_len - 5] = ':';
+        seq[seq_len - 4]  = RECALL_TOK_FIND;
+        seq[seq_len - 3]  = (uint32_t)(RECALL_KEY_BASE + q_key);
+        seq[seq_len - 2]  = RECALL_TOK_END;
+        seq[seq_len - 1]  = (uint32_t)(RECALL_VAL_BASE + q_val);
+        if (targets) targets[b] = (uint32_t)(RECALL_VAL_BASE + q_val);
+    }
+}
+
+void qadav_generate_dynamic_recall_batch(
+    uint32_t* tokens, uint32_t* targets,
+    int batch_size, int seq_len,
+    uint64_t rng_seed, uint64_t step)
+{
+    int is_eval = (rng_seed == 999ULL) ? 1 : 0;
+    qadav_generate_dynamic_recall_batch_ex(tokens, targets, batch_size, seq_len, rng_seed, step, is_eval);
+}
+
 // Globals for recall diagnostics & MT workers
 static long long g_recall_mw_writes = 0;
 static long long g_recall_ml_writes = 0;
+static double    g_recall_last_ans_loss = 0.0;
+static int       g_qnmf_trace_slots = 0;
 
 // Batched Linear & Logit Helpers for Recall V=8000 (AVX2 + scalar fallback)
 static void recall_matvec_Nx256_add_bias_and_out(
@@ -4598,6 +5106,135 @@ static void recall_matvec_Nx256_add_bias_and_out(
 #endif
     for (int i = 0; i < N; i++) {
         logits[i] = (b_out ? b_out[i] : 0.0) + vec_dot_256_scalar(W_emb + (long long)i * 256, x);
+    }
+}
+
+static void recall_logits_multi_fwd_8000(
+    const double* W_emb, const double* b_out, const double* H_all, double* logits_all, int P, int N)
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        int i = 0;
+        for (; i + 3 < N; i += 4) {
+            const double* w0 = W_emb + (long long)(i + 0) * 256;
+            const double* w1 = W_emb + (long long)(i + 1) * 256;
+            const double* w2 = W_emb + (long long)(i + 2) * 256;
+            const double* w3 = W_emb + (long long)(i + 3) * 256;
+            double b0 = b_out ? b_out[i + 0] : 0.0;
+            double b1 = b_out ? b_out[i + 1] : 0.0;
+            double b2 = b_out ? b_out[i + 2] : 0.0;
+            double b3 = b_out ? b_out[i + 3] : 0.0;
+            for (int p = 0; p < P; p++) {
+                const double* xp = H_all + p * 256;
+                __m256d a0 = _mm256_setzero_pd(), a1 = _mm256_setzero_pd();
+                __m256d a2 = _mm256_setzero_pd(), a3 = _mm256_setzero_pd();
+                for (int j = 0; j < 256; j += 4) {
+                    __m256d xv = _mm256_loadu_pd(xp + j);
+                    a0 = _mm256_fmadd_pd(_mm256_loadu_pd(w0 + j), xv, a0);
+                    a1 = _mm256_fmadd_pd(_mm256_loadu_pd(w1 + j), xv, a1);
+                    a2 = _mm256_fmadd_pd(_mm256_loadu_pd(w2 + j), xv, a2);
+                    a3 = _mm256_fmadd_pd(_mm256_loadu_pd(w3 + j), xv, a3);
+                }
+                double* out_p = logits_all + p * N + i;
+                out_p[0] = b0 + avx2_hsum_pd(a0);
+                out_p[1] = b1 + avx2_hsum_pd(a1);
+                out_p[2] = b2 + avx2_hsum_pd(a2);
+                out_p[3] = b3 + avx2_hsum_pd(a3);
+            }
+        }
+        for (; i < N; i++) {
+            const double* wi = W_emb + (long long)i * 256;
+            double bi = b_out ? b_out[i] : 0.0;
+            for (int p = 0; p < P; p++) {
+                logits_all[p * N + i] = bi + vec_dot_256_scalar(wi, H_all + p * 256);
+            }
+        }
+        return;
+    }
+#endif
+    for (int p = 0; p < P; p++) {
+        recall_matvec_Nx256_add_bias_and_out(W_emb, b_out, H_all + p * 256, logits_all + p * N, N);
+    }
+}
+
+static void recall_logits_multi_bwd_8000(
+    const double* W_emb, double* dW_emb, double* db_out,
+    const double* H_all, const double* d_logits_all, double* dH_all, int P, int N)
+{
+    nn_memset(dH_all, 0, (unsigned long long)P * 256ULL * sizeof(double));
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        int i = 0;
+        for (; i + 3 < N; i += 4) {
+            const double* w0 = W_emb + (long long)(i + 0) * 256;
+            const double* w1 = W_emb + (long long)(i + 1) * 256;
+            const double* w2 = W_emb + (long long)(i + 2) * 256;
+            const double* w3 = W_emb + (long long)(i + 3) * 256;
+            double* dw0 = dW_emb + (long long)(i + 0) * 256;
+            double* dw1 = dW_emb + (long long)(i + 1) * 256;
+            double* dw2 = dW_emb + (long long)(i + 2) * 256;
+            double* dw3 = dW_emb + (long long)(i + 3) * 256;
+            double bsum0 = 0.0, bsum1 = 0.0, bsum2 = 0.0, bsum3 = 0.0;
+            for (int p = 0; p < P; p++) {
+                const double* dlp = d_logits_all + p * N + i;
+                double dl0 = dlp[0], dl1 = dlp[1], dl2 = dlp[2], dl3 = dlp[3];
+                bsum0 += dl0; bsum1 += dl1; bsum2 += dl2; bsum3 += dl3;
+                __m256d g0 = _mm256_set1_pd(dl0), g1 = _mm256_set1_pd(dl1);
+                __m256d g2 = _mm256_set1_pd(dl2), g3 = _mm256_set1_pd(dl3);
+                const double* x = H_all + p * 256;
+                double* dxp     = dH_all + p * 256;
+                for (int j = 0; j < 256; j += 4) {
+                    __m256d xv  = _mm256_loadu_pd(x + j);
+                    __m256d wv0 = _mm256_loadu_pd(w0 + j);
+                    __m256d wv1 = _mm256_loadu_pd(w1 + j);
+                    __m256d wv2 = _mm256_loadu_pd(w2 + j);
+                    __m256d wv3 = _mm256_loadu_pd(w3 + j);
+                    __m256d dx  = _mm256_loadu_pd(dxp + j);
+                    dx = _mm256_fmadd_pd(wv0, g0, dx);
+                    dx = _mm256_fmadd_pd(wv1, g1, dx);
+                    dx = _mm256_fmadd_pd(wv2, g2, dx);
+                    dx = _mm256_fmadd_pd(wv3, g3, dx);
+                    _mm256_storeu_pd(dxp + j, dx);
+                    _mm256_storeu_pd(dw0 + j, _mm256_fmadd_pd(g0, xv, _mm256_loadu_pd(dw0 + j)));
+                    _mm256_storeu_pd(dw1 + j, _mm256_fmadd_pd(g1, xv, _mm256_loadu_pd(dw1 + j)));
+                    _mm256_storeu_pd(dw2 + j, _mm256_fmadd_pd(g2, xv, _mm256_loadu_pd(dw2 + j)));
+                    _mm256_storeu_pd(dw3 + j, _mm256_fmadd_pd(g3, xv, _mm256_loadu_pd(dw3 + j)));
+                }
+            }
+            db_out[i + 0] += bsum0; db_out[i + 1] += bsum1;
+            db_out[i + 2] += bsum2; db_out[i + 3] += bsum3;
+        }
+        for (; i < N; i++) {
+            const double* wi = W_emb + (long long)i * 256;
+            double* dwi = dW_emb + (long long)i * 256;
+            for (int p = 0; p < P; p++) {
+                double dl = d_logits_all[p * N + i];
+                db_out[i] += dl;
+                const double* x = H_all + p * 256;
+                double* d_x = dH_all + p * 256;
+                for (int j = 0; j < 256; j++) {
+                    d_x[j] += dl * wi[j];
+                    dwi[j] += dl * x[j];
+                }
+            }
+        }
+        return;
+    }
+#endif
+    for (int p = 0; p < P; p++) {
+        const double* x = H_all + p * 256;
+        const double* dlp = d_logits_all + p * N;
+        double* d_x = dH_all + p * 256;
+        for (int i = 0; i < N; i++) {
+            double dl = dlp[i];
+            db_out[i] += dl;
+            const double* wi = W_emb + (long long)i * 256;
+            double* dwi = dW_emb + (long long)i * 256;
+            for (int j = 0; j < 256; j++) {
+                d_x[j] += dl * wi[j];
+                dwi[j] += dl * x[j];
+            }
+        }
     }
 }
 
@@ -4672,21 +5309,21 @@ static void recall_logits_bwd_8000(
 // ---------------------------------------------------------------------
 
 typedef struct {
-    // Per-sequence recorded activations (~720 KB per seq in recall mode)
-    double* M_l_snap;      // 65536 (M_l state BEFORE t=510 read)
-    double* M_w_snap;      // 16384 (M_w state BEFORE t=510 read)
-    double* q_last;        // 256
-    double* vw_last;       // 256
-    double* vl_last;       // 256
-    double* z_last;        // 256
-    double* r_gate_last;   // 256
-    double* a_l_last;      // 256
-    double* a_w_last;      // 64
-    double* state_bptt;    // 4 * 256
-    double* cand_bptt;     // 4 * 256
-    double* gate_bptt;     // 4 * 256
-    double* nstate_bptt;   // 4 * 256
-    int*    tok_bptt;      // 4
+    // Per-sequence recorded activations (~983 KB per seq in recall mode, P=12, BPTT=16)
+    double* M_l_snap;      // 65536 (M_l state AFTER context writes t=0..499, frozen during query reads)
+    double* M_w_snap;      // 16384 (M_w state AFTER context writes t=0..499, frozen during query reads)
+    double* q_all;         // RECALL_SUP_POSITIONS * 256 (3072)
+    double* vw_all;        // RECALL_SUP_POSITIONS * 256 (3072)
+    double* vl_all;        // RECALL_SUP_POSITIONS * 256 (3072)
+    double* z_all;         // RECALL_SUP_POSITIONS * 256 (3072)
+    double* r_gate_all;    // RECALL_SUP_POSITIONS * 256 (3072)
+    double* a_l_all;       // RECALL_SUP_POSITIONS * 256 (3072)
+    double* a_w_all;       // RECALL_SUP_POSITIONS * 64  (768)
+    double* state_bptt;    // RECALL_BPTT_LEN * 256 (4096)
+    double* cand_bptt;     // RECALL_BPTT_LEN * 256 (4096)
+    double* gate_bptt;     // RECALL_BPTT_LEN * 256 (4096)
+    double* nstate_bptt;   // RECALL_BPTT_LEN * 256 (4096)
+    int*    tok_bptt;      // RECALL_BPTT_LEN (16)
     int*    ml_tok0;       // 256
     int*    ml_tok1;       // 256
     double* ml_wt0;        // 256
@@ -4697,11 +5334,12 @@ typedef struct {
     double* mw_wt0;        // 64
     double* mw_wt1;        // 64
     double* mw_init_wt;    // 64
-    int     top1;
-    int     top2;
-    double  a1;
-    double  a2;
-    int     tgt_tok;
+    int*    top1;          // RECALL_SUP_POSITIONS (12)
+    int*    top2;          // RECALL_SUP_POSITIONS (12)
+    double* a1;            // RECALL_SUP_POSITIONS (12)
+    double* a2;            // RECALL_SUP_POSITIONS (12)
+    int*    tgt_tok;       // RECALL_SUP_POSITIONS (12): targets seq[sup_start+1 .. 511]
+    int*    q_key_all;     // RECALL_SUP_POSITIONS (12): active query key (-1 if pre-key)
     long long mw_writes;
     long long ml_writes;
 } QNMFRecallSeqState;
@@ -4791,6 +5429,221 @@ static void qnmf_recall_pred_pair_avx2(
 }
 #endif
 
+static void qnmf_recall_reset_seq(QNMFRecallSeqState* rs) {
+    rs->mw_writes = 0;
+    rs->ml_writes = 0;
+    for (int s = 0; s < 256; s++) {
+        rs->ml_tok0[s] = -1; rs->ml_tok1[s] = -1;
+        rs->ml_wt0[s] = 0.0; rs->ml_wt1[s] = 0.0; rs->ml_init_wt[s] = 1.0;
+    }
+    for (int s = 0; s < 64; s++) {
+        rs->mw_tok0[s] = -1; rs->mw_tok1[s] = -1;
+        rs->mw_wt0[s] = 0.0; rs->mw_wt1[s] = 0.0; rs->mw_init_wt[s] = 1.0;
+    }
+}
+
+static void qnmf_slot_blend_update(
+    double* slot, double* init_wt, int* tok0, int* tok1, double* wt0, double* wt1,
+    const double* emb, int tok, double keep_w, double add_w)
+{
+    for (int j = 0; j < 256; j++) slot[j] = keep_w * slot[j] + add_w * emb[j];
+    *init_wt *= keep_w;
+    if (*tok0 < 0) {
+        *tok0 = tok; *wt0 = add_w;
+    } else if (*tok1 < 0) {
+        *wt0 *= keep_w;
+        *tok1 = tok; *wt1 = add_w;
+    } else {
+        *tok0 = *tok1;
+        *wt0  = *wt1 * keep_w;
+        *tok1 = tok; *wt1 = add_w;
+    }
+}
+
+static void qnmf_recall_write_step(
+    QNMFRecallSeqState* rs, int sb, int t, int c_in, const double* emb, double surprise,
+    int* pending_key_tok, int expected_q_key, int* trace_count,
+    double* M_w, double* M_l)
+{
+    int is_key = (c_in >= RECALL_KEY_BASE && c_in < RECALL_KEY_BASE + RECALL_N_KEYS) ? 1 : 0;
+    int is_val_follow = (*pending_key_tok >= 0 && c_in >= RECALL_VAL_BASE && c_in < RECALL_VAL_BASE + RECALL_N_VALS) ? 1 : 0;
+    int is_kv = (is_key || is_val_follow) ? 1 : 0;
+
+    if (is_key) *pending_key_tok = c_in;
+    int addr_tok = is_val_follow ? *pending_key_tok : c_in;
+    unsigned int h = fnv1a_hash(&addr_tok, 1);
+    int sw = (int)(h % 64U);
+    int sl = (int)(h % 256U);
+
+    if (is_kv || surprise > 0.015) {
+        qnmf_slot_blend_update(
+            M_w + sw * 256, &rs->mw_init_wt[sw],
+            &rs->mw_tok0[sw], &rs->mw_tok1[sw],
+            &rs->mw_wt0[sw], &rs->mw_wt1[sw],
+            emb, c_in, 0.85, 0.15);
+        rs->mw_writes++;
+    }
+    if (is_kv || surprise > 0.25) {
+        qnmf_slot_blend_update(
+            M_l + sl * 256, &rs->ml_init_wt[sl],
+            &rs->ml_tok0[sl], &rs->ml_tok1[sl],
+            &rs->ml_wt0[sl], &rs->ml_wt1[sl],
+            emb, c_in, 0.50, 0.50);
+        rs->ml_writes++;
+
+        if (is_val_follow && g_qnmf_trace_slots && sb == 0 && (*trace_count < 3 || addr_tok == expected_q_key)) {
+            nn_print("  [TRACE-WRITE] t="); nn_print_i64(t);
+            nn_print(" K="); nn_print_i64(addr_tok);
+            nn_print(" -> slot_l="); nn_print_i64(sl);
+            nn_print(" slot_w="); nn_print_i64(sw);
+            nn_print(" <- V="); nn_print_i64(c_in);
+            nn_print("\n");
+            (*trace_count)++;
+        }
+    }
+    if (!is_key) *pending_key_tok = -1;
+}
+
+static void qnmf_recall_attend_bank(
+    int disabled, const double* M, int n_slots, int hash_slot, double hash_bias,
+    const double* q_buf, double* dot_buf, double* a_buf, double* a_rec, double* v_out)
+{
+    if (disabled) {
+        nn_memset(v_out, 0, 256 * sizeof(double));
+        nn_memset(a_rec, 0, (unsigned long long)n_slots * sizeof(double));
+        return;
+    }
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_matvec_Nx256_avx2(M, (const double*)0, q_buf, dot_buf, 1.0, n_slots);
+    } else
+#endif
+    {
+        for (int s = 0; s < n_slots; s++) dot_buf[s] = vec_dot_256_scalar(q_buf, M + s * 256);
+    }
+    if (hash_slot >= 0 && hash_slot < n_slots) dot_buf[hash_slot] += hash_bias;
+    double md = dot_buf[0];
+    for (int s = 1; s < n_slots; s++) if (dot_buf[s] > md) md = dot_buf[s];
+    double se = 0.0;
+    for (int s = 0; s < n_slots; s++) { a_buf[s] = fast_exp(dot_buf[s] - md); se += a_buf[s]; }
+    double inv = 1.0 / (se + 1e-12);
+    for (int s = 0; s < n_slots; s++) a_buf[s] *= inv;
+    nn_memcpy(a_rec, a_buf, (unsigned long long)n_slots * sizeof(double));
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_weighted_sum_Nx256_avx2(M, a_buf, 1.0, v_out, n_slots);
+    } else
+#endif
+    {
+        nn_memset(v_out, 0, 256 * sizeof(double));
+        for (int s = 0; s < n_slots; s++) for (int j = 0; j < 256; j++) v_out[j] += a_buf[s] * M[s * 256 + j];
+    }
+}
+
+static void qnmf_recall_read_step(
+    const QNMFRecallS1Ctx* c, QNMFRecallSeqState* rs, int sb, int t, int pi,
+    int tgt_tok, int active_query_key,
+    const double* M_w, const double* M_l, const double* next_state,
+    double* q_buf, double* dot_w, double* a_w, double* dot_l, double* a_l,
+    double* v_w, double* v_l, double* rg_buf, double* z_buf)
+{
+    rs->tgt_tok[pi]   = tgt_tok;
+    rs->q_key_all[pi] = active_query_key;
+
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_matvec_Nx256_avx2(c->W_q, c->b_q, next_state, q_buf, 0.25, 256);
+    } else
+#endif
+    {
+        for (int i = 0; i < 256; i++) q_buf[i] = (c->b_q[i] + vec_dot_256_scalar(c->W_q + i * 256, next_state)) * 0.25;
+    }
+    nn_memcpy(rs->q_all + pi * 256, q_buf, 256 * sizeof(double));
+
+    int sl_hash = -1, sw_hash = -1;
+    if (active_query_key >= 0) {
+        unsigned int qh = fnv1a_hash(&active_query_key, 1);
+        sw_hash = (int)(qh % 64U);
+        sl_hash = (int)(qh % 256U);
+    }
+
+    qnmf_recall_attend_bank(
+        c->model_kind == MODEL_KIND_QNMF_V2_NO_MW, M_w, 64, sw_hash, 4.15,
+        q_buf, dot_w, a_w, rs->a_w_all + pi * 64, v_w);
+    nn_memcpy(rs->vw_all + pi * 256, v_w, 256 * sizeof(double));
+
+    qnmf_recall_attend_bank(
+        c->model_kind == MODEL_KIND_QNMF_V2_NO_ML, M_l, 256, sl_hash, 5.5,
+        q_buf, dot_l, a_l, rs->a_l_all + pi * 256, v_l);
+    nn_memcpy(rs->vl_all + pi * 256, v_l, 256 * sizeof(double));
+
+    if (g_qnmf_trace_slots && sb == 0 && pi == RECALL_SUP_POSITIONS - 1 && sl_hash >= 0) {
+        int best_l = 0; double best_al = a_l[0];
+        for (int s = 1; s < 256; s++) if (a_l[s] > best_al) { best_al = a_l[s]; best_l = s; }
+        int best_w = 0; double best_aw = a_w[0];
+        for (int s = 1; s < 64; s++) if (a_w[s] > best_aw) { best_aw = a_w[s]; best_w = s; }
+        nn_print("  [TRACE-READ ] t="); nn_print_i64(t);
+        nn_print(" q_key="); nn_print_i64(active_query_key);
+        nn_print(" -> sl="); nn_print_i64(sl_hash);
+        nn_print(" a_l="); nn_print_f64(a_l[sl_hash], 4);
+        nn_print(" (top="); nn_print_i64(best_l); nn_print(":"); nn_print_f64(best_al, 4); nn_print(")");
+        nn_print(" sw="); nn_print_i64(sw_hash);
+        nn_print(" a_w="); nn_print_f64(a_w[sw_hash], 4);
+        nn_print(" | top_w="); nn_print_i64(best_w); nn_print(":"); nn_print_f64(best_aw, 4);
+        nn_print(" | slot_tok=("); nn_print_i64(rs->ml_tok0[sl_hash]); nn_print(","); nn_print_i64(rs->ml_tok1[sl_hash]);
+        nn_print(") tgt="); nn_print_i64(tgt_tok);
+        nn_print("\n");
+    }
+
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_matvec_Nx256_avx2(c->W_r, c->b_r, next_state, rg_buf, 1.0, 256);
+    } else
+#endif
+    {
+        for (int i = 0; i < 256; i++) rg_buf[i] = c->b_r[i] + vec_dot_256_scalar(c->W_r + i * 256, next_state);
+    }
+    double* rg_dst = rs->r_gate_all + pi * 256;
+    for (int i = 0; i < 256; i++) {
+        double rg = fast_sigmoid(rg_buf[i]);
+        rg_dst[i] = rg;
+        z_buf[i] = next_state[i] + rg * (v_w[i] + v_l[i]);
+    }
+    nn_memcpy(rs->z_all + pi * 256, z_buf, 256 * sizeof(double));
+
+    double r_logits[16];
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_matvec_Nx256_avx2(c->W_route, c->b_route, z_buf, r_logits, 1.0, 16);
+    } else
+#endif
+    {
+        for (int k = 0; k < 16; k++) r_logits[k] = c->b_route[k] + vec_dot_256_scalar(c->W_route + k * 256, z_buf);
+    }
+    int top1 = 0, top2 = 1;
+    if (r_logits[1] > r_logits[0]) { top1 = 1; top2 = 0; }
+    for (int k = 2; k < 16; k++) {
+        if (r_logits[k] > r_logits[top1]) { top2 = top1; top1 = k; }
+        else if (r_logits[k] > r_logits[top2]) { top2 = k; }
+    }
+    double e1 = 1.0, e2 = fast_exp(r_logits[top2] - r_logits[top1]);
+    rs->top1[pi] = top1;
+    rs->top2[pi] = top2;
+    rs->a1[pi] = e1 / (e1 + e2 + 1e-12);
+    rs->a2[pi] = e2 / (e1 + e2 + 1e-12);
+}
+
+static void qnmf_recall_save_bptt_step(
+    QNMFRecallSeqState* rs, int bi, int tok,
+    const double* state, const double* cand, const double* gate, const double* next_state)
+{
+    rs->tok_bptt[bi] = tok;
+    nn_memcpy(rs->state_bptt + bi * 256, state, 256 * sizeof(double));
+    nn_memcpy(rs->cand_bptt + bi * 256, cand, 256 * sizeof(double));
+    nn_memcpy(rs->gate_bptt + bi * 256, gate, 256 * sizeof(double));
+    nn_memcpy(rs->nstate_bptt + bi * 256, next_state, 256 * sizeof(double));
+}
+
 static void run_qnmf_recall_s1_range(QNMFRecallS1Ctx* c, int sb_start, int sb_end, double* tmp) {
     double* M_l        = tmp;
     double* M_w        = M_l + 65536;
@@ -4818,7 +5671,11 @@ static void run_qnmf_recall_s1_range(QNMFRecallS1Ctx* c, int sb_start, int sb_en
     double* gate2      = cand2 + 256;           // 256
 
     int ctx_len = c->ctx_len;
-    int bptt_start = ctx_len - 4;
+    int sup_start = ctx_len - RECALL_SUP_POSITIONS;
+    if (sup_start < 0) sup_start = 0;
+    int write_limit = ctx_len - (RECALL_SUP_POSITIONS - 1); // 500 -> writes t=0..499, frozen for query t=500..510
+    if (write_limit < 0) write_limit = 0;
+    int bptt_start = ctx_len - RECALL_BPTT_LEN;
     if (bptt_start < 0) bptt_start = 0;
 
     int sb = sb_start;
@@ -4829,22 +5686,20 @@ static void run_qnmf_recall_s1_range(QNMFRecallS1Ctx* c, int sb_start, int sb_en
             QNMFRecallSeqState* rs1 = &c->rec[sb + 1];
             const int* seq0 = c->seqs + (unsigned long long)(sb + 0) * (unsigned long long)RECALL_SEQ_LEN;
             const int* seq1 = c->seqs + (unsigned long long)(sb + 1) * (unsigned long long)RECALL_SEQ_LEN;
-            rs0->tgt_tok = seq0[ctx_len]; rs0->mw_writes = 0; rs0->ml_writes = 0;
-            rs1->tgt_tok = seq1[ctx_len]; rs1->mw_writes = 0; rs1->ml_writes = 0;
+            qnmf_recall_reset_seq(rs0);
+            qnmf_recall_reset_seq(rs1);
             nn_memcpy(M_w,  c->M_w_init, 16384 * sizeof(double));
             nn_memcpy(M_l,  c->M_l_init, 65536 * sizeof(double));
             nn_memcpy(M_w2, c->M_w_init, 16384 * sizeof(double));
             nn_memcpy(M_l2, c->M_l_init, 65536 * sizeof(double));
             nn_memset(state,  0, 256 * sizeof(double));
             nn_memset(state2, 0, 256 * sizeof(double));
-            for (int s = 0; s < 256; s++) {
-                rs0->ml_tok0[s] = -1; rs0->ml_tok1[s] = -1; rs0->ml_wt0[s] = 0.0; rs0->ml_wt1[s] = 0.0; rs0->ml_init_wt[s] = 1.0;
-                rs1->ml_tok0[s] = -1; rs1->ml_tok1[s] = -1; rs1->ml_wt0[s] = 0.0; rs1->ml_wt1[s] = 0.0; rs1->ml_init_wt[s] = 1.0;
-            }
-            for (int s = 0; s < 64; s++) {
-                rs0->mw_tok0[s] = -1; rs0->mw_tok1[s] = -1; rs0->mw_wt0[s] = 0.0; rs0->mw_wt1[s] = 0.0; rs0->mw_init_wt[s] = 1.0;
-                rs1->mw_tok0[s] = -1; rs1->mw_tok1[s] = -1; rs1->mw_wt0[s] = 0.0; rs1->mw_wt1[s] = 0.0; rs1->mw_init_wt[s] = 1.0;
-            }
+
+            int pend0 = -1, pend1 = -1;
+            int qkey0 = -1, qkey1 = -1;
+            int trace0 = 0;
+            int exp_qk0 = (ctx_len >= 2) ? seq0[ctx_len - 2] : -1;
+
             for (int t = 0; t < ctx_len; t++) {
                 int c0 = seq0[t]; if (c0 < 0 || c0 >= V2_VOCAB_SIZE_BPE) c0 = 0;
                 int c1 = seq1[t]; if (c1 < 0 || c1 >= V2_VOCAB_SIZE_BPE) c1 = 0;
@@ -4857,108 +5712,34 @@ static void run_qnmf_recall_s1_range(QNMFRecallS1Ctx* c, int sb_start, int sb_en
 
                 if (t >= bptt_start) {
                     int bi = t - bptt_start;
-                    rs0->tok_bptt[bi] = c0;
-                    nn_memcpy(rs0->state_bptt + bi * 256, state, 256 * sizeof(double));
-                    nn_memcpy(rs0->cand_bptt + bi * 256, cand, 256 * sizeof(double));
-                    nn_memcpy(rs0->gate_bptt + bi * 256, gate, 256 * sizeof(double));
-                    nn_memcpy(rs0->nstate_bptt + bi * 256, next_state, 256 * sizeof(double));
-                    rs1->tok_bptt[bi] = c1;
-                    nn_memcpy(rs1->state_bptt + bi * 256, state2, 256 * sizeof(double));
-                    nn_memcpy(rs1->cand_bptt + bi * 256, cand2, 256 * sizeof(double));
-                    nn_memcpy(rs1->gate_bptt + bi * 256, gate2, 256 * sizeof(double));
-                    nn_memcpy(rs1->nstate_bptt + bi * 256, nstate2, 256 * sizeof(double));
+                    qnmf_recall_save_bptt_step(rs0, bi, c0, state, cand, gate, next_state);
+                    qnmf_recall_save_bptt_step(rs1, bi, c1, state2, cand2, gate2, nstate2);
                 }
 
-                if (t < ctx_len - 1) {
+                if (t < write_limit) {
                     double surp0 = 0.0, surp1 = 0.0;
                     qnmf_recall_pred_pair_avx2(c->W_pred, c->b_pred, next_state, e0, nstate2, e1, &surp0, &surp1);
-                    if (surp0 > 0.04) {
-                        int sw = t % 64; double* tmw = M_w + sw * 256;
-                        for (int j = 0; j < 256; j++) tmw[j] = 0.85 * tmw[j] + 0.15 * e0[j];
-                        rs0->mw_init_wt[sw] *= 0.85;
-                        if (rs0->mw_tok0[sw] < 0) { rs0->mw_tok0[sw] = c0; rs0->mw_wt0[sw] = 0.15; }
-                        else if (rs0->mw_tok1[sw] < 0) { rs0->mw_wt0[sw] *= 0.85; rs0->mw_tok1[sw] = c0; rs0->mw_wt1[sw] = 0.15; }
-                        else { rs0->mw_tok0[sw] = rs0->mw_tok1[sw]; rs0->mw_wt0[sw] = rs0->mw_wt1[sw] * 0.85; rs0->mw_tok1[sw] = c0; rs0->mw_wt1[sw] = 0.15; }
-                        rs0->mw_writes++;
-                        if (surp0 > 0.08) {
-                            int sl = (t / 2) % 256; double* tml = M_l + sl * 256;
-                            for (int j = 0; j < 256; j++) tml[j] = 0.5 * (tml[j] + e0[j]);
-                            rs0->ml_init_wt[sl] *= 0.5;
-                            if (rs0->ml_tok0[sl] < 0) { rs0->ml_tok0[sl] = c0; rs0->ml_wt0[sl] = 0.5; }
-                            else if (rs0->ml_tok1[sl] < 0) { rs0->ml_wt0[sl] *= 0.5; rs0->ml_tok1[sl] = c0; rs0->ml_wt1[sl] = 0.5; }
-                            else { rs0->ml_tok0[sl] = rs0->ml_tok1[sl]; rs0->ml_wt0[sl] = rs0->ml_wt1[sl] * 0.5; rs0->ml_tok1[sl] = c0; rs0->ml_wt1[sl] = 0.5; }
-                            rs0->ml_writes++;
-                        }
-                    }
-                    if (surp1 > 0.04) {
-                        int sw = t % 64; double* tmw = M_w2 + sw * 256;
-                        for (int j = 0; j < 256; j++) tmw[j] = 0.85 * tmw[j] + 0.15 * e1[j];
-                        rs1->mw_init_wt[sw] *= 0.85;
-                        if (rs1->mw_tok0[sw] < 0) { rs1->mw_tok0[sw] = c1; rs1->mw_wt0[sw] = 0.15; }
-                        else if (rs1->mw_tok1[sw] < 0) { rs1->mw_wt0[sw] *= 0.85; rs1->mw_tok1[sw] = c1; rs1->mw_wt1[sw] = 0.15; }
-                        else { rs1->mw_tok0[sw] = rs1->mw_tok1[sw]; rs1->mw_wt0[sw] = rs1->mw_wt1[sw] * 0.85; rs1->mw_tok1[sw] = c1; rs1->mw_wt1[sw] = 0.15; }
-                        rs1->mw_writes++;
-                        if (surp1 > 0.08) {
-                            int sl = (t / 2) % 256; double* tml = M_l2 + sl * 256;
-                            for (int j = 0; j < 256; j++) tml[j] = 0.5 * (tml[j] + e1[j]);
-                            rs1->ml_init_wt[sl] *= 0.5;
-                            if (rs1->ml_tok0[sl] < 0) { rs1->ml_tok0[sl] = c1; rs1->ml_wt0[sl] = 0.5; }
-                            else if (rs1->ml_tok1[sl] < 0) { rs1->ml_wt0[sl] *= 0.5; rs1->ml_tok1[sl] = c1; rs1->ml_wt1[sl] = 0.5; }
-                            else { rs1->ml_tok0[sl] = rs1->ml_tok1[sl]; rs1->ml_wt0[sl] = rs1->ml_wt1[sl] * 0.5; rs1->ml_tok1[sl] = c1; rs1->ml_wt1[sl] = 0.5; }
-                            rs1->ml_writes++;
-                        }
+                    qnmf_recall_write_step(rs0, sb + 0, t, c0, e0, surp0, &pend0, exp_qk0, &trace0, M_w, M_l);
+                    qnmf_recall_write_step(rs1, sb + 1, t, c1, e1, surp1, &pend1, -1, (int*)0, M_w2, M_l2);
+                    if (t == write_limit - 1) {
+                        nn_memcpy(rs0->M_w_snap, M_w,  16384 * sizeof(double));
+                        nn_memcpy(rs0->M_l_snap, M_l,  65536 * sizeof(double));
+                        nn_memcpy(rs1->M_w_snap, M_w2, 16384 * sizeof(double));
+                        nn_memcpy(rs1->M_l_snap, M_l2, 65536 * sizeof(double));
                     }
                 } else {
-                    for (int pair_i = 0; pair_i < 2; pair_i++) {
-                        QNMFRecallSeqState* rs = (pair_i == 0) ? rs0 : rs1;
-                        double* m_w = (pair_i == 0) ? M_w : M_w2;
-                        double* m_l = (pair_i == 0) ? M_l : M_l2;
-                        double* ns  = (pair_i == 0) ? next_state : nstate2;
-                        nn_memcpy(rs->M_w_snap, m_w, 16384 * sizeof(double));
-                        nn_memcpy(rs->M_l_snap, m_l, 65536 * sizeof(double));
-                        vec_matvec_Nx256_avx2(c->W_q, c->b_q, ns, q_buf, 0.0625, 256);
-                        nn_memcpy(rs->q_last, q_buf, 256 * sizeof(double));
-                        if (c->model_kind != MODEL_KIND_QNMF_V2_NO_MW) {
-                            vec_matvec_Nx256_avx2(m_w, (const double*)0, q_buf, dot_w, 1.0, 64);
-                            double md = dot_w[0]; for (int s = 1; s < 64; s++) if (dot_w[s] > md) md = dot_w[s];
-                            double se = 0.0; for (int s = 0; s < 64; s++) { a_w[s] = fast_exp(dot_w[s] - md); se += a_w[s]; }
-                            double iv = 1.0 / (se + 1e-12); for (int s = 0; s < 64; s++) a_w[s] *= iv;
-                            nn_memcpy(rs->a_w_last, a_w, 64 * sizeof(double));
-                            vec_weighted_sum_Nx256_avx2(m_w, a_w, 1.0, v_w, 64);
-                        } else {
-                            nn_memset(v_w, 0, 256 * sizeof(double)); nn_memset(rs->a_w_last, 0, 64 * sizeof(double));
-                        }
-                        nn_memcpy(rs->vw_last, v_w, 256 * sizeof(double));
-                        if (c->model_kind != MODEL_KIND_QNMF_V2_NO_ML) {
-                            vec_matvec_Nx256_avx2(m_l, (const double*)0, q_buf, dot_l, 1.0, 256);
-                            double md = dot_l[0]; for (int s = 1; s < 256; s++) if (dot_l[s] > md) md = dot_l[s];
-                            double se = 0.0; for (int s = 0; s < 256; s++) { a_l[s] = fast_exp(dot_l[s] - md); se += a_l[s]; }
-                            double iv = 1.0 / (se + 1e-12); for (int s = 0; s < 256; s++) a_l[s] *= iv;
-                            nn_memcpy(rs->a_l_last, a_l, 256 * sizeof(double));
-                            vec_weighted_sum_Nx256_avx2(m_l, a_l, 1.0, v_l, 256);
-                        } else {
-                            nn_memset(v_l, 0, 256 * sizeof(double)); nn_memset(rs->a_l_last, 0, 256 * sizeof(double));
-                        }
-                        nn_memcpy(rs->vl_last, v_l, 256 * sizeof(double));
-                        vec_matvec_Nx256_avx2(c->W_r, c->b_r, ns, rg_buf, 1.0, 256);
-                        for (int i = 0; i < 256; i++) {
-                            double rg = fast_sigmoid(rg_buf[i]);
-                            rs->r_gate_last[i] = rg;
-                            z_buf[i] = ns[i] + rg * (v_w[i] + v_l[i]);
-                        }
-                        nn_memcpy(rs->z_last, z_buf, 256 * sizeof(double));
-                        double rl[16]; vec_matvec_Nx256_avx2(c->W_route, c->b_route, z_buf, rl, 1.0, 16);
-                        int t1 = 0, t2 = 1; if (rl[1] > rl[0]) { t1 = 1; t2 = 0; }
-                        for (int k = 2; k < 16; k++) {
-                            if (rl[k] > rl[t1]) { t2 = t1; t1 = k; }
-                            else if (rl[k] > rl[t2]) t2 = k;
-                        }
-                        double ee1 = fast_exp(rl[t1]), ee2 = fast_exp(rl[t2]);
-                        rs->top1 = t1; rs->top2 = t2;
-                        rs->a1 = ee1 / (ee1 + ee2 + 1e-12);
-                        rs->a2 = ee2 / (ee1 + ee2 + 1e-12);
-                    }
+                    if (c0 == RECALL_TOK_FIND) qkey0 = -1;
+                    else if (c0 >= RECALL_KEY_BASE && c0 < RECALL_KEY_BASE + RECALL_N_KEYS) qkey0 = c0;
+                    if (c1 == RECALL_TOK_FIND) qkey1 = -1;
+                    else if (c1 >= RECALL_KEY_BASE && c1 < RECALL_KEY_BASE + RECALL_N_KEYS) qkey1 = c1;
                 }
+
+                if (t >= sup_start) {
+                    int pi = t - sup_start;
+                    qnmf_recall_read_step(c, rs0, sb + 0, t, pi, seq0[t + 1], qkey0, M_w,  M_l,  next_state, q_buf, dot_w, a_w, dot_l, a_l, v_w, v_l, rg_buf, z_buf);
+                    qnmf_recall_read_step(c, rs1, sb + 1, t, pi, seq1[t + 1], qkey1, M_w2, M_l2, nstate2,    q_buf, dot_w, a_w, dot_l, a_l, v_w, v_l, rg_buf, z_buf);
+                }
+
                 nn_memcpy(state,  next_state, 256 * sizeof(double));
                 nn_memcpy(state2, nstate2,    256 * sizeof(double));
             }
@@ -4969,23 +5750,16 @@ static void run_qnmf_recall_s1_range(QNMFRecallS1Ctx* c, int sb_start, int sb_en
     for (; sb < sb_end; sb++) {
         QNMFRecallSeqState* rs = &c->rec[sb];
         const int* seq = c->seqs + (unsigned long long)sb * (unsigned long long)RECALL_SEQ_LEN;
-        rs->tgt_tok = seq[ctx_len];
-        rs->mw_writes = 0;
-        rs->ml_writes = 0;
+        qnmf_recall_reset_seq(rs);
 
         nn_memcpy(M_w, c->M_w_init, 16384 * sizeof(double));
         nn_memcpy(M_l, c->M_l_init, 65536 * sizeof(double));
         nn_memset(state, 0, 256 * sizeof(double));
-        for (int s = 0; s < 256; s++) {
-            rs->ml_tok0[s] = -1; rs->ml_tok1[s] = -1;
-            rs->ml_wt0[s] = 0.0; rs->ml_wt1[s] = 0.0;
-            rs->ml_init_wt[s] = 1.0;
-        }
-        for (int s = 0; s < 64; s++) {
-            rs->mw_tok0[s] = -1; rs->mw_tok1[s] = -1;
-            rs->mw_wt0[s] = 0.0; rs->mw_wt1[s] = 0.0;
-            rs->mw_init_wt[s] = 1.0;
-        }
+
+        int pend = -1;
+        int qkey = -1;
+        int trace_cnt = 0;
+        int exp_qk = (ctx_len >= 2) ? seq[ctx_len - 2] : -1;
 
         for (int t = 0; t < ctx_len; t++) {
             int c_in = seq[t];
@@ -5048,129 +5822,10 @@ static void run_qnmf_recall_s1_range(QNMFRecallS1Ctx* c, int sb_start, int sb_en
             }
 
             if (t >= bptt_start) {
-                int bi = t - bptt_start;
-                rs->tok_bptt[bi] = c_in;
-                nn_memcpy(rs->state_bptt + bi * 256, state, 256 * sizeof(double));
-                nn_memcpy(rs->cand_bptt + bi * 256, cand, 256 * sizeof(double));
-                nn_memcpy(rs->gate_bptt + bi * 256, gate, 256 * sizeof(double));
-                nn_memcpy(rs->nstate_bptt + bi * 256, next_state, 256 * sizeof(double));
+                qnmf_recall_save_bptt_step(rs, t - bptt_start, c_in, state, cand, gate, next_state);
             }
 
-            // Read memory slots ONLY on last step (t == ctx_len - 1) since z/v_w/v_l don't feed into next_state
-            if (t == ctx_len - 1) {
-                nn_memcpy(rs->M_w_snap, M_w, 16384 * sizeof(double));
-                nn_memcpy(rs->M_l_snap, M_l, 65536 * sizeof(double));
-
-#if defined(__x86_64__) || defined(_M_X64)
-                if (qadav_cpu_supports_avx2()) {
-                    vec_matvec_Nx256_avx2(c->W_q, c->b_q, next_state, q_buf, 0.0625, 256);
-                } else
-#endif
-                {
-                    for (int i = 0; i < 256; i++) q_buf[i] = (c->b_q[i] + vec_dot_256_scalar(c->W_q + i * 256, next_state)) * 0.0625;
-                }
-                nn_memcpy(rs->q_last, q_buf, 256 * sizeof(double));
-
-                // M_w read
-                if (c->model_kind != MODEL_KIND_QNMF_V2_NO_MW) {
-#if defined(__x86_64__) || defined(_M_X64)
-                    if (qadav_cpu_supports_avx2()) {
-                        vec_matvec_Nx256_avx2(M_w, (const double*)0, q_buf, dot_w, 1.0, 64);
-                    } else
-#endif
-                    {
-                        for (int s = 0; s < 64; s++) dot_w[s] = vec_dot_256_scalar(q_buf, M_w + s * 256);
-                    }
-                    double max_dw = dot_w[0];
-                    for (int s = 1; s < 64; s++) if (dot_w[s] > max_dw) max_dw = dot_w[s];
-                    double sum_ew = 0.0;
-                    for (int s = 0; s < 64; s++) { a_w[s] = fast_exp(dot_w[s] - max_dw); sum_ew += a_w[s]; }
-                    double inv_w = 1.0 / (sum_ew + 1e-12);
-                    for (int s = 0; s < 64; s++) a_w[s] *= inv_w;
-                    nn_memcpy(rs->a_w_last, a_w, 64 * sizeof(double));
-#if defined(__x86_64__) || defined(_M_X64)
-                    if (qadav_cpu_supports_avx2()) {
-                        vec_weighted_sum_Nx256_avx2(M_w, a_w, 1.0, v_w, 64);
-                    } else
-#endif
-                    {
-                        nn_memset(v_w, 0, 256 * sizeof(double));
-                        for (int s = 0; s < 64; s++) for (int j = 0; j < 256; j++) v_w[j] += a_w[s] * M_w[s * 256 + j];
-                    }
-                } else {
-                    nn_memset(v_w, 0, 256 * sizeof(double));
-                    nn_memset(rs->a_w_last, 0, 64 * sizeof(double));
-                }
-                nn_memcpy(rs->vw_last, v_w, 256 * sizeof(double));
-
-                // M_l read
-                if (c->model_kind != MODEL_KIND_QNMF_V2_NO_ML) {
-#if defined(__x86_64__) || defined(_M_X64)
-                    if (qadav_cpu_supports_avx2()) {
-                        vec_matvec_Nx256_avx2(M_l, (const double*)0, q_buf, dot_l, 1.0, 256);
-                    } else
-#endif
-                    {
-                        for (int s = 0; s < 256; s++) dot_l[s] = vec_dot_256_scalar(q_buf, M_l + s * 256);
-                    }
-                    double max_dl = dot_l[0];
-                    for (int s = 1; s < 256; s++) if (dot_l[s] > max_dl) max_dl = dot_l[s];
-                    double sum_el = 0.0;
-                    for (int s = 0; s < 256; s++) { a_l[s] = fast_exp(dot_l[s] - max_dl); sum_el += a_l[s]; }
-                    double inv_l = 1.0 / (sum_el + 1e-12);
-                    for (int s = 0; s < 256; s++) a_l[s] *= inv_l;
-                    nn_memcpy(rs->a_l_last, a_l, 256 * sizeof(double));
-#if defined(__x86_64__) || defined(_M_X64)
-                    if (qadav_cpu_supports_avx2()) {
-                        vec_weighted_sum_Nx256_avx2(M_l, a_l, 1.0, v_l, 256);
-                    } else
-#endif
-                    {
-                        nn_memset(v_l, 0, 256 * sizeof(double));
-                        for (int s = 0; s < 256; s++) for (int j = 0; j < 256; j++) v_l[j] += a_l[s] * M_l[s * 256 + j];
-                    }
-                } else {
-                    nn_memset(v_l, 0, 256 * sizeof(double));
-                    nn_memset(rs->a_l_last, 0, 256 * sizeof(double));
-                }
-                nn_memcpy(rs->vl_last, v_l, 256 * sizeof(double));
-
-#if defined(__x86_64__) || defined(_M_X64)
-                if (qadav_cpu_supports_avx2()) {
-                    vec_matvec_Nx256_avx2(c->W_r, c->b_r, next_state, rg_buf, 1.0, 256);
-                } else
-#endif
-                {
-                    for (int i = 0; i < 256; i++) rg_buf[i] = c->b_r[i] + vec_dot_256_scalar(c->W_r + i * 256, next_state);
-                }
-                for (int i = 0; i < 256; i++) {
-                    double rg = fast_sigmoid(rg_buf[i]);
-                    rs->r_gate_last[i] = rg;
-                    z_buf[i] = next_state[i] + rg * (v_w[i] + v_l[i]);
-                }
-                nn_memcpy(rs->z_last, z_buf, 256 * sizeof(double));
-
-                double r_logits[16];
-#if defined(__x86_64__) || defined(_M_X64)
-                if (qadav_cpu_supports_avx2()) {
-                    vec_matvec_Nx256_avx2(c->W_route, c->b_route, z_buf, r_logits, 1.0, 16);
-                } else
-#endif
-                {
-                    for (int k = 0; k < 16; k++) r_logits[k] = c->b_route[k] + vec_dot_256_scalar(c->W_route + k * 256, z_buf);
-                }
-                int top1 = 0, top2 = 1;
-                if (r_logits[1] > r_logits[0]) { top1 = 1; top2 = 0; }
-                for (int k = 2; k < 16; k++) {
-                    if (r_logits[k] > r_logits[top1]) { top2 = top1; top1 = k; }
-                    else if (r_logits[k] > r_logits[top2]) { top2 = k; }
-                }
-                double e1 = fast_exp(r_logits[top1]), e2 = fast_exp(r_logits[top2]);
-                rs->top1 = top1; rs->top2 = top2;
-                rs->a1 = e1 / (e1 + e2 + 1e-12);
-                rs->a2 = e2 / (e1 + e2 + 1e-12);
-            } else {
-                // Predictive Coding surprise gate & episodic/crystalline write for t < ctx_len - 1
+            if (t < write_limit) {
 #if defined(__x86_64__) || defined(_M_X64)
                 if (qadav_cpu_supports_avx2()) {
                     vec_matvec_Nx256_avx2(c->W_pred, c->b_pred, next_state, px_buf, 1.0, 256);
@@ -5185,28 +5840,21 @@ static void run_qnmf_recall_s1_range(QNMFRecallS1Ctx* c, int sb_start, int sb_en
                     surprise += d * d;
                 }
                 surprise *= (1.0 / 256.0);
-                if (surprise > 0.04) {
-                    int sw = t % 64;
-                    double* target_mw = M_w + sw * 256;
-                    for (int j = 0; j < 256; j++) target_mw[j] = 0.85 * target_mw[j] + 0.15 * emb[j];
-                    rs->mw_init_wt[sw] *= 0.85;
-                    if (rs->mw_tok0[sw] < 0) { rs->mw_tok0[sw] = c_in; rs->mw_wt0[sw] = 0.15; }
-                    else if (rs->mw_tok1[sw] < 0) { rs->mw_wt0[sw] *= 0.85; rs->mw_tok1[sw] = c_in; rs->mw_wt1[sw] = 0.15; }
-                    else { rs->mw_tok0[sw] = rs->mw_tok1[sw]; rs->mw_wt0[sw] = rs->mw_wt1[sw] * 0.85; rs->mw_tok1[sw] = c_in; rs->mw_wt1[sw] = 0.15; }
-                    rs->mw_writes++;
-
-                    if (surprise > 0.08) {
-                        int sl = (t / 2) % 256;
-                        double* target_ml = M_l + sl * 256;
-                        for (int j = 0; j < 256; j++) target_ml[j] = 0.5 * (target_ml[j] + emb[j]);
-                        rs->ml_init_wt[sl] *= 0.5;
-                        if (rs->ml_tok0[sl] < 0) { rs->ml_tok0[sl] = c_in; rs->ml_wt0[sl] = 0.5; }
-                        else if (rs->ml_tok1[sl] < 0) { rs->ml_wt0[sl] *= 0.5; rs->ml_tok1[sl] = c_in; rs->ml_wt1[sl] = 0.5; }
-                        else { rs->ml_tok0[sl] = rs->ml_tok1[sl]; rs->ml_wt0[sl] = rs->ml_wt1[sl] * 0.5; rs->ml_tok1[sl] = c_in; rs->ml_wt1[sl] = 0.5; }
-                        rs->ml_writes++;
-                    }
+                qnmf_recall_write_step(rs, sb, t, c_in, emb, surprise, &pend, exp_qk, &trace_cnt, M_w, M_l);
+                if (t == write_limit - 1) {
+                    nn_memcpy(rs->M_w_snap, M_w, 16384 * sizeof(double));
+                    nn_memcpy(rs->M_l_snap, M_l, 65536 * sizeof(double));
                 }
+            } else {
+                if (c_in == RECALL_TOK_FIND) qkey = -1;
+                else if (c_in >= RECALL_KEY_BASE && c_in < RECALL_KEY_BASE + RECALL_N_KEYS) qkey = c_in;
             }
+
+            if (t >= sup_start) {
+                int pi = t - sup_start;
+                qnmf_recall_read_step(c, rs, sb, t, pi, seq[t + 1], qkey, M_w, M_l, next_state, q_buf, dot_w, a_w, dot_l, a_l, v_w, v_l, rg_buf, z_buf);
+            }
+
             nn_memcpy(state, next_state, 256 * sizeof(double));
         }
     }
@@ -5218,11 +5866,48 @@ static void qnmf_recall_s1_worker_cb(void* ctx_ptr) {
     run_qnmf_recall_s1_range(c, mid, c->batch_size, c->worker_tmp);
 }
 
+static void qnmf_recall_mem_bwd_bank(
+    int disabled, const double* M_snap, int n_slots,
+    const double* a_vec, const double* q_vec, const double* d_v,
+    const double* init_wt, const int* tok0, const int* tok1, const double* wt0, const double* wt1,
+    double* d_q, double* dM_init, double* dW_emb, double* da_buf, double* ddot_buf)
+{
+    if (disabled) return;
+    double sum_ada = 0.0;
+    for (int s = 0; s < n_slots; s++) {
+        double dot = 0.0;
+        const double* ms = M_snap + s * 256;
+        for (int j = 0; j < 256; j++) dot += d_v[j] * ms[j];
+        da_buf[s] = dot;
+        sum_ada += a_vec[s] * dot;
+    }
+    for (int s = 0; s < n_slots; s++) {
+        double dds = a_vec[s] * (da_buf[s] - sum_ada);
+        ddot_buf[s] = dds;
+        double as = a_vec[s];
+        const double* ms = M_snap + s * 256;
+        double* dmi = dM_init + s * 256;
+        double iwt = init_wt[s];
+        int t0 = tok0[s], t1 = tok1[s];
+        double w0 = wt0[s], w1 = wt1[s];
+        double* dw0 = (t0 >= 0 && t0 < V2_VOCAB_SIZE_BPE) ? (dW_emb + (long long)t0 * 256) : (double*)0;
+        double* dw1 = (t1 >= 0 && t1 < V2_VOCAB_SIZE_BPE) ? (dW_emb + (long long)t1 * 256) : (double*)0;
+        for (int j = 0; j < 256; j++) {
+            d_q[j] += dds * ms[j];
+            double dslot = as * d_v[j] + dds * q_vec[j];
+            dmi[j] += iwt * dslot;
+            if (dw0) dw0[j] += w0 * dslot;
+            if (dw1) dw1[j] += w1 * dslot;
+        }
+    }
+}
+
 static double compute_qnmf_v2_recall_batch(
     int model_kind, V2Weights* w, const int* batch_seqs, int batch_size, int is_training, int* out_exact_hits, int* out_val50_hits)
 {
-    int ctx_len = RECALL_SEQ_LEN - 1; // 511 inputs -> predict index 511
+    int ctx_len = RECALL_SEQ_LEN - 1; // 511 inputs -> targets seq[500..511] (12 supervised positions)
     int emb_len = V2_VOCAB_SIZE_BPE * 256; // 2,048,000 (tied W_emb == W_out)
+    const int P = RECALL_SUP_POSITIONS;    // 12
 
     double* W_emb    = w->params;
     double* W_x      = W_emb + emb_len;
@@ -5237,7 +5922,7 @@ static double compute_qnmf_v2_recall_batch(
     double* W_f      = b_r + 256;
     double* b_f      = W_f + 65536;
     double* W_pred   = b_f + 256;
-    double* b_pred   = W_pred + 65536;
+    double* b_pred   = W_pred + 256;
     double* M_w_init = b_pred + 256;
     double* M_l_init = M_w_init + 16384;
     double* W_route  = M_l_init + 65536;
@@ -5262,9 +5947,9 @@ static double compute_qnmf_v2_recall_batch(
     double* dW_exp    = w->grads + (W_exp - w->params);
     double* db_out    = w->grads + (b_out - w->params);
 
-    // Scratch layout: per_seq (96K doubles) * batch_size + two thread tmp (176K * 2) + stage 2/3 buffers (48K)
-    unsigned long long per_seq_d = 96000ULL;
-    unsigned long long total_d   = (unsigned long long)batch_size * per_seq_d + 400000ULL;
+    // Scratch layout: per_seq (122880 doubles) * batch_size + two thread tmp (176K * 2) + stage 2/3 buffers (400K)
+    unsigned long long per_seq_d = 122880ULL;
+    unsigned long long total_d   = (unsigned long long)batch_size * per_seq_d + 752000ULL;
     unsigned long long raw_bytes = total_d * sizeof(double) + (unsigned long long)batch_size * sizeof(QNMFRecallSeqState) + 4096ULL;
     unsigned char* raw_blk = (unsigned char*)nn_scratch_acquire(raw_bytes);
     if (!raw_blk) return 0.0;
@@ -5276,56 +5961,63 @@ static double compute_qnmf_v2_recall_batch(
         double* p = seq_base + (unsigned long long)sb * per_seq_d;
         rec[sb].M_l_snap    = p;                  // 65536
         rec[sb].M_w_snap    = p + 65536;          // 16384
-        rec[sb].q_last      = p + 81920;          // 256
-        rec[sb].vw_last     = p + 82176;          // 256
-        rec[sb].vl_last     = p + 82432;          // 256
-        rec[sb].z_last      = p + 82688;          // 256
-        rec[sb].r_gate_last = p + 82944;          // 256
-        rec[sb].a_l_last    = p + 83200;          // 256
-        rec[sb].a_w_last    = p + 83456;          // 64
-        rec[sb].state_bptt  = p + 83520;          // 1024
-        rec[sb].cand_bptt   = p + 84544;          // 1024
-        rec[sb].gate_bptt   = p + 85568;          // 1024
-        rec[sb].nstate_bptt = p + 86592;          // 1024
-        rec[sb].ml_wt0      = p + 87616;          // 256
-        rec[sb].ml_wt1      = p + 87872;          // 256
-        rec[sb].ml_init_wt  = p + 88128;          // 256
-        rec[sb].mw_wt0      = p + 88384;          // 64
-        rec[sb].mw_wt1      = p + 88448;          // 64
-        rec[sb].mw_init_wt  = p + 88512;          // 64
-        rec[sb].tok_bptt    = (int*)(p + 88576);  // 4 ints
+        rec[sb].q_all       = p + 81920;          // 3072
+        rec[sb].vw_all      = p + 84992;          // 3072
+        rec[sb].vl_all      = p + 88064;          // 3072
+        rec[sb].z_all       = p + 91136;          // 3072
+        rec[sb].r_gate_all  = p + 94208;          // 3072
+        rec[sb].a_l_all     = p + 97280;          // 3072
+        rec[sb].a_w_all     = p + 100352;         // 768
+        rec[sb].state_bptt  = p + 101120;         // 4096
+        rec[sb].cand_bptt   = p + 105216;         // 4096
+        rec[sb].gate_bptt   = p + 109312;         // 4096
+        rec[sb].nstate_bptt = p + 113408;         // 4096
+        rec[sb].ml_wt0      = p + 117504;         // 256
+        rec[sb].ml_wt1      = p + 117760;         // 256
+        rec[sb].ml_init_wt  = p + 118016;         // 256
+        rec[sb].mw_wt0      = p + 118272;         // 64
+        rec[sb].mw_wt1      = p + 118336;         // 64
+        rec[sb].mw_init_wt  = p + 118400;         // 64
+        rec[sb].a1          = p + 118464;         // 12
+        rec[sb].a2          = p + 118476;         // 12
+        rec[sb].tok_bptt    = (int*)(p + 118500); // 16 ints
         rec[sb].ml_tok0     = rec[sb].tok_bptt + 16;
         rec[sb].ml_tok1     = rec[sb].ml_tok0 + 256;
         rec[sb].mw_tok0     = rec[sb].ml_tok1 + 256;
         rec[sb].mw_tok1     = rec[sb].mw_tok0 + 64;
+        rec[sb].top1        = rec[sb].mw_tok1 + 64;
+        rec[sb].top2        = rec[sb].top1 + 16;
+        rec[sb].tgt_tok     = rec[sb].top2 + 16;
+        rec[sb].q_key_all   = rec[sb].tgt_tok + 16;
     }
 
     double* tmp0 = seq_base + (unsigned long long)batch_size * per_seq_d; // 176000
     double* tmp1 = tmp0 + 176000;                                       // 176000
-    double* stg  = tmp1 + 176000;                                       // 48000
-    double* h1         = stg;               // 2048
-    double* h2         = h1 + 2048;         // 2048
-    double* out1       = h2 + 2048;         // 256
-    double* out2       = out1 + 256;        // 256
-    double* h_comb     = out2 + 256;        // 256
-    double* h_comb_t   = h_comb + 256;      // 256 (h_comb + 0.15*vl)
-    double* logits     = h_comb_t + 256;    // 8000
-    double* probs      = logits + 8000;     // 8000
-    double* d_logits   = probs + 8000;      // 8000
-    double* dh1        = d_logits + 8000;   // 2048
-    double* dh2        = dh1 + 2048;        // 2048
-    double* d_hcomb    = dh2 + 2048;        // 256
-    double* d_z        = d_hcomb + 256;     // 256
-    double* d_vl       = d_z + 256;         // 256
-    double* d_vw       = d_vl + 256;        // 256
-    double* d_q        = d_vw + 256;        // 256
-    double* d_nstate   = d_q + 256;         // 256
-    double* d_prev_ns  = d_nstate + 256;    // 256
-    double* da_l       = d_prev_ns + 256;   // 256
-    double* ddot_l     = da_l + 256;        // 256
-    double* da_w       = ddot_l + 256;      // 64
-    double* ddot_w     = da_w + 64;         // 64
-    double* d_emb_slot = ddot_w + 64;       // 256
+    double* stg  = tmp1 + 176000;                                       // 400000
+    double* h1_all       = stg;                      // 12 * 2048 = 24576
+    double* h2_all       = h1_all + 24576;           // 12 * 2048 = 24576
+    double* out1_all     = h2_all + 24576;           // 12 * 256  = 3072
+    double* out2_all     = out1_all + 3072;          // 12 * 256  = 3072
+    double* h_comb_t_all = out2_all + 3072;          // 12 * 256  = 3072
+    double* logits_all   = h_comb_t_all + 3072;      // 12 * 8000 = 96000
+    double* probs_all    = logits_all + 96000;       // 12 * 8000 = 96000
+    double* d_logits_all = probs_all + 96000;        // 12 * 8000 = 96000
+    double* d_hcomb_all  = d_logits_all + 96000;     // 12 * 256  = 3072
+    double* d_ns_sup     = d_hcomb_all + 3072;       // 12 * 256  = 3072
+    double* h_comb       = d_ns_sup + 3072;          // 256
+    double* dh1          = h_comb + 256;             // 2048
+    double* dh2          = dh1 + 2048;               // 2048
+    double* d_z          = dh2 + 2048;               // 256
+    double* d_vl         = d_z + 256;                // 256
+    double* d_vw         = d_vl + 256;               // 256
+    double* d_q          = d_vw + 256;               // 256
+    double* d_nstate     = d_q + 256;                // 256
+    double* d_prev_ns    = d_nstate + 256;           // 256
+    double* da_l         = d_prev_ns + 256;          // 256
+    double* ddot_l       = da_l + 256;               // 256
+    double* da_w         = ddot_l + 256;             // 64
+    double* ddot_w       = da_w + 64;                // 64
+    double* d_emb_slot   = ddot_w + 64;              // 256
 
     QNMFRecallS1Ctx s1_ctx;
     s1_ctx.model_kind = model_kind;
@@ -5358,221 +6050,224 @@ static double compute_qnmf_v2_recall_batch(
     }
 
     double total_loss = 0.0;
+    double total_ans_loss = 0.0;
     int exact_hits = 0, val50_hits = 0;
-    double norm_factor = 1.0 / (double)batch_size;
+    double norm_factor = 1.0 / (double)(batch_size * P);
     long long batch_mw = 0, batch_ml = 0;
+    double vl_scale = (model_kind != MODEL_KIND_QNMF_V2_NO_ML) ? 0.15 : 0.0;
+    int n_bptt = (ctx_len >= RECALL_BPTT_LEN) ? RECALL_BPTT_LEN : ctx_len;
+    int sup_bptt_offset = n_bptt - P; // 16 - 12 = 4
 
     for (int sb = 0; sb < batch_size; sb++) {
         QNMFRecallSeqState* rs = &rec[sb];
         batch_mw += rs->mw_writes;
         batch_ml += rs->ml_writes;
-        int c_tgt = rs->tgt_tok;
-        if (c_tgt < 0 || c_tgt >= V2_VOCAB_SIZE_BPE) c_tgt = 0;
 
-        const double* W1_1 = W_exp + (long long)rs->top1 * 1050880;
-        const double* b1_1 = W1_1 + 524288;
-        const double* W2_1 = b1_1 + 2048;
-        const double* b2_1 = W2_1 + 524288;
+        for (int pi = 0; pi < P; pi++) {
+            const double* z_p   = rs->z_all + pi * 256;
+            const double* vl_p  = rs->vl_all + pi * 256;
+            double* h1          = h1_all + pi * 2048;
+            double* h2          = h2_all + pi * 2048;
+            double* out1        = out1_all + pi * 256;
+            double* out2        = out2_all + pi * 256;
+            double* h_comb_t    = h_comb_t_all + pi * 256;
 
-        const double* W1_2 = W_exp + (long long)rs->top2 * 1050880;
-        const double* b1_2 = W1_2 + 524288;
-        const double* W2_2 = b1_2 + 2048;
-        const double* b2_2 = W2_2 + 524288;
+            const double* W1_1 = W_exp + (long long)rs->top1[pi] * 1050880;
+            const double* b1_1 = W1_1 + 524288;
+            const double* W2_1 = b1_1 + 2048;
+            const double* b2_1 = W2_1 + 524288;
 
-        vec_matmul_256x2048(W1_1, b1_1, rs->z_last, h1);
-        vec_matmul_256x2048(W1_2, b1_2, rs->z_last, h2);
+            const double* W1_2 = W_exp + (long long)rs->top2[pi] * 1050880;
+            const double* b1_2 = W1_2 + 524288;
+            const double* W2_2 = b1_2 + 2048;
+            const double* b2_2 = W2_2 + 524288;
+
+            vec_matmul_256x2048(W1_1, b1_1, z_p, h1);
+            vec_matmul_256x2048(W1_2, b1_2, z_p, h2);
 #if defined(__x86_64__) || defined(_M_X64)
-        if (qadav_cpu_supports_avx2()) {
-            vec_matmul_2048x256_avx2(W2_1, b2_1, h1, out1);
-            vec_matmul_2048x256_avx2(W2_2, b2_2, h2, out2);
-        } else
+            if (qadav_cpu_supports_avx2()) {
+                vec_matmul_2048x256_avx2(W2_1, b2_1, h1, out1);
+                vec_matmul_2048x256_avx2(W2_2, b2_2, h2, out2);
+            } else
 #endif
-        {
+            {
+                for (int i = 0; i < 256; i++) {
+                    double v1 = b2_1[i], v2 = b2_2[i];
+                    for (int j = 0; j < 2048; j++) { v1 += W2_1[i * 2048 + j] * h1[j]; v2 += W2_2[i * 2048 + j] * h2[j]; }
+                    out1[i] = v1; out2[i] = v2;
+                }
+            }
             for (int i = 0; i < 256; i++) {
-                double v1 = b2_1[i], v2 = b2_2[i];
-                for (int j = 0; j < 2048; j++) { v1 += W2_1[i * 2048 + j] * h1[j]; v2 += W2_2[i * 2048 + j] * h2[j]; }
-                out1[i] = v1; out2[i] = v2;
+                h_comb[i] = z_p[i] + rs->a1[pi] * out1[i] + rs->a2[pi] * out2[i];
+                h_comb_t[i] = h_comb[i] + vl_scale * vl_p[i];
             }
         }
 
-        double vl_scale = (model_kind != MODEL_KIND_QNMF_V2_NO_ML) ? 0.15 : 0.0;
-        for (int i = 0; i < 256; i++) {
-            h_comb[i] = rs->z_last[i] + rs->a1 * out1[i] + rs->a2 * out2[i];
-            h_comb_t[i] = h_comb[i] + vl_scale * rs->vl_last[i];
-        }
+        recall_logits_multi_fwd_8000(W_emb, b_out, h_comb_t_all, logits_all, P, V2_VOCAB_SIZE_BPE);
 
-        recall_matvec_Nx256_add_bias_and_out(W_emb, b_out, h_comb_t, logits, V2_VOCAB_SIZE_BPE);
+        for (int pi = 0; pi < P; pi++) {
+            int c_tgt = rs->tgt_tok[pi];
+            if (c_tgt < 0 || c_tgt >= V2_VOCAB_SIZE_BPE) c_tgt = 0;
+            const double* logits = logits_all + pi * V2_VOCAB_SIZE_BPE;
+            double* probs = probs_all + pi * V2_VOCAB_SIZE_BPE;
+            double* d_logits = d_logits_all + pi * V2_VOCAB_SIZE_BPE;
 
-        double max_l = logits[0];
-        int best_full = 0;
-        for (int i = 1; i < V2_VOCAB_SIZE_BPE; i++) {
-            if (logits[i] > max_l) { max_l = logits[i]; best_full = i; }
-        }
-        int best_v50 = RECALL_VAL_BASE;
-        double max_v50 = logits[RECALL_VAL_BASE];
-        for (int i = RECALL_VAL_BASE + 1; i < RECALL_VAL_BASE + RECALL_N_VALS; i++) {
-            if (logits[i] > max_v50) { max_v50 = logits[i]; best_v50 = i; }
-        }
-        if (best_full == c_tgt) exact_hits++;
-        if (best_v50 == c_tgt) val50_hits++;
+            double max_l = logits[0];
+            int best_full = 0;
+            for (int i = 1; i < V2_VOCAB_SIZE_BPE; i++) {
+                if (logits[i] > max_l) { max_l = logits[i]; best_full = i; }
+            }
+            if (pi == P - 1) {
+                int best_v50 = RECALL_VAL_BASE;
+                double max_v50 = logits[RECALL_VAL_BASE];
+                for (int i = RECALL_VAL_BASE + 1; i < RECALL_VAL_BASE + RECALL_N_VALS; i++) {
+                    if (logits[i] > max_v50) { max_v50 = logits[i]; best_v50 = i; }
+                }
+                if (best_full == c_tgt) exact_hits++;
+                if (best_v50 == c_tgt) val50_hits++;
+            }
 
-        double sum_exp = 0.0;
-        for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
-            probs[i] = fast_exp(logits[i] - max_l);
-            sum_exp += probs[i];
-        }
-        double inv_s = 1.0 / (sum_exp + 1e-12);
-        for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) probs[i] *= inv_s;
+            double sum_exp = 0.0;
+            for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
+                probs[i] = fast_exp(logits[i] - max_l);
+                sum_exp += probs[i];
+            }
+            double inv_s = 1.0 / (sum_exp + 1e-12);
+            for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) probs[i] *= inv_s;
 
-        double p_tgt = probs[c_tgt] > 1e-12 ? probs[c_tgt] : 1e-12;
-        total_loss += -qadav_log(p_tgt);
+            double p_tgt = probs[c_tgt] > 1e-12 ? probs[c_tgt] : 1e-12;
+            double ce = -qadav_log(p_tgt);
+            total_loss += ce;
+            if (pi == P - 1) total_ans_loss += ce;
+
+            if (is_training == 1) {
+                for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
+                    double tgt = (i == c_tgt) ? 1.0 : 0.0;
+                    d_logits[i] = (probs[i] - tgt) * norm_factor;
+                }
+            }
+        }
 
         if (is_training == 1) {
-            for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
-                double tgt = (i == c_tgt) ? 1.0 : 0.0;
-                d_logits[i] = (probs[i] - tgt) * norm_factor;
-            }
-            recall_logits_bwd_8000(W_emb, dW_emb, db_out, h_comb_t, d_logits, d_hcomb, V2_VOCAB_SIZE_BPE);
+            recall_logits_multi_bwd_8000(
+                W_emb, dW_emb, db_out, h_comb_t_all, d_logits_all, d_hcomb_all, P, V2_VOCAB_SIZE_BPE);
 
-            for (int j = 0; j < 256; j++) d_vl[j] = vl_scale * d_hcomb[j];
+            for (int pi = 0; pi < P; pi++) {
+                const double* d_hcomb = d_hcomb_all + pi * 256;
+                const double* h1      = h1_all + pi * 2048;
+                const double* h2      = h2_all + pi * 2048;
+                const double* out1    = out1_all + pi * 256;
+                const double* out2    = out2_all + pi * 256;
+                const double* z_p     = rs->z_all + pi * 256;
+                const double* rg_p    = rs->r_gate_all + pi * 256;
+                const double* vw_p    = rs->vw_all + pi * 256;
+                const double* vl_p    = rs->vl_all + pi * 256;
+                const double* ns_pos  = rs->nstate_bptt + (pi + sup_bptt_offset) * 256;
+                double*       d_ns_p  = d_ns_sup + pi * 256;
 
-            // Backprop Top-2 Experts & Router
-            double* dW1_1 = dW_exp + (long long)rs->top1 * 1050880; double* db1_1 = dW1_1 + 524288;
-            double* dW2_1 = db1_1 + 2048;                       double* db2_1 = dW2_1 + 524288;
-            double* dW1_2 = dW_exp + (long long)rs->top2 * 1050880; double* db1_2 = dW1_2 + 524288;
-            double* dW2_2 = db1_2 + 2048;                       double* db2_2 = dW2_2 + 524288;
+                for (int j = 0; j < 256; j++) d_vl[j] = vl_scale * d_hcomb[j];
 
-            nn_memset(dh1, 0, 2048 * sizeof(double));
-            nn_memset(dh2, 0, 2048 * sizeof(double));
-            double da1 = 0.0, da2 = 0.0;
-            for (int j = 0; j < 256; j++) {
-                da1 += d_hcomb[j] * out1[j];
-                da2 += d_hcomb[j] * out2[j];
-                double o1v = d_hcomb[j] * rs->a1, o2v = d_hcomb[j] * rs->a2;
-                db2_1[j] += o1v; db2_2[j] += o2v;
-                const double* w2_1r = W2_1 + j * 2048; double* dw2_1r = dW2_1 + j * 2048;
-                const double* w2_2r = W2_2 + j * 2048; double* dw2_2r = dW2_2 + j * 2048;
+                int t1 = rs->top1[pi], t2 = rs->top2[pi];
+                const double* W1_1 = W_exp + (long long)t1 * 1050880;
+                const double* W2_1 = W1_1 + 524288 + 2048;
+                const double* W1_2 = W_exp + (long long)t2 * 1050880;
+                const double* W2_2 = W1_2 + 524288 + 2048;
+
+                double* dW1_1 = dW_exp + (long long)t1 * 1050880; double* db1_1 = dW1_1 + 524288;
+                double* dW2_1 = db1_1 + 2048;                      double* db2_1 = dW2_1 + 524288;
+                double* dW1_2 = dW_exp + (long long)t2 * 1050880; double* db1_2 = dW1_2 + 524288;
+                double* dW2_2 = db1_2 + 2048;                      double* db2_2 = dW2_2 + 524288;
+
+                nn_memset(dh1, 0, 2048 * sizeof(double));
+                nn_memset(dh2, 0, 2048 * sizeof(double));
+                double da1 = 0.0, da2 = 0.0;
+                for (int j = 0; j < 256; j++) {
+                    da1 += d_hcomb[j] * out1[j];
+                    da2 += d_hcomb[j] * out2[j];
+                    double o1v = d_hcomb[j] * rs->a1[pi], o2v = d_hcomb[j] * rs->a2[pi];
+                    db2_1[j] += o1v; db2_2[j] += o2v;
+                    const double* w2_1r = W2_1 + j * 2048; double* dw2_1r = dW2_1 + j * 2048;
+                    const double* w2_2r = W2_2 + j * 2048; double* dw2_2r = dW2_2 + j * 2048;
+                    for (int m = 0; m < 2048; m++) {
+                        dh1[m] += o1v * w2_1r[m]; dw2_1r[m] += o1v * h1[m];
+                        dh2[m] += o2v * w2_2r[m]; dw2_2r[m] += o2v * h2[m];
+                    }
+                }
                 for (int m = 0; m < 2048; m++) {
-                    dh1[m] += o1v * w2_1r[m]; dw2_1r[m] += o1v * h1[m];
-                    dh2[m] += o2v * w2_2r[m]; dw2_2r[m] += o2v * h2[m];
+                    dh1[m] = (h1[m] > 0.0) ? dh1[m] : 0.0; db1_1[m] += dh1[m];
+                    dh2[m] = (h2[m] > 0.0) ? dh2[m] : 0.0; db1_2[m] += dh2[m];
                 }
-            }
-            for (int m = 0; m < 2048; m++) {
-                dh1[m] = (h1[m] > 0.0) ? dh1[m] : 0.0; db1_1[m] += dh1[m];
-                dh2[m] = (h2[m] > 0.0) ? dh2[m] : 0.0; db1_2[m] += dh2[m];
-            }
-            nn_memcpy(d_z, d_hcomb, 256 * sizeof(double));
-            for (int m = 0; m < 2048; m++) {
-                double dv1 = dh1[m], dv2 = dh2[m];
-                const double* w1_1r = W1_1 + m * 256; double* dw1_1r = dW1_1 + m * 256;
-                const double* w1_2r = W1_2 + m * 256; double* dw1_2r = dW1_2 + m * 256;
-                for (int j = 0; j < 256; j++) {
-                    d_z[j] += dv1 * w1_1r[j] + dv2 * w1_2r[j];
-                    dw1_1r[j] += dv1 * rs->z_last[j];
-                    dw1_2r[j] += dv2 * rs->z_last[j];
-                }
-            }
-            double droute_diff = rs->a1 * rs->a2 * (da1 - da2);
-            db_route[rs->top1] += droute_diff;
-            db_route[rs->top2] -= droute_diff;
-            for (int j = 0; j < 256; j++) {
-                dW_route[rs->top1 * 256 + j] += droute_diff * rs->z_last[j];
-                dW_route[rs->top2 * 256 + j] -= droute_diff * rs->z_last[j];
-            }
-
-            // Backprop z = next_state + r_gate * (v_w + v_l)
-            const double* ns_last = rs->nstate_bptt + 3 * 256;
-            nn_memcpy(d_nstate, d_z, 256 * sizeof(double));
-            for (int i = 0; i < 256; i++) {
-                double rg = rs->r_gate_last[i];
-                double d_add = d_z[i] * rg;
-                d_vl[i] += d_add;
-                d_vw[i]  = d_add;
-                double d_rg = d_z[i] * (rs->vw_last[i] + rs->vl_last[i]) * rg * (1.0 - rg);
-                db_r[i] += d_rg;
-                double* dwr_row = dW_r + i * 256;
-                const double* wr_row = W_r + i * 256;
-                for (int j = 0; j < 256; j++) {
-                    dwr_row[j] += d_rg * ns_last[j];
-                    d_nstate[j] += d_rg * wr_row[j];
-                }
-            }
-
-            // Backprop M_l & M_w attention reads -> d_q + direct M_l/M_w writer embeddings dW_emb!
-            nn_memset(d_q, 0, 256 * sizeof(double));
-            if (model_kind != MODEL_KIND_QNMF_V2_NO_ML) {
-                double sum_ada = 0.0;
-                for (int s = 0; s < 256; s++) {
-                    double dot = 0.0;
-                    const double* ml_s = rs->M_l_snap + s * 256;
-                    for (int j = 0; j < 256; j++) dot += d_vl[j] * ml_s[j];
-                    da_l[s] = dot;
-                    sum_ada += rs->a_l_last[s] * dot;
-                }
-                for (int s = 0; s < 256; s++) {
-                    ddot_l[s] = rs->a_l_last[s] * (da_l[s] - sum_ada);
-                    const double* ml_s = rs->M_l_snap + s * 256;
-                    double al_s = rs->a_l_last[s], ddl_s = ddot_l[s];
-                    double* dmli = dM_l_init + s * 256;
-                    double iwt = rs->ml_init_wt[s];
-                    int t0 = rs->ml_tok0[s], t1 = rs->ml_tok1[s];
-                    double w0 = rs->ml_wt0[s], w1 = rs->ml_wt1[s];
-                    double* dw0 = (t0 >= 0 && t0 < V2_VOCAB_SIZE_BPE) ? (dW_emb + (long long)t0 * 256) : (double*)0;
-                    double* dw1 = (t1 >= 0 && t1 < V2_VOCAB_SIZE_BPE) ? (dW_emb + (long long)t1 * 256) : (double*)0;
+                nn_memcpy(d_z, d_hcomb, 256 * sizeof(double));
+                for (int m = 0; m < 2048; m++) {
+                    double dv1 = dh1[m], dv2 = dh2[m];
+                    const double* w1_1r = W1_1 + m * 256; double* dw1_1r = dW1_1 + m * 256;
+                    const double* w1_2r = W1_2 + m * 256; double* dw1_2r = dW1_2 + m * 256;
                     for (int j = 0; j < 256; j++) {
-                        d_q[j] += ddl_s * ml_s[j];
-                        double dslot = al_s * d_vl[j] + ddl_s * rs->q_last[j];
-                        dmli[j] += iwt * dslot;
-                        if (dw0) dw0[j] += w0 * dslot;
-                        if (dw1) dw1[j] += w1 * dslot;
+                        d_z[j] += dv1 * w1_1r[j] + dv2 * w1_2r[j];
+                        dw1_1r[j] += dv1 * z_p[j];
+                        dw1_2r[j] += dv2 * z_p[j];
+                    }
+                }
+                double droute_diff = rs->a1[pi] * rs->a2[pi] * (da1 - da2);
+                db_route[t1] += droute_diff;
+                db_route[t2] -= droute_diff;
+                for (int j = 0; j < 256; j++) {
+                    dW_route[t1 * 256 + j] += droute_diff * z_p[j];
+                    dW_route[t2 * 256 + j] -= droute_diff * z_p[j];
+                }
+
+                // Backprop z = next_state + r_gate * (v_w + v_l)
+                nn_memcpy(d_ns_p, d_z, 256 * sizeof(double));
+                for (int i = 0; i < 256; i++) {
+                    double rg = rg_p[i];
+                    double d_add = d_z[i] * rg;
+                    d_vl[i] += d_add;
+                    d_vw[i]  = d_add;
+                    double d_rg = d_z[i] * (vw_p[i] + vl_p[i]) * rg * (1.0 - rg);
+                    db_r[i] += d_rg;
+                    double* dwr_row = dW_r + i * 256;
+                    const double* wr_row = W_r + i * 256;
+                    for (int j = 0; j < 256; j++) {
+                        dwr_row[j] += d_rg * ns_pos[j];
+                        d_ns_p[j]  += d_rg * wr_row[j];
+                    }
+                }
+
+                // Backprop M_l & M_w attention reads -> d_q + direct M_l/M_w writer embeddings dW_emb
+                nn_memset(d_q, 0, 256 * sizeof(double));
+                qnmf_recall_mem_bwd_bank(
+                    model_kind == MODEL_KIND_QNMF_V2_NO_ML, rs->M_l_snap, 256,
+                    rs->a_l_all + pi * 256, rs->q_all + pi * 256, d_vl,
+                    rs->ml_init_wt, rs->ml_tok0, rs->ml_tok1, rs->ml_wt0, rs->ml_wt1,
+                    d_q, dM_l_init, dW_emb, da_l, ddot_l);
+
+                qnmf_recall_mem_bwd_bank(
+                    model_kind == MODEL_KIND_QNMF_V2_NO_MW, rs->M_w_snap, 64,
+                    rs->a_w_all + pi * 64, rs->q_all + pi * 256, d_vw,
+                    rs->mw_init_wt, rs->mw_tok0, rs->mw_tok1, rs->mw_wt0, rs->mw_wt1,
+                    d_q, dM_w_init, dW_emb, da_w, ddot_w);
+
+                // Backprop q = 0.25 * (W_q * next_state + b_q), with 10x W_q/b_q gradient scale (2.5 * d_q)
+                for (int i = 0; i < 256; i++) {
+                    double dq_s = 0.25 * d_q[i];
+                    double dq_w = 2.5  * d_q[i];
+                    db_q[i] += dq_w;
+                    double* dwq_row = dW_q + i * 256;
+                    const double* wq_row = W_q + i * 256;
+                    for (int j = 0; j < 256; j++) {
+                        dwq_row[j] += dq_w * ns_pos[j];
+                        d_ns_p[j]  += dq_s * wq_row[j];
                     }
                 }
             }
 
-            if (model_kind != MODEL_KIND_QNMF_V2_NO_MW) {
-                double sum_ada = 0.0;
-                for (int s = 0; s < 64; s++) {
-                    double dot = 0.0;
-                    const double* mw_s = rs->M_w_snap + s * 256;
-                    for (int j = 0; j < 256; j++) dot += d_vw[j] * mw_s[j];
-                    da_w[s] = dot;
-                    sum_ada += rs->a_w_last[s] * dot;
-                }
-                for (int s = 0; s < 64; s++) {
-                    ddot_w[s] = rs->a_w_last[s] * (da_w[s] - sum_ada);
-                    const double* mw_s = rs->M_w_snap + s * 256;
-                    double aw_s = rs->a_w_last[s], ddw_s = ddot_w[s];
-                    double* dmwi = dM_w_init + s * 256;
-                    double iwt = rs->mw_init_wt[s];
-                    int t0 = rs->mw_tok0[s], t1 = rs->mw_tok1[s];
-                    double w0 = rs->mw_wt0[s], w1 = rs->mw_wt1[s];
-                    double* dw0 = (t0 >= 0 && t0 < V2_VOCAB_SIZE_BPE) ? (dW_emb + (long long)t0 * 256) : (double*)0;
-                    double* dw1 = (t1 >= 0 && t1 < V2_VOCAB_SIZE_BPE) ? (dW_emb + (long long)t1 * 256) : (double*)0;
-                    for (int j = 0; j < 256; j++) {
-                        d_q[j] += ddw_s * mw_s[j];
-                        double dslot = aw_s * d_vw[j] + ddw_s * rs->q_last[j];
-                        dmwi[j] += iwt * dslot;
-                        if (dw0) dw0[j] += w0 * dslot;
-                        if (dw1) dw1[j] += w1 * dslot;
-                    }
-                }
-            }
-
-            // Backprop q = 0.0625 * (W_q * next_state + b_q)
-            for (int i = 0; i < 256; i++) {
-                double dq_s = 0.0625 * d_q[i];
-                db_q[i] += dq_s;
-                double* dwq_row = dW_q + i * 256;
-                const double* wq_row = W_q + i * 256;
-                for (int j = 0; j < 256; j++) {
-                    dwq_row[j] += dq_s * ns_last[j];
-                    d_nstate[j] += dq_s * wq_row[j];
-                }
-            }
-
-            // Truncated BPTT across last 4 tokens [507, 508, 509, 510] -> passes query key_X into state & dW_emb[key_X]!
-            int n_bptt = (ctx_len >= 4) ? 4 : ctx_len;
+            // 16-step Truncated BPTT across tokens [495..510], accumulating supervision grads from [499..510]
+            nn_memset(d_nstate, 0, 256 * sizeof(double));
             for (int bi = n_bptt - 1; bi >= 0; bi--) {
+                if (bi >= sup_bptt_offset) {
+                    const double* d_ns_p = d_ns_sup + (bi - sup_bptt_offset) * 256;
+                    for (int j = 0; j < 256; j++) d_nstate[j] += d_ns_p[j];
+                }
                 const double* st  = rs->state_bptt + bi * 256;
                 const double* cnd = rs->cand_bptt + bi * 256;
                 const double* gt  = rs->gate_bptt + bi * 256;
@@ -5612,6 +6307,7 @@ static double compute_qnmf_v2_recall_batch(
 
     g_recall_mw_writes = batch_mw;
     g_recall_ml_writes = batch_ml;
+    g_recall_last_ans_loss = total_ans_loss / (double)batch_size;
     if (out_exact_hits) *out_exact_hits = exact_hits;
     if (out_val50_hits) *out_val50_hits = val50_hits;
     return total_loss * norm_factor;
@@ -6235,6 +6931,9 @@ static double compute_transformer_v2_recall_batch(
 {
     int ctx_len = RECALL_SEQ_LEN - 1; // 511
     int emb_len = V2_VOCAB_SIZE_BPE * 256; // 2,048,000 (tied W_emb == W_out)
+    const int P = RECALL_SUP_POSITIONS;    // 12
+    int sup_start = ctx_len - P;           // 499 (targets seq[500..511])
+    if (sup_start < 0) sup_start = 0;
 
     double* W_emb  = w->params;
     double* W_pos  = W_emb + emb_len;
@@ -6247,9 +6946,10 @@ static double compute_transformer_v2_recall_batch(
     double* dW_lay = dW_pos + 131072;
     double* db_out = w->grads + (b_out - w->params);
 
-    // Scratch layout (~26 MB single-seq L3-resident + L2-hot head_pack)
+    // Scratch layout (~30 MB single-seq L3-resident + L2-hot head_pack + 12-position readout)
     unsigned long long c256 = (unsigned long long)ctx_len * 256ULL; // 130,816
-    unsigned long long doubles_needed = c256 * 27ULL + 330000ULL;
+    unsigned long long p256 = (unsigned long long)P * 256ULL;       // 3,072
+    unsigned long long doubles_needed = c256 * 26ULL + 600000ULL;
     unsigned char* raw_blk = (unsigned char*)nn_scratch_acquire(doubles_needed * sizeof(double));
     if (!raw_blk) return 0.0;
     double* ws = (double*)raw_blk;
@@ -6263,30 +6963,30 @@ static double compute_transformer_v2_recall_batch(
     for (int l = 0; l < 4; l++) { X_in[l] = p; p += c256; }
     for (int l = 0; l < 4; l++) { K_all[l] = p; p += c256; }
     for (int l = 0; l < 4; l++) { V_all[l] = p; p += c256; }
-    for (int l = 0; l < 3; l++) { Q_all[l] = p; p += c256; } Q_all[3] = p; p += 256;
-    for (int l = 0; l < 3; l++) { Attn_all[l] = p; p += c256; } Attn_all[3] = p; p += 256;
+    for (int l = 0; l < 3; l++) { Q_all[l] = p; p += c256; } Q_all[3] = p; p += p256;
+    for (int l = 0; l < 3; l++) { Attn_all[l] = p; p += c256; } Attn_all[3] = p; p += p256;
 
-    double* X_last_out = p; p += 256;
-    double* dX_curr    = p; p += c256;
-    double* dX_next    = p; p += c256;
-    double* dAttn      = p; p += c256;
-    double* dQ         = p; p += c256;
-    double* dK         = p; p += c256;
-    double* dV         = p; p += c256;
-    double* dX_part    = p; p += c256;
-    double* tmp_scores = p; p += 2048 + 262144;
-    double* logits     = p; p += 8000;
-    double* probs      = p; p += 8000;
-    double* d_logits   = p;
+    double* X_last_out   = p; p += p256;
+    double* dX_last_in   = p; p += p256;
+    double* dX_curr      = p; p += c256;
+    double* dX_next      = p; p += c256;
+    double* dAttn        = p; p += c256;
+    double* dQ           = p; p += c256;
+    double* dK           = p; p += c256;
+    double* dV           = p; p += c256;
+    double* dX_part      = p; p += c256;
+    double* tmp_scores   = p; p += 2048 + 262144;
+    double* logits_all   = p; p += (unsigned long long)P * (unsigned long long)V2_VOCAB_SIZE_BPE;
+    double* probs_all    = p; p += (unsigned long long)P * (unsigned long long)V2_VOCAB_SIZE_BPE;
+    double* d_logits_all = p;
 
     double total_loss = 0.0;
+    double total_ans_loss = 0.0;
     int exact_hits = 0, val50_hits = 0;
-    double norm_factor = 1.0 / (double)batch_size;
+    double norm_factor = 1.0 / (double)(batch_size * P);
 
     for (int sb = 0; sb < batch_size; sb++) {
         const int* seq = batch_seqs + (unsigned long long)sb * (unsigned long long)RECALL_SEQ_LEN;
-        int c_tgt = seq[ctx_len];
-        if (c_tgt < 0 || c_tgt >= V2_VOCAB_SIZE_BPE) c_tgt = 0;
 
         for (int t = 0; t < ctx_len; t++) {
             int tok = seq[t];
@@ -6299,8 +6999,8 @@ static double compute_transformer_v2_recall_batch(
 
         for (int l = 0; l < 4; l++) {
             const double* lw = W_lay + (long long)l * 4368448;
-            int T_q = (l < 3) ? ctx_len : 1;
-            int q_start = (l < 3) ? 0 : (ctx_len - 1);
+            int T_q = (l < 3) ? ctx_len : P;
+            int q_start = (l < 3) ? 0 : sup_start;
             double* X_out = (l < 3) ? X_in[l + 1] : (X_last_out - q_start * 256);
 
             TFRecallLayerCtx lc;
@@ -6321,50 +7021,66 @@ static double compute_transformer_v2_recall_batch(
             for (int qi = 0; qi < T_q; qi++) {
                 int t = q_start + qi;
                 const double* xi = X_in[l] + t * 256;
-                double* xo = (l < 3) ? (X_in[l + 1] + t * 256) : X_last_out;
+                double* xo = (l < 3) ? (X_in[l + 1] + t * 256) : (X_last_out + qi * 256);
                 for (int j = 0; j < 256; j++) xo[j] += xi[j];
             }
         }
 
-        recall_matvec_Nx256_add_bias_and_out(W_emb, b_out, X_last_out, logits, V2_VOCAB_SIZE_BPE);
+        recall_logits_multi_fwd_8000(W_emb, b_out, X_last_out, logits_all, P, V2_VOCAB_SIZE_BPE);
 
-        double max_l = logits[0];
-        int best_full = 0;
-        for (int i = 1; i < V2_VOCAB_SIZE_BPE; i++) {
-            if (logits[i] > max_l) { max_l = logits[i]; best_full = i; }
-        }
-        int best_v50 = RECALL_VAL_BASE;
-        double max_v50 = logits[RECALL_VAL_BASE];
-        for (int i = RECALL_VAL_BASE + 1; i < RECALL_VAL_BASE + RECALL_N_VALS; i++) {
-            if (logits[i] > max_v50) { max_v50 = logits[i]; best_v50 = i; }
-        }
-        if (best_full == c_tgt) exact_hits++;
-        if (best_v50 == c_tgt) val50_hits++;
+        for (int pi = 0; pi < P; pi++) {
+            int c_tgt = seq[sup_start + pi + 1];
+            if (c_tgt < 0 || c_tgt >= V2_VOCAB_SIZE_BPE) c_tgt = 0;
+            const double* logits = logits_all + pi * V2_VOCAB_SIZE_BPE;
+            double* probs        = probs_all + pi * V2_VOCAB_SIZE_BPE;
+            double* d_logits     = d_logits_all + pi * V2_VOCAB_SIZE_BPE;
 
-        double sum_exp = 0.0;
-        for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
-            probs[i] = fast_exp(logits[i] - max_l);
-            sum_exp += probs[i];
-        }
-        double inv_s = 1.0 / (sum_exp + 1e-12);
-        for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) probs[i] *= inv_s;
+            double max_l = logits[0];
+            int best_full = 0;
+            for (int i = 1; i < V2_VOCAB_SIZE_BPE; i++) {
+                if (logits[i] > max_l) { max_l = logits[i]; best_full = i; }
+            }
+            if (pi == P - 1) {
+                int best_v50 = RECALL_VAL_BASE;
+                double max_v50 = logits[RECALL_VAL_BASE];
+                for (int i = RECALL_VAL_BASE + 1; i < RECALL_VAL_BASE + RECALL_N_VALS; i++) {
+                    if (logits[i] > max_v50) { max_v50 = logits[i]; best_v50 = i; }
+                }
+                if (best_full == c_tgt) exact_hits++;
+                if (best_v50 == c_tgt) val50_hits++;
+            }
 
-        double p_tgt = probs[c_tgt] > 1e-12 ? probs[c_tgt] : 1e-12;
-        total_loss += -qadav_log(p_tgt);
+            double sum_exp = 0.0;
+            for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
+                probs[i] = fast_exp(logits[i] - max_l);
+                sum_exp += probs[i];
+            }
+            double inv_s = 1.0 / (sum_exp + 1e-12);
+            for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) probs[i] *= inv_s;
+
+            double p_tgt = probs[c_tgt] > 1e-12 ? probs[c_tgt] : 1e-12;
+            double ce = -qadav_log(p_tgt);
+            total_loss += ce;
+            if (pi == P - 1) total_ans_loss += ce;
+
+            if (is_training == 1) {
+                for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
+                    double tgt = (i == c_tgt) ? 1.0 : 0.0;
+                    d_logits[i] = (probs[i] - tgt) * norm_factor;
+                }
+            }
+        }
 
         if (is_training == 1) {
-            for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
-                double tgt = (i == c_tgt) ? 1.0 : 0.0;
-                d_logits[i] = (probs[i] - tgt) * norm_factor;
-            }
             nn_memset(dX_next, 0, c256 * sizeof(double));
-            recall_logits_bwd_8000(W_emb, dW_emb, db_out, X_last_out, d_logits, dX_next + (ctx_len - 1) * 256, V2_VOCAB_SIZE_BPE);
+            recall_logits_multi_bwd_8000(W_emb, dW_emb, db_out, X_last_out, d_logits_all, dX_last_in, P, V2_VOCAB_SIZE_BPE);
+            nn_memcpy(dX_next + sup_start * 256, dX_last_in, p256 * sizeof(double));
 
             for (int l = 3; l >= 0; l--) {
                 const double* lw = W_lay + (long long)l * 4368448;
                 double* dlw      = dW_lay + (long long)l * 4368448;
-                int T_q = (l < 3) ? ctx_len : 1;
-                int q_start = (l < 3) ? 0 : (ctx_len - 1);
+                int T_q = (l < 3) ? ctx_len : P;
+                int q_start = (l < 3) ? 0 : sup_start;
 
                 nn_memcpy(dX_curr, dX_next, c256 * sizeof(double));
                 nn_memset(dQ, 0, (unsigned long long)T_q * 256ULL * sizeof(double));
@@ -6423,6 +7139,2034 @@ static double compute_transformer_v2_recall_batch(
         }
     }
 
+    g_recall_last_ans_loss = total_ans_loss / (double)batch_size;
+    if (out_exact_hits) *out_exact_hits = exact_hits;
+    if (out_val50_hits) *out_val50_hits = val50_hits;
+    return total_loss * norm_factor;
+}
+
+// ---------------------------------------------------------------------
+// M10.4 Compact Float32 AVX2 Kernels (50M Scale <= 600 MB Peak RAM)
+// ---------------------------------------------------------------------
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma")))
+static inline float avx2_hsum_ps(__m256 acc) {
+    __m128 lo = _mm256_castps256_ps128(acc);
+    __m128 hi = _mm256_extractf128_ps(acc, 1);
+    __m128 s = _mm_add_ps(lo, hi);
+    __m128 h = _mm_movehl_ps(s, s);
+    s = _mm_add_ps(s, h);
+    __m128 h2 = _mm_shuffle_ps(s, s, 0x55);
+    s = _mm_add_ss(s, h2);
+    return _mm_cvtss_f32(s);
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_matvec_Nx384_f32_avx2(
+    const float* restrict W, const float* restrict b, const float* restrict x,
+    float* restrict y, float scale, int rows)
+{
+    for (int i = 0; i < rows; i++) {
+        const float* r = W + (long long)i * 384;
+        __m256 a0 = _mm256_setzero_ps();
+        __m256 a1 = _mm256_setzero_ps();
+        for (int j = 0; j < 384; j += 16) {
+            a0 = _mm256_fmadd_ps(_mm256_loadu_ps(r + j),     _mm256_loadu_ps(x + j),     a0);
+            a1 = _mm256_fmadd_ps(_mm256_loadu_ps(r + j + 8), _mm256_loadu_ps(x + j + 8), a1);
+        }
+        float v = (b ? b[i] : 0.0f) + avx2_hsum_ps(_mm256_add_ps(a0, a1));
+        y[i] = v * scale;
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_weighted_sum_Nx384_f32_avx2(
+    const float* restrict M, const float* restrict a, float scale,
+    float* restrict out, int rows)
+{
+    for (int j = 0; j < 384; j += 8) _mm256_storeu_ps(out + j, _mm256_setzero_ps());
+    for (int s = 0; s < rows; s++) {
+        float w = a[s] * scale;
+        if (w == 0.0f) continue;
+        __m256 vw = _mm256_set1_ps(w);
+        const float* ms = M + (long long)s * 384;
+        for (int j = 0; j < 384; j += 8) {
+            __m256 acc = _mm256_loadu_ps(out + j);
+            acc = _mm256_fmadd_ps(vw, _mm256_loadu_ps(ms + j), acc);
+            _mm256_storeu_ps(out + j, acc);
+        }
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void qnmf_50m_step_pair_avx2(
+    const float* restrict W_x, const float* restrict W_s, const float* restrict b_s,
+    const float* restrict W_lam, const float* restrict b_lam,
+    const float* restrict e0, const float* restrict e1,
+    const float* restrict st0, float* restrict cand0, float* restrict gate0, float* restrict ns0,
+    const float* restrict st1, float* restrict cand1, float* restrict gate1, float* restrict ns1)
+{
+    for (int i = 0; i < QNMF_50M_DIM; i++) {
+        const float* wx = W_x + (long long)i * QNMF_50M_DIM;
+        const float* ws = W_s + (long long)i * QNMF_50M_DIM;
+        const float* wl = W_lam + (long long)i * QNMF_50M_DIM;
+        __m256 u0 = _mm256_setzero_ps(), v0 = _mm256_setzero_ps();
+        __m256 u1 = _mm256_setzero_ps(), v1 = _mm256_setzero_ps();
+        for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+            __m256 mwx = _mm256_loadu_ps(wx + j);
+            __m256 mws = _mm256_loadu_ps(ws + j);
+            __m256 mwl = _mm256_loadu_ps(wl + j);
+            __m256 ve0 = _mm256_loadu_ps(e0 + j);
+            __m256 ve1 = _mm256_loadu_ps(e1 + j);
+            __m256 vs0 = _mm256_loadu_ps(st0 + j);
+            __m256 vs1 = _mm256_loadu_ps(st1 + j);
+            u0 = _mm256_fmadd_ps(mwx, ve0, u0);
+            u0 = _mm256_fmadd_ps(mws, vs0, u0);
+            v0 = _mm256_fmadd_ps(mwl, ve0, v0);
+            u1 = _mm256_fmadd_ps(mwx, ve1, u1);
+            u1 = _mm256_fmadd_ps(mws, vs1, u1);
+            v1 = _mm256_fmadd_ps(mwl, ve1, v1);
+        }
+        float su0 = b_s[i] + avx2_hsum_ps(u0);
+        float sv0 = b_lam[i] + avx2_hsum_ps(v0);
+        float su1 = b_s[i] + avx2_hsum_ps(u1);
+        float sv1 = b_lam[i] + avx2_hsum_ps(v1);
+        float c0 = (float)fast_tanh((double)su0);
+        float g0 = (float)fast_sigmoid((double)sv0);
+        float c1 = (float)fast_tanh((double)su1);
+        float g1 = (float)fast_sigmoid((double)sv1);
+        cand0[i] = c0; gate0[i] = g0; ns0[i] = g0 * st0[i] + (1.0f - g0) * c0;
+        cand1[i] = c1; gate1[i] = g1; ns1[i] = g1 * st1[i] + (1.0f - g1) * c1;
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void qnmf_50m_pred_pair_avx2(
+    const float* restrict W_pred, const float* restrict b_pred,
+    const float* restrict ns0, const float* restrict e0,
+    const float* restrict ns1, const float* restrict e1,
+    double* out_s0, double* out_s1)
+{
+    double s0 = 0.0, s1 = 0.0;
+    for (int i = 0; i < QNMF_50M_DIM; i++) {
+        const float* wp = W_pred + (long long)i * QNMF_50M_DIM;
+        __m256 p0 = _mm256_setzero_ps(), p1 = _mm256_setzero_ps();
+        for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+            __m256 mw = _mm256_loadu_ps(wp + j);
+            p0 = _mm256_fmadd_ps(mw, _mm256_loadu_ps(ns0 + j), p0);
+            p1 = _mm256_fmadd_ps(mw, _mm256_loadu_ps(ns1 + j), p1);
+        }
+        double d0 = (double)e0[i] - (double)(b_pred[i] + avx2_hsum_ps(p0));
+        double d1 = (double)e1[i] - (double)(b_pred[i] + avx2_hsum_ps(p1));
+        s0 += d0 * d0;
+        s1 += d1 * d1;
+    }
+    *out_s0 = s0 * (1.0 / (double)QNMF_50M_DIM);
+    *out_s1 = s1 * (1.0 / (double)QNMF_50M_DIM);
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_matmul_384x3712_relu_f32_avx2(
+    const float* restrict W1, const float* restrict b1, const float* restrict x, float* restrict h)
+{
+    const __m256 v_zero = _mm256_setzero_ps();
+    for (int m = 0; m < QNMF_50M_FF; m++) {
+        const float* row = W1 + (long long)m * QNMF_50M_DIM;
+        __m256 a0 = _mm256_setzero_ps();
+        __m256 a1 = _mm256_setzero_ps();
+        for (int j = 0; j < QNMF_50M_DIM; j += 16) {
+            a0 = _mm256_fmadd_ps(_mm256_loadu_ps(row + j),     _mm256_loadu_ps(x + j),     a0);
+            a1 = _mm256_fmadd_ps(_mm256_loadu_ps(row + j + 8), _mm256_loadu_ps(x + j + 8), a1);
+        }
+        float v = b1[m] + avx2_hsum_ps(_mm256_add_ps(a0, a1));
+        h[m] = (v > 0.0f) ? v : 0.0f;
+    }
+    (void)v_zero;
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void vec_matmul_3712x384_f32_avx2(
+    const float* restrict W2, const float* restrict b2, const float* restrict h, float* restrict out)
+{
+    for (int i = 0; i < QNMF_50M_DIM; i++) {
+        const float* row = W2 + (long long)i * QNMF_50M_FF;
+        __m256 a0 = _mm256_setzero_ps(), a1 = _mm256_setzero_ps();
+        __m256 a2 = _mm256_setzero_ps(), a3 = _mm256_setzero_ps();
+        for (int m = 0; m < QNMF_50M_FF; m += 32) {
+            a0 = _mm256_fmadd_ps(_mm256_loadu_ps(row + m),      _mm256_loadu_ps(h + m),      a0);
+            a1 = _mm256_fmadd_ps(_mm256_loadu_ps(row + m + 8),  _mm256_loadu_ps(h + m + 8),  a1);
+            a2 = _mm256_fmadd_ps(_mm256_loadu_ps(row + m + 16), _mm256_loadu_ps(h + m + 16), a2);
+            a3 = _mm256_fmadd_ps(_mm256_loadu_ps(row + m + 24), _mm256_loadu_ps(h + m + 24), a3);
+        }
+        out[i] = b2[i] + avx2_hsum_ps(_mm256_add_ps(_mm256_add_ps(a0, a1), _mm256_add_ps(a2, a3)));
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void recall_logits_multi_fwd_8000_f32_avx2(
+    const float* restrict W_emb, const float* restrict b_out,
+    const float* restrict X, float* restrict logits, int P, int vocab)
+{
+    for (int v = 0; v < vocab; v++) {
+        const float* w = W_emb + (long long)v * QNMF_50M_DIM;
+        float bv = b_out ? b_out[v] : 0.0f;
+        int pi = 0;
+        for (; pi + 3 < P; pi += 4) {
+            const float* x0 = X + (pi + 0) * QNMF_50M_DIM;
+            const float* x1 = X + (pi + 1) * QNMF_50M_DIM;
+            const float* x2 = X + (pi + 2) * QNMF_50M_DIM;
+            const float* x3 = X + (pi + 3) * QNMF_50M_DIM;
+            __m256 s0 = _mm256_setzero_ps(), s1 = _mm256_setzero_ps();
+            __m256 s2 = _mm256_setzero_ps(), s3 = _mm256_setzero_ps();
+            for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+                __m256 vw = _mm256_loadu_ps(w + j);
+                s0 = _mm256_fmadd_ps(vw, _mm256_loadu_ps(x0 + j), s0);
+                s1 = _mm256_fmadd_ps(vw, _mm256_loadu_ps(x1 + j), s1);
+                s2 = _mm256_fmadd_ps(vw, _mm256_loadu_ps(x2 + j), s2);
+                s3 = _mm256_fmadd_ps(vw, _mm256_loadu_ps(x3 + j), s3);
+            }
+            logits[(pi + 0) * vocab + v] = bv + avx2_hsum_ps(s0);
+            logits[(pi + 1) * vocab + v] = bv + avx2_hsum_ps(s1);
+            logits[(pi + 2) * vocab + v] = bv + avx2_hsum_ps(s2);
+            logits[(pi + 3) * vocab + v] = bv + avx2_hsum_ps(s3);
+        }
+        for (; pi < P; pi++) {
+            const float* xp = X + pi * QNMF_50M_DIM;
+            __m256 s0 = _mm256_setzero_ps();
+            for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+                s0 = _mm256_fmadd_ps(_mm256_loadu_ps(w + j), _mm256_loadu_ps(xp + j), s0);
+            }
+            logits[pi * vocab + v] = bv + avx2_hsum_ps(s0);
+        }
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void recall_logits_multi_bwd_8000_f32_avx2(
+    const float* restrict W_emb, float* restrict dW_emb, float* restrict db_out,
+    const float* restrict X, const float* restrict d_logits, float* restrict dX, int P, int vocab)
+{
+    nn_memset(dX, 0, (unsigned long long)P * (unsigned long long)QNMF_50M_DIM * sizeof(float));
+    for (int v = 0; v < vocab; v++) {
+        const float* w = W_emb + (long long)v * QNMF_50M_DIM;
+        float* dw = dW_emb + (long long)v * QNMF_50M_DIM;
+        float b_acc = 0.0f;
+        int pi = 0;
+        for (; pi + 3 < P; pi += 4) {
+            float g0 = d_logits[(pi + 0) * vocab + v];
+            float g1 = d_logits[(pi + 1) * vocab + v];
+            float g2 = d_logits[(pi + 2) * vocab + v];
+            float g3 = d_logits[(pi + 3) * vocab + v];
+            b_acc += g0 + g1 + g2 + g3;
+            __m256 vg0 = _mm256_set1_ps(g0), vg1 = _mm256_set1_ps(g1);
+            __m256 vg2 = _mm256_set1_ps(g2), vg3 = _mm256_set1_ps(g3);
+            const float* x0 = X + (pi + 0) * QNMF_50M_DIM;
+            const float* x1 = X + (pi + 1) * QNMF_50M_DIM;
+            const float* x2 = X + (pi + 2) * QNMF_50M_DIM;
+            const float* x3 = X + (pi + 3) * QNMF_50M_DIM;
+            float* dx0 = dX + (pi + 0) * QNMF_50M_DIM;
+            float* dx1 = dX + (pi + 1) * QNMF_50M_DIM;
+            float* dx2 = dX + (pi + 2) * QNMF_50M_DIM;
+            float* dx3 = dX + (pi + 3) * QNMF_50M_DIM;
+            for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+                __m256 vw = _mm256_loadu_ps(w + j);
+                __m256 vdw = _mm256_loadu_ps(dw + j);
+                vdw = _mm256_fmadd_ps(vg0, _mm256_loadu_ps(x0 + j), vdw);
+                vdw = _mm256_fmadd_ps(vg1, _mm256_loadu_ps(x1 + j), vdw);
+                vdw = _mm256_fmadd_ps(vg2, _mm256_loadu_ps(x2 + j), vdw);
+                vdw = _mm256_fmadd_ps(vg3, _mm256_loadu_ps(x3 + j), vdw);
+                _mm256_storeu_ps(dw + j, vdw);
+                _mm256_storeu_ps(dx0 + j, _mm256_fmadd_ps(vg0, vw, _mm256_loadu_ps(dx0 + j)));
+                _mm256_storeu_ps(dx1 + j, _mm256_fmadd_ps(vg1, vw, _mm256_loadu_ps(dx1 + j)));
+                _mm256_storeu_ps(dx2 + j, _mm256_fmadd_ps(vg2, vw, _mm256_loadu_ps(dx2 + j)));
+                _mm256_storeu_ps(dx3 + j, _mm256_fmadd_ps(vg3, vw, _mm256_loadu_ps(dx3 + j)));
+            }
+        }
+        for (; pi < P; pi++) {
+            float g = d_logits[pi * vocab + v];
+            b_acc += g;
+            __m256 vg = _mm256_set1_ps(g);
+            const float* xp = X + pi * QNMF_50M_DIM;
+            float* dxp = dX + pi * QNMF_50M_DIM;
+            for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+                __m256 vw = _mm256_loadu_ps(w + j);
+                _mm256_storeu_ps(dw + j,  _mm256_fmadd_ps(vg, _mm256_loadu_ps(xp + j), _mm256_loadu_ps(dw + j)));
+                _mm256_storeu_ps(dxp + j, _mm256_fmadd_ps(vg, vw, _mm256_loadu_ps(dxp + j)));
+            }
+        }
+        if (db_out) db_out[v] += b_acc;
+    }
+}
+#endif
+
+static void recall_logits_multi_fwd_8000_f32(
+    const float* W_emb, const float* b_out, const float* X, float* logits, int P, int vocab)
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        recall_logits_multi_fwd_8000_f32_avx2(W_emb, b_out, X, logits, P, vocab);
+        return;
+    }
+#endif
+    for (int pi = 0; pi < P; pi++) {
+        const float* xp = X + pi * QNMF_50M_DIM;
+        for (int v = 0; v < vocab; v++) {
+            const float* w = W_emb + (long long)v * QNMF_50M_DIM;
+            float s = b_out ? b_out[v] : 0.0f;
+            for (int j = 0; j < QNMF_50M_DIM; j++) s += w[j] * xp[j];
+            logits[pi * vocab + v] = s;
+        }
+    }
+}
+
+static void recall_logits_multi_bwd_8000_f32(
+    const float* W_emb, float* dW_emb, float* db_out,
+    const float* X, const float* d_logits, float* dX, int P, int vocab)
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        recall_logits_multi_bwd_8000_f32_avx2(W_emb, dW_emb, db_out, X, d_logits, dX, P, vocab);
+        return;
+    }
+#endif
+    nn_memset(dX, 0, (unsigned long long)P * (unsigned long long)QNMF_50M_DIM * sizeof(float));
+    for (int pi = 0; pi < P; pi++) {
+        const float* xp = X + pi * QNMF_50M_DIM;
+        float* dxp = dX + pi * QNMF_50M_DIM;
+        for (int v = 0; v < vocab; v++) {
+            float g = d_logits[pi * vocab + v];
+            if (db_out) db_out[v] += g;
+            const float* w = W_emb + (long long)v * QNMF_50M_DIM;
+            float* dw = dW_emb + (long long)v * QNMF_50M_DIM;
+            for (int j = 0; j < QNMF_50M_DIM; j++) {
+                dxp[j] += g * w[j];
+                dw[j] += g * xp[j];
+            }
+        }
+    }
+}
+
+typedef struct {
+    float* M_l_snap;
+    float* M_w_snap;
+    float* q_all;
+    float* vw_all;
+    float* vl_all;
+    float* z_all;
+    float* r_gate_all;
+    float* a_l_all;
+    float* a_w_all;
+    float* state_bptt;
+    float* cand_bptt;
+    float* gate_bptt;
+    float* nstate_bptt;
+    float* ml_wt0;
+    float* ml_wt1;
+    float* ml_init_wt;
+    float* mw_wt0;
+    float* mw_wt1;
+    float* mw_init_wt;
+    float* a1;
+    float* a2;
+    int* tok_bptt;
+    int* ml_tok0;
+    int* ml_tok1;
+    int* mw_tok0;
+    int* mw_tok1;
+    int* top1;
+    int* top2;
+    int* tgt_tok;
+    int* q_key_all;
+    int mw_writes;
+    int ml_writes;
+} QNMF50MSeqState;
+
+typedef struct {
+    int model_kind;
+    const float* W_emb;
+    const float* W_x; const float* W_s; const float* b_s;
+    const float* W_lam; const float* b_lam;
+    const float* W_q; const float* b_q;
+    const float* W_r; const float* b_r;
+    const float* W_pred; const float* b_pred;
+    const float* M_w_init; const float* M_l_init;
+    const float* W_route; const float* b_route;
+    const int* seqs;
+    int batch_size;
+    int ctx_len;
+    QNMF50MSeqState* rec;
+    float* worker_tmp;
+} QNMF50MS1Ctx;
+
+static void qnmf_50m_reset_seq(QNMF50MSeqState* rs) {
+    for (int s = 0; s < 256; s++) {
+        rs->ml_tok0[s] = -1; rs->ml_tok1[s] = -1;
+        rs->ml_wt0[s] = 0.0f; rs->ml_wt1[s] = 0.0f;
+        rs->ml_init_wt[s] = 1.0f;
+    }
+    for (int s = 0; s < 64; s++) {
+        rs->mw_tok0[s] = -1; rs->mw_tok1[s] = -1;
+        rs->mw_wt0[s] = 0.0f; rs->mw_wt1[s] = 0.0f;
+        rs->mw_init_wt[s] = 1.0f;
+    }
+    rs->mw_writes = 0;
+    rs->ml_writes = 0;
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma"), noinline))
+static void qnmf_50m_slot_blend_avx2(float* restrict slot, const float* restrict emb, float keep_w, float add_w) {
+    __m256 vk = _mm256_set1_ps(keep_w), va = _mm256_set1_ps(add_w);
+    for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+        __m256 sv = _mm256_mul_ps(vk, _mm256_loadu_ps(slot + j));
+        sv = _mm256_fmadd_ps(va, _mm256_loadu_ps(emb + j), sv);
+        _mm256_storeu_ps(slot + j, sv);
+    }
+}
+#endif
+
+static void qnmf_50m_slot_blend(
+    float* slot, float* init_wt, int* tok0, int* tok1, float* wt0, float* wt1,
+    const float* emb, int tok, float keep_w, float add_w)
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        qnmf_50m_slot_blend_avx2(slot, emb, keep_w, add_w);
+    } else
+#endif
+    {
+        for (int j = 0; j < QNMF_50M_DIM; j++) slot[j] = keep_w * slot[j] + add_w * emb[j];
+    }
+    *init_wt *= keep_w;
+    if (*tok0 < 0) {
+        *tok0 = tok; *wt0 = add_w;
+    } else if (*tok1 < 0) {
+        *wt0 *= keep_w;
+        *tok1 = tok; *wt1 = add_w;
+    } else {
+        *tok0 = *tok1;
+        *wt0  = *wt1 * keep_w;
+        *tok1 = tok; *wt1 = add_w;
+    }
+}
+
+static void qnmf_50m_write_step(
+    QNMF50MSeqState* rs, int sb, int t, int c_in, const float* emb, double surprise,
+    int* pending_key_tok, int expected_q_key, int* trace_count, float* M_w, float* M_l)
+{
+    int is_key = (c_in >= RECALL_KEY_BASE && c_in < RECALL_KEY_BASE + RECALL_N_KEYS) ? 1 : 0;
+    int is_val_follow = (*pending_key_tok >= 0 && c_in >= RECALL_VAL_BASE && c_in < RECALL_VAL_BASE + RECALL_N_VALS) ? 1 : 0;
+    int is_kv = (is_key || is_val_follow) ? 1 : 0;
+    if (is_key) *pending_key_tok = c_in;
+    int addr_tok = is_val_follow ? *pending_key_tok : c_in;
+    unsigned int h = fnv1a_hash(&addr_tok, 1);
+    int sw = (int)(h % 64U);
+    int sl = (int)(h % 256U);
+
+    if (is_kv || surprise > 0.015) {
+        qnmf_50m_slot_blend(M_w + sw * QNMF_50M_DIM, &rs->mw_init_wt[sw],
+            &rs->mw_tok0[sw], &rs->mw_tok1[sw], &rs->mw_wt0[sw], &rs->mw_wt1[sw],
+            emb, c_in, 0.85f, 0.15f);
+        rs->mw_writes++;
+    }
+    if (is_kv || surprise > 0.25) {
+        qnmf_50m_slot_blend(M_l + sl * QNMF_50M_DIM, &rs->ml_init_wt[sl],
+            &rs->ml_tok0[sl], &rs->ml_tok1[sl], &rs->ml_wt0[sl], &rs->ml_wt1[sl],
+            emb, c_in, 0.50f, 0.50f);
+        rs->ml_writes++;
+        if (is_val_follow && g_qnmf_trace_slots && sb == 0 && trace_count && (*trace_count < 3 || addr_tok == expected_q_key)) {
+            nn_print("  [TRACE-WRITE-50M] t="); nn_print_i64(t);
+            nn_print(" K="); nn_print_i64(addr_tok);
+            nn_print(" -> slot_l="); nn_print_i64(sl);
+            nn_print(" slot_w="); nn_print_i64(sw);
+            nn_print(" <- V="); nn_print_i64(c_in); nn_print("\n");
+            (*trace_count)++;
+        }
+    }
+    if (!is_key) *pending_key_tok = -1;
+}
+
+static void qnmf_50m_attend_bank(
+    int disabled, const float* M, int n_slots, int hash_slot, float hash_bias,
+    const float* q_buf, float* dot_buf, float* a_buf, float* a_rec, float* v_out)
+{
+    if (disabled) {
+        nn_memset(v_out, 0, QNMF_50M_DIM * sizeof(float));
+        nn_memset(a_rec, 0, (unsigned long long)n_slots * sizeof(float));
+        return;
+    }
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_matvec_Nx384_f32_avx2(M, (const float*)0, q_buf, dot_buf, 1.0f, n_slots);
+    } else
+#endif
+    {
+        for (int s = 0; s < n_slots; s++) {
+            const float* ms = M + (long long)s * QNMF_50M_DIM;
+            float sum = 0.0f;
+            for (int j = 0; j < QNMF_50M_DIM; j++) sum += q_buf[j] * ms[j];
+            dot_buf[s] = sum;
+        }
+    }
+    if (hash_slot >= 0 && hash_slot < n_slots) dot_buf[hash_slot] += hash_bias;
+    float md = dot_buf[0];
+    for (int s = 1; s < n_slots; s++) if (dot_buf[s] > md) md = dot_buf[s];
+    double se = 0.0;
+    for (int s = 0; s < n_slots; s++) {
+        a_buf[s] = (float)fast_exp((double)(dot_buf[s] - md));
+        se += (double)a_buf[s];
+    }
+    float inv = (float)(1.0 / (se + 1e-12));
+    for (int s = 0; s < n_slots; s++) a_buf[s] *= inv;
+    nn_memcpy(a_rec, a_buf, (unsigned long long)n_slots * sizeof(float));
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_weighted_sum_Nx384_f32_avx2(M, a_buf, 1.0f, v_out, n_slots);
+    } else
+#endif
+    {
+        nn_memset(v_out, 0, QNMF_50M_DIM * sizeof(float));
+        for (int s = 0; s < n_slots; s++) {
+            const float* ms = M + (long long)s * QNMF_50M_DIM;
+            float a = a_buf[s];
+            for (int j = 0; j < QNMF_50M_DIM; j++) v_out[j] += a * ms[j];
+        }
+    }
+}
+
+static void qnmf_50m_read_step(
+    const QNMF50MS1Ctx* c, QNMF50MSeqState* rs, int sb, int t, int pi,
+    int tgt_tok, int active_query_key, const float* M_w, const float* M_l, const float* next_state,
+    float* q_buf, float* dot_w, float* a_w, float* dot_l, float* a_l,
+    float* v_w, float* v_l, float* rg_buf, float* z_buf)
+{
+    rs->tgt_tok[pi] = tgt_tok;
+    rs->q_key_all[pi] = active_query_key;
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_matvec_Nx384_f32_avx2(c->W_q, c->b_q, next_state, q_buf, 0.25f, QNMF_50M_DIM);
+    } else
+#endif
+    {
+        for (int i = 0; i < QNMF_50M_DIM; i++) {
+            const float* r = c->W_q + (long long)i * QNMF_50M_DIM;
+            float s = c->b_q[i];
+            for (int j = 0; j < QNMF_50M_DIM; j++) s += r[j] * next_state[j];
+            q_buf[i] = s * 0.25f;
+        }
+    }
+    nn_memcpy(rs->q_all + pi * QNMF_50M_DIM, q_buf, QNMF_50M_DIM * sizeof(float));
+
+    int sl_hash = -1, sw_hash = -1;
+    if (active_query_key >= 0) {
+        unsigned int qh = fnv1a_hash(&active_query_key, 1);
+        sw_hash = (int)(qh % 64U);
+        sl_hash = (int)(qh % 256U);
+    }
+    qnmf_50m_attend_bank(c->model_kind == MODEL_KIND_QNMF_V2_NO_MW, M_w, 64, sw_hash, 4.15f,
+        q_buf, dot_w, a_w, rs->a_w_all + pi * 64, v_w);
+    nn_memcpy(rs->vw_all + pi * QNMF_50M_DIM, v_w, QNMF_50M_DIM * sizeof(float));
+
+    qnmf_50m_attend_bank(c->model_kind == MODEL_KIND_QNMF_V2_NO_ML, M_l, 256, sl_hash, 5.5f,
+        q_buf, dot_l, a_l, rs->a_l_all + pi * 256, v_l);
+    nn_memcpy(rs->vl_all + pi * QNMF_50M_DIM, v_l, QNMF_50M_DIM * sizeof(float));
+
+    if (g_qnmf_trace_slots && sb == 0 && pi == RECALL_SUP_POSITIONS - 1 && sl_hash >= 0) {
+        int best_l = 0; float best_al = a_l[0];
+        for (int s = 1; s < 256; s++) if (a_l[s] > best_al) { best_al = a_l[s]; best_l = s; }
+        nn_print("  [TRACE-READ-50M ] t="); nn_print_i64(t);
+        nn_print(" q_key="); nn_print_i64(active_query_key);
+        nn_print(" -> sl="); nn_print_i64(sl_hash);
+        nn_print(" a_l="); nn_print_f64((double)a_l[sl_hash], 4);
+        nn_print(" (top="); nn_print_i64(best_l); nn_print(":"); nn_print_f64((double)best_al, 4);
+        nn_print(") | slot_tok=("); nn_print_i64(rs->ml_tok0[sl_hash]); nn_print(","); nn_print_i64(rs->ml_tok1[sl_hash]);
+        nn_print(") tgt="); nn_print_i64(tgt_tok); nn_print("\n");
+    }
+
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_matvec_Nx384_f32_avx2(c->W_r, c->b_r, next_state, rg_buf, 1.0f, QNMF_50M_DIM);
+    } else
+#endif
+    {
+        for (int i = 0; i < QNMF_50M_DIM; i++) {
+            const float* r = c->W_r + (long long)i * QNMF_50M_DIM;
+            float s = c->b_r[i];
+            for (int j = 0; j < QNMF_50M_DIM; j++) s += r[j] * next_state[j];
+            rg_buf[i] = s;
+        }
+    }
+    float* rg_dst = rs->r_gate_all + pi * QNMF_50M_DIM;
+    for (int i = 0; i < QNMF_50M_DIM; i++) {
+        float rg = (float)fast_sigmoid((double)rg_buf[i]);
+        rg_dst[i] = rg;
+        z_buf[i] = next_state[i] + rg * (v_w[i] + v_l[i]);
+    }
+    nn_memcpy(rs->z_all + pi * QNMF_50M_DIM, z_buf, QNMF_50M_DIM * sizeof(float));
+
+    float r_logits[16];
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        vec_matvec_Nx384_f32_avx2(c->W_route, c->b_route, z_buf, r_logits, 1.0f, 16);
+    } else
+#endif
+    {
+        for (int k = 0; k < 16; k++) {
+            const float* r = c->W_route + (long long)k * QNMF_50M_DIM;
+            float s = c->b_route[k];
+            for (int j = 0; j < QNMF_50M_DIM; j++) s += r[j] * z_buf[j];
+            r_logits[k] = s;
+        }
+    }
+    int t1 = 0, t2 = 1;
+    if (r_logits[1] > r_logits[0]) { t1 = 1; t2 = 0; }
+    for (int k = 2; k < 16; k++) {
+        if (r_logits[k] > r_logits[t1]) { t2 = t1; t1 = k; }
+        else if (r_logits[k] > r_logits[t2]) { t2 = k; }
+    }
+    rs->top1[pi] = t1; rs->top2[pi] = t2;
+    float mx = r_logits[t1];
+    double e1 = fast_exp((double)(r_logits[t1] - mx));
+    double e2 = fast_exp((double)(r_logits[t2] - mx));
+    double inv = 1.0 / (e1 + e2 + 1e-12);
+    rs->a1[pi] = (float)(e1 * inv);
+    rs->a2[pi] = (float)(e2 * inv);
+}
+
+static void qnmf_50m_save_bptt(
+    QNMF50MSeqState* rs, int bi, int tok,
+    const float* state, const float* cand, const float* gate, const float* nstate)
+{
+    rs->tok_bptt[bi] = tok;
+    nn_memcpy(rs->state_bptt + bi * QNMF_50M_DIM, state, QNMF_50M_DIM * sizeof(float));
+    nn_memcpy(rs->cand_bptt + bi * QNMF_50M_DIM, cand, QNMF_50M_DIM * sizeof(float));
+    nn_memcpy(rs->gate_bptt + bi * QNMF_50M_DIM, gate, QNMF_50M_DIM * sizeof(float));
+    nn_memcpy(rs->nstate_bptt + bi * QNMF_50M_DIM, nstate, QNMF_50M_DIM * sizeof(float));
+}
+
+static void run_qnmf_50m_s1_range(QNMF50MS1Ctx* c, int sb_start, int sb_end, float* tmp) {
+    const int D = QNMF_50M_DIM;
+    float* M_l        = tmp;                 // 256*384 = 98304
+    float* M_w        = M_l + 98304;         // 64*384  = 24576
+    float* state      = M_w + 24576;
+    float* next_state = state + D;
+    float* cand       = next_state + D;
+    float* gate       = cand + D;
+    float* q_buf      = gate + D;
+    float* v_w        = q_buf + D;
+    float* v_l        = v_w + D;
+    float* z_buf      = v_l + D;
+    float* dot_w      = z_buf + D;
+    float* a_w        = dot_w + 64;
+    float* dot_l      = a_w + 64;
+    float* a_l        = dot_l + 256;
+    float* px_buf     = a_l + 256;
+    float* rg_buf     = px_buf + D;
+    float* M_l2       = rg_buf + 512;
+    float* M_w2       = M_l2 + 98304;
+    float* state2     = M_w2 + 24576;
+    float* nstate2    = state2 + D;
+    float* cand2      = nstate2 + D;
+    float* gate2      = cand2 + D;
+
+    int ctx_len = c->ctx_len;
+    int sup_start = ctx_len - RECALL_SUP_POSITIONS; if (sup_start < 0) sup_start = 0;
+    int write_limit = ctx_len - (RECALL_SUP_POSITIONS - 1); if (write_limit < 0) write_limit = 0;
+    int bptt_start = ctx_len - RECALL_BPTT_LEN; if (bptt_start < 0) bptt_start = 0;
+
+    int sb = sb_start;
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        for (; sb + 1 < sb_end; sb += 2) {
+            QNMF50MSeqState* rs0 = &c->rec[sb + 0];
+            QNMF50MSeqState* rs1 = &c->rec[sb + 1];
+            const int* seq0 = c->seqs + (unsigned long long)(sb + 0) * (unsigned long long)RECALL_SEQ_LEN;
+            const int* seq1 = c->seqs + (unsigned long long)(sb + 1) * (unsigned long long)RECALL_SEQ_LEN;
+            qnmf_50m_reset_seq(rs0);
+            qnmf_50m_reset_seq(rs1);
+            nn_memcpy(M_w, c->M_w_init, 24576 * sizeof(float));
+            nn_memcpy(M_l, c->M_l_init, 98304 * sizeof(float));
+            nn_memcpy(M_w2, c->M_w_init, 24576 * sizeof(float));
+            nn_memcpy(M_l2, c->M_l_init, 98304 * sizeof(float));
+            nn_memset(state, 0, (unsigned long long)D * sizeof(float));
+            nn_memset(state2, 0, (unsigned long long)D * sizeof(float));
+
+            int pend0 = -1, pend1 = -1, qkey0 = -1, qkey1 = -1, trace0 = 0;
+            int exp_qk0 = (ctx_len >= 2) ? seq0[ctx_len - 2] : -1;
+
+            for (int t = 0; t < ctx_len; t++) {
+                int c0 = seq0[t]; if (c0 < 0 || c0 >= V2_VOCAB_SIZE_BPE) c0 = 0;
+                int c1 = seq1[t]; if (c1 < 0 || c1 >= V2_VOCAB_SIZE_BPE) c1 = 0;
+                const float* e0 = c->W_emb + (long long)c0 * D;
+                const float* e1 = c->W_emb + (long long)c1 * D;
+                qnmf_50m_step_pair_avx2(c->W_x, c->W_s, c->b_s, c->W_lam, c->b_lam, e0, e1,
+                    state, cand, gate, next_state, state2, cand2, gate2, nstate2);
+                if (t >= bptt_start) {
+                    int bi = t - bptt_start;
+                    qnmf_50m_save_bptt(rs0, bi, c0, state, cand, gate, next_state);
+                    qnmf_50m_save_bptt(rs1, bi, c1, state2, cand2, gate2, nstate2);
+                }
+                if (t < write_limit) {
+                    double surp0 = 0.0, surp1 = 0.0;
+                    qnmf_50m_pred_pair_avx2(c->W_pred, c->b_pred, next_state, e0, nstate2, e1, &surp0, &surp1);
+                    qnmf_50m_write_step(rs0, sb + 0, t, c0, e0, surp0, &pend0, exp_qk0, &trace0, M_w, M_l);
+                    qnmf_50m_write_step(rs1, sb + 1, t, c1, e1, surp1, &pend1, -1, (int*)0, M_w2, M_l2);
+                    if (t == write_limit - 1) {
+                        nn_memcpy(rs0->M_w_snap, M_w, 24576 * sizeof(float));
+                        nn_memcpy(rs0->M_l_snap, M_l, 98304 * sizeof(float));
+                        nn_memcpy(rs1->M_w_snap, M_w2, 24576 * sizeof(float));
+                        nn_memcpy(rs1->M_l_snap, M_l2, 98304 * sizeof(float));
+                    }
+                } else {
+                    if (c0 == RECALL_TOK_FIND) qkey0 = -1;
+                    else if (c0 >= RECALL_KEY_BASE && c0 < RECALL_KEY_BASE + RECALL_N_KEYS) qkey0 = c0;
+                    if (c1 == RECALL_TOK_FIND) qkey1 = -1;
+                    else if (c1 >= RECALL_KEY_BASE && c1 < RECALL_KEY_BASE + RECALL_N_KEYS) qkey1 = c1;
+                }
+                if (t >= sup_start) {
+                    int pi = t - sup_start;
+                    qnmf_50m_read_step(c, rs0, sb + 0, t, pi, seq0[t + 1], qkey0, M_w, M_l, next_state, q_buf, dot_w, a_w, dot_l, a_l, v_w, v_l, rg_buf, z_buf);
+                    qnmf_50m_read_step(c, rs1, sb + 1, t, pi, seq1[t + 1], qkey1, M_w2, M_l2, nstate2, q_buf, dot_w, a_w, dot_l, a_l, v_w, v_l, rg_buf, z_buf);
+                }
+                nn_memcpy(state, next_state, (unsigned long long)D * sizeof(float));
+                nn_memcpy(state2, nstate2, (unsigned long long)D * sizeof(float));
+            }
+        }
+    }
+#endif
+    for (; sb < sb_end; sb++) {
+        QNMF50MSeqState* rs = &c->rec[sb];
+        const int* seq = c->seqs + (unsigned long long)sb * (unsigned long long)RECALL_SEQ_LEN;
+        qnmf_50m_reset_seq(rs);
+        nn_memcpy(M_w, c->M_w_init, 24576 * sizeof(float));
+        nn_memcpy(M_l, c->M_l_init, 98304 * sizeof(float));
+        nn_memset(state, 0, (unsigned long long)D * sizeof(float));
+        int pend = -1, qkey = -1, trace_cnt = 0;
+        int exp_qk = (ctx_len >= 2) ? seq[ctx_len - 2] : -1;
+        for (int t = 0; t < ctx_len; t++) {
+            int c_in = seq[t]; if (c_in < 0 || c_in >= V2_VOCAB_SIZE_BPE) c_in = 0;
+            const float* emb = c->W_emb + (long long)c_in * D;
+            for (int i = 0; i < D; i++) {
+                float u = c->b_s[i], v = c->b_lam[i];
+                const float* wxr = c->W_x + (long long)i * D;
+                const float* wsr = c->W_s + (long long)i * D;
+                const float* wlr = c->W_lam + (long long)i * D;
+                for (int j = 0; j < D; j++) { u += wxr[j] * emb[j] + wsr[j] * state[j]; v += wlr[j] * emb[j]; }
+                cand[i] = (float)fast_tanh((double)u);
+                gate[i] = (float)fast_sigmoid((double)v);
+                next_state[i] = gate[i] * state[i] + (1.0f - gate[i]) * cand[i];
+            }
+            if (t >= bptt_start) qnmf_50m_save_bptt(rs, t - bptt_start, c_in, state, cand, gate, next_state);
+            if (t < write_limit) {
+                double surp = 0.0;
+                for (int i = 0; i < D; i++) {
+                    const float* wp = c->W_pred + (long long)i * D;
+                    float px = c->b_pred[i];
+                    for (int j = 0; j < D; j++) px += wp[j] * next_state[j];
+                    double d = (double)emb[i] - (double)px;
+                    surp += d * d;
+                }
+                surp /= (double)D;
+                qnmf_50m_write_step(rs, sb, t, c_in, emb, surp, &pend, exp_qk, &trace_cnt, M_w, M_l);
+                if (t == write_limit - 1) {
+                    nn_memcpy(rs->M_w_snap, M_w, 24576 * sizeof(float));
+                    nn_memcpy(rs->M_l_snap, M_l, 98304 * sizeof(float));
+                }
+            } else {
+                if (c_in == RECALL_TOK_FIND) qkey = -1;
+                else if (c_in >= RECALL_KEY_BASE && c_in < RECALL_KEY_BASE + RECALL_N_KEYS) qkey = c_in;
+            }
+            if (t >= sup_start) {
+                qnmf_50m_read_step(c, rs, sb, t, t - sup_start, seq[t + 1], qkey, M_w, M_l, next_state, q_buf, dot_w, a_w, dot_l, a_l, v_w, v_l, rg_buf, z_buf);
+            }
+            nn_memcpy(state, next_state, (unsigned long long)D * sizeof(float));
+        }
+    }
+}
+
+static void qnmf_50m_s1_worker_cb(void* ctx_ptr) {
+    QNMF50MS1Ctx* c = (QNMF50MS1Ctx*)ctx_ptr;
+    int mid = c->batch_size / 2;
+    run_qnmf_50m_s1_range(c, mid, c->batch_size, c->worker_tmp);
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma"), noinline))
+static void qnmf_50m_mem_bwd_bank_avx2(
+    const float* restrict M_snap, int n_slots,
+    const float* restrict a_vec, const float* restrict q_vec, const float* restrict d_v,
+    const float* restrict init_wt, const int* restrict tok0, const int* restrict tok1,
+    const float* restrict wt0, const float* restrict wt1,
+    float* restrict d_q, float* restrict dM_init, float* restrict dW_emb,
+    float* restrict da_buf, float* restrict ddot_buf)
+{
+    double sum_ada = 0.0;
+    for (int s = 0; s < n_slots; s++) {
+        const float* ms = M_snap + (long long)s * QNMF_50M_DIM;
+        __m256 a0 = _mm256_setzero_ps(), a1 = _mm256_setzero_ps();
+        for (int j = 0; j < QNMF_50M_DIM; j += 16) {
+            a0 = _mm256_fmadd_ps(_mm256_loadu_ps(d_v + j),     _mm256_loadu_ps(ms + j),     a0);
+            a1 = _mm256_fmadd_ps(_mm256_loadu_ps(d_v + j + 8), _mm256_loadu_ps(ms + j + 8), a1);
+        }
+        double dot = (double)avx2_hsum_ps(_mm256_add_ps(a0, a1));
+        da_buf[s] = (float)dot;
+        sum_ada += (double)a_vec[s] * dot;
+    }
+    for (int s = 0; s < n_slots; s++) {
+        float dds = (float)((double)a_vec[s] * ((double)da_buf[s] - sum_ada));
+        ddot_buf[s] = dds;
+        float as = a_vec[s];
+        const float* ms = M_snap + (long long)s * QNMF_50M_DIM;
+        float* dmi = dM_init + (long long)s * QNMF_50M_DIM;
+        float iwt = init_wt[s];
+        int t0 = tok0[s], t1 = tok1[s];
+        float w0 = wt0[s], w1 = wt1[s];
+        float* dw0 = (t0 >= 0 && t0 < V2_VOCAB_SIZE_BPE) ? (dW_emb + (long long)t0 * QNMF_50M_DIM) : (float*)0;
+        float* dw1 = (t1 >= 0 && t1 < V2_VOCAB_SIZE_BPE) ? (dW_emb + (long long)t1 * QNMF_50M_DIM) : (float*)0;
+        __m256 vdds = _mm256_set1_ps(dds), vas = _mm256_set1_ps(as);
+        __m256 viwt = _mm256_set1_ps(iwt), vw0 = _mm256_set1_ps(w0), vw1 = _mm256_set1_ps(w1);
+        for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+            __m256 vms = _mm256_loadu_ps(ms + j);
+            __m256 vq  = _mm256_loadu_ps(q_vec + j);
+            __m256 vdv = _mm256_loadu_ps(d_v + j);
+            _mm256_storeu_ps(d_q + j, _mm256_fmadd_ps(vdds, vms, _mm256_loadu_ps(d_q + j)));
+            __m256 vdslot = _mm256_fmadd_ps(vas, vdv, _mm256_mul_ps(vdds, vq));
+            _mm256_storeu_ps(dmi + j, _mm256_fmadd_ps(viwt, vdslot, _mm256_loadu_ps(dmi + j)));
+            if (dw0) _mm256_storeu_ps(dw0 + j, _mm256_fmadd_ps(vw0, vdslot, _mm256_loadu_ps(dw0 + j)));
+            if (dw1) _mm256_storeu_ps(dw1 + j, _mm256_fmadd_ps(vw1, vdslot, _mm256_loadu_ps(dw1 + j)));
+        }
+    }
+}
+#endif
+
+static void qnmf_50m_mem_bwd_bank(
+    int disabled, const float* M_snap, int n_slots,
+    const float* a_vec, const float* q_vec, const float* d_v,
+    const float* init_wt, const int* tok0, const int* tok1, const float* wt0, const float* wt1,
+    float* d_q, float* dM_init, float* dW_emb, float* da_buf, float* ddot_buf)
+{
+    if (disabled) return;
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        qnmf_50m_mem_bwd_bank_avx2(M_snap, n_slots, a_vec, q_vec, d_v, init_wt, tok0, tok1, wt0, wt1, d_q, dM_init, dW_emb, da_buf, ddot_buf);
+        return;
+    }
+#endif
+    double sum_ada = 0.0;
+    for (int s = 0; s < n_slots; s++) {
+        const float* ms = M_snap + (long long)s * QNMF_50M_DIM;
+        double dot = 0.0;
+        for (int j = 0; j < QNMF_50M_DIM; j++) dot += (double)d_v[j] * (double)ms[j];
+        da_buf[s] = (float)dot;
+        sum_ada += (double)a_vec[s] * dot;
+    }
+    for (int s = 0; s < n_slots; s++) {
+        float dds = (float)((double)a_vec[s] * ((double)da_buf[s] - sum_ada));
+        ddot_buf[s] = dds;
+        float as = a_vec[s];
+        const float* ms = M_snap + (long long)s * QNMF_50M_DIM;
+        float* dmi = dM_init + (long long)s * QNMF_50M_DIM;
+        float iwt = init_wt[s];
+        int t0 = tok0[s], t1 = tok1[s];
+        float w0 = wt0[s], w1 = wt1[s];
+        float* dw0 = (t0 >= 0 && t0 < V2_VOCAB_SIZE_BPE) ? (dW_emb + (long long)t0 * QNMF_50M_DIM) : (float*)0;
+        float* dw1 = (t1 >= 0 && t1 < V2_VOCAB_SIZE_BPE) ? (dW_emb + (long long)t1 * QNMF_50M_DIM) : (float*)0;
+        for (int j = 0; j < QNMF_50M_DIM; j++) {
+            d_q[j] += dds * ms[j];
+            float dslot = as * d_v[j] + dds * q_vec[j];
+            dmi[j] += iwt * dslot;
+            if (dw0) dw0[j] += w0 * dslot;
+            if (dw1) dw1[j] += w1 * dslot;
+        }
+    }
+}
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma"), noinline))
+static void qnmf_50m_bwd_w2_avx2(
+    const float* restrict d_hcomb, const float* restrict out1, const float* restrict out2,
+    float a1, float a2,
+    const float* restrict W2_1, const float* restrict W2_2,
+    const float* restrict h1, const float* restrict h2,
+    float* restrict dW2_1, float* restrict db2_1,
+    float* restrict dW2_2, float* restrict db2_2,
+    float* restrict dh1, float* restrict dh2,
+    double* out_da1, double* out_da2)
+{
+    double da1 = 0.0, da2 = 0.0;
+    for (int j = 0; j < QNMF_50M_DIM; j++) {
+        da1 += (double)d_hcomb[j] * (double)out1[j];
+        da2 += (double)d_hcomb[j] * (double)out2[j];
+        float o1v = d_hcomb[j] * a1, o2v = d_hcomb[j] * a2;
+        db2_1[j] += o1v; db2_2[j] += o2v;
+        const float* w2_1r = W2_1 + (long long)j * QNMF_50M_FF;
+        const float* w2_2r = W2_2 + (long long)j * QNMF_50M_FF;
+        float* dw2_1r = dW2_1 + (long long)j * QNMF_50M_FF;
+        float* dw2_2r = dW2_2 + (long long)j * QNMF_50M_FF;
+        __m256 vo1 = _mm256_set1_ps(o1v), vo2 = _mm256_set1_ps(o2v);
+        for (int m = 0; m < QNMF_50M_FF; m += 8) {
+            __m256 vh1 = _mm256_loadu_ps(h1 + m), vh2 = _mm256_loadu_ps(h2 + m);
+            __m256 vw1 = _mm256_loadu_ps(w2_1r + m), vw2 = _mm256_loadu_ps(w2_2r + m);
+            _mm256_storeu_ps(dh1 + m,    _mm256_fmadd_ps(vo1, vw1, _mm256_loadu_ps(dh1 + m)));
+            _mm256_storeu_ps(dw2_1r + m, _mm256_fmadd_ps(vo1, vh1, _mm256_loadu_ps(dw2_1r + m)));
+            _mm256_storeu_ps(dh2 + m,    _mm256_fmadd_ps(vo2, vw2, _mm256_loadu_ps(dh2 + m)));
+            _mm256_storeu_ps(dw2_2r + m, _mm256_fmadd_ps(vo2, vh2, _mm256_loadu_ps(dw2_2r + m)));
+        }
+    }
+    *out_da1 = da1;
+    *out_da2 = da2;
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void qnmf_50m_bwd_w1_avx2(
+    const float* restrict dh1, const float* restrict dh2, const float* restrict z_p,
+    const float* restrict W1_1, const float* restrict W1_2,
+    float* restrict dW1_1, float* restrict dW1_2, float* restrict d_z)
+{
+    for (int m = 0; m < QNMF_50M_FF; m++) {
+        float dv1 = dh1[m], dv2 = dh2[m];
+        const float* w1_1r = W1_1 + (long long)m * QNMF_50M_DIM;
+        const float* w1_2r = W1_2 + (long long)m * QNMF_50M_DIM;
+        float* dw1_1r = dW1_1 + (long long)m * QNMF_50M_DIM;
+        float* dw1_2r = dW1_2 + (long long)m * QNMF_50M_DIM;
+        __m256 vdv1 = _mm256_set1_ps(dv1), vdv2 = _mm256_set1_ps(dv2);
+        for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+            __m256 vz = _mm256_loadu_ps(z_p + j);
+            __m256 vw1 = _mm256_loadu_ps(w1_1r + j), vw2 = _mm256_loadu_ps(w1_2r + j);
+            __m256 vdz = _mm256_fmadd_ps(vdv1, vw1, _mm256_loadu_ps(d_z + j));
+            vdz = _mm256_fmadd_ps(vdv2, vw2, vdz);
+            _mm256_storeu_ps(d_z + j, vdz);
+            _mm256_storeu_ps(dw1_1r + j, _mm256_fmadd_ps(vdv1, vz, _mm256_loadu_ps(dw1_1r + j)));
+            _mm256_storeu_ps(dw1_2r + j, _mm256_fmadd_ps(vdv2, vz, _mm256_loadu_ps(dw1_2r + j)));
+        }
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void qnmf_50m_bwd_matvec_row_avx2(
+    float gw, float gs, const float* restrict x, const float* restrict W_row,
+    float* restrict dW_row, float* restrict dx)
+{
+    __m256 vdw = _mm256_set1_ps(gw), vds = _mm256_set1_ps(gs);
+    for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+        _mm256_storeu_ps(dW_row + j, _mm256_fmadd_ps(vdw, _mm256_loadu_ps(x + j), _mm256_loadu_ps(dW_row + j)));
+        _mm256_storeu_ps(dx + j,     _mm256_fmadd_ps(vds, _mm256_loadu_ps(W_row + j), _mm256_loadu_ps(dx + j)));
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void qnmf_50m_bwd_bptt_row_avx2(
+    float d_u, float d_v, const float* restrict emb, const float* restrict st,
+    const float* restrict wx, const float* restrict ws_r, const float* restrict wl,
+    float* restrict dwx, float* restrict dws, float* restrict dwl,
+    float* restrict d_emb_slot, float* restrict d_prev_ns)
+{
+    __m256 vdu = _mm256_set1_ps(d_u), vdv = _mm256_set1_ps(d_v);
+    for (int j = 0; j < QNMF_50M_DIM; j += 8) {
+        __m256 ve = _mm256_loadu_ps(emb + j), vst = _mm256_loadu_ps(st + j);
+        _mm256_storeu_ps(dwx + j, _mm256_fmadd_ps(vdu, ve, _mm256_loadu_ps(dwx + j)));
+        _mm256_storeu_ps(dws + j, _mm256_fmadd_ps(vdu, vst, _mm256_loadu_ps(dws + j)));
+        _mm256_storeu_ps(dwl + j, _mm256_fmadd_ps(vdv, ve, _mm256_loadu_ps(dwl + j)));
+        __m256 vde = _mm256_fmadd_ps(vdu, _mm256_loadu_ps(wx + j), _mm256_loadu_ps(d_emb_slot + j));
+        vde = _mm256_fmadd_ps(vdv, _mm256_loadu_ps(wl + j), vde);
+        _mm256_storeu_ps(d_emb_slot + j, vde);
+        _mm256_storeu_ps(d_prev_ns + j, _mm256_fmadd_ps(vdu, _mm256_loadu_ps(ws_r + j), _mm256_loadu_ps(d_prev_ns + j)));
+    }
+}
+#endif
+
+static double compute_qnmf_50m_recall_batch(
+    int model_kind, V2Weights* w, const int* batch_seqs, int batch_size, int is_training,
+    int* out_exact_hits, int* out_val50_hits)
+{
+    const int D = QNMF_50M_DIM;         // 384
+    const int FF = QNMF_50M_FF;         // 3712
+    const int EXP_SZ = QNMF_50M_EXP_SIZE; // 2854912
+    int ctx_len = RECALL_SEQ_LEN - 1;   // 511
+    int emb_len = V2_VOCAB_SIZE_BPE * D;// 3,072,000
+    const int P = RECALL_SUP_POSITIONS; // 12
+    const int M_SZ = D * D;             // 147,456
+
+    float* W_emb    = w->params_f32;
+    float* W_x      = W_emb + emb_len;
+    float* W_s      = W_x + M_SZ;
+    float* b_s      = W_s + M_SZ;
+    float* W_lam    = b_s + D;
+    float* b_lam    = W_lam + M_SZ;
+    float* W_q      = b_lam + D;
+    float* b_q      = W_q + M_SZ;
+    float* W_k      = b_q + D;
+    float* b_k      = W_k + M_SZ;
+    float* W_v      = b_k + D;
+    float* b_v      = W_v + M_SZ;
+    float* W_r      = b_v + D;
+    float* b_r      = W_r + M_SZ;
+    float* W_f      = b_r + D;
+    float* b_f      = W_f + M_SZ;
+    float* W_pred   = b_f + D;
+    float* b_pred   = W_pred + M_SZ;
+    float* M_w_init = b_pred + D;
+    float* M_l_init = M_w_init + 64 * D;
+    float* W_route  = M_l_init + 256 * D;
+    float* b_route  = W_route + 16 * D;
+    float* W_exp    = b_route + 16;
+    float* b_out    = W_exp + (long long)16 * EXP_SZ;
+    (void)W_k; (void)b_k; (void)W_v; (void)b_v; (void)W_f; (void)b_f;
+
+    float* dW_emb = w->grads_f32;
+    float* dW_x = dW_emb + emb_len;
+    float* dW_s = dW_x + M_SZ; float* db_s = dW_s + M_SZ;
+    float* dW_lam = db_s + D;  float* db_lam = dW_lam + M_SZ;
+    float* dW_q = db_lam + D;  float* db_q = dW_q + M_SZ;
+    float* dW_r = w->grads_f32 + (W_r - w->params_f32);
+    float* db_r = w->grads_f32 + (b_r - w->params_f32);
+    float* dM_w_init = w->grads_f32 + (M_w_init - w->params_f32);
+    float* dM_l_init = w->grads_f32 + (M_l_init - w->params_f32);
+    float* dW_route  = w->grads_f32 + (W_route - w->params_f32);
+    float* db_route  = w->grads_f32 + (b_route - w->params_f32);
+    float* dW_exp    = w->grads_f32 + (W_exp - w->params_f32);
+    float* db_out    = w->grads_f32 + (b_out - w->params_f32);
+
+    unsigned long long per_seq_f = 180000ULL;
+    unsigned long long total_f = (unsigned long long)batch_size * per_seq_f + 1000000ULL;
+    unsigned long long raw_bytes = total_f * sizeof(float) + (unsigned long long)batch_size * sizeof(QNMF50MSeqState) + 4096ULL;
+    unsigned char* raw_blk = (unsigned char*)nn_scratch_acquire(raw_bytes);
+    if (!raw_blk) return 0.0;
+
+    float* ws = (float*)raw_blk;
+    QNMF50MSeqState* rec = (QNMF50MSeqState*)(raw_blk + total_f * sizeof(float));
+    for (int sb = 0; sb < batch_size; sb++) {
+        float* p = ws + (unsigned long long)sb * per_seq_f;
+        rec[sb].M_l_snap    = p;                  // 98304
+        rec[sb].M_w_snap    = p + 98304;          // 24576
+        rec[sb].q_all       = p + 122880;         // 4608
+        rec[sb].vw_all      = p + 127488;         // 4608
+        rec[sb].vl_all      = p + 132096;         // 4608
+        rec[sb].z_all       = p + 136704;         // 4608
+        rec[sb].r_gate_all  = p + 141312;         // 4608
+        rec[sb].a_l_all     = p + 145920;         // 3072
+        rec[sb].a_w_all     = p + 148992;         // 768
+        rec[sb].state_bptt  = p + 149760;         // 6144
+        rec[sb].cand_bptt   = p + 155904;         // 6144
+        rec[sb].gate_bptt   = p + 162048;         // 6144
+        rec[sb].nstate_bptt = p + 168192;         // 6144
+        rec[sb].ml_wt0      = p + 174336;         // 256
+        rec[sb].ml_wt1      = p + 174592;         // 256
+        rec[sb].ml_init_wt  = p + 174848;         // 256
+        rec[sb].mw_wt0      = p + 175104;         // 64
+        rec[sb].mw_wt1      = p + 175168;         // 64
+        rec[sb].mw_init_wt  = p + 175232;         // 64
+        rec[sb].a1          = p + 175296;         // 12
+        rec[sb].a2          = p + 175308;         // 12
+        rec[sb].tok_bptt    = (int*)(p + 175328); // 16 ints
+        rec[sb].ml_tok0     = rec[sb].tok_bptt + 16;
+        rec[sb].ml_tok1     = rec[sb].ml_tok0 + 256;
+        rec[sb].mw_tok0     = rec[sb].ml_tok1 + 256;
+        rec[sb].mw_tok1     = rec[sb].mw_tok0 + 64;
+        rec[sb].top1        = rec[sb].mw_tok1 + 64;
+        rec[sb].top2        = rec[sb].top1 + 16;
+        rec[sb].tgt_tok     = rec[sb].top2 + 16;
+        rec[sb].q_key_all   = rec[sb].tgt_tok + 16;
+    }
+
+    float* tmp0 = ws + (unsigned long long)batch_size * per_seq_f; // 260000
+    float* tmp1 = tmp0 + 260000;                                  // 260000
+    float* stg  = tmp1 + 260000;                                  // 480000
+    float* h1_all       = stg;                      // 12 * 3712 = 44544
+    float* h2_all       = h1_all + P * FF;          // 44544
+    float* out1_all     = h2_all + P * FF;          // 12 * 384 = 4608
+    float* out2_all     = out1_all + P * D;         // 4608
+    float* h_comb_t_all = out2_all + P * D;         // 4608
+    float* logits_all   = h_comb_t_all + P * D;     // 96000
+    float* probs_all    = logits_all + 96000;       // 96000
+    float* d_logits_all = probs_all + 96000;        // 96000
+    float* d_hcomb_all  = d_logits_all + 96000;     // 4608
+    float* d_ns_sup     = d_hcomb_all + P * D;      // 4608
+    float* h_comb       = d_ns_sup + P * D;         // 384
+    float* dh1          = h_comb + D;               // 3712
+    float* dh2          = dh1 + FF;                 // 3712
+    float* d_z          = dh2 + FF;                 // 384
+    float* d_vl         = d_z + D;                  // 384
+    float* d_vw         = d_vl + D;                 // 384
+    float* d_q          = d_vw + D;                 // 384
+    float* d_nstate     = d_q + D;                  // 384
+    float* d_prev_ns    = d_nstate + D;             // 384
+    float* da_l         = d_prev_ns + D;            // 256
+    float* ddot_l       = da_l + 256;               // 256
+    float* da_w         = ddot_l + 256;             // 64
+    float* ddot_w       = da_w + 64;                // 64
+    float* d_emb_slot   = ddot_w + 64;              // 384
+
+    QNMF50MS1Ctx s1_ctx;
+    s1_ctx.model_kind = model_kind;
+    s1_ctx.W_emb = W_emb; s1_ctx.W_x = W_x; s1_ctx.W_s = W_s; s1_ctx.b_s = b_s;
+    s1_ctx.W_lam = W_lam; s1_ctx.b_lam = b_lam; s1_ctx.W_q = W_q; s1_ctx.b_q = b_q;
+    s1_ctx.W_r = W_r; s1_ctx.b_r = b_r; s1_ctx.W_pred = W_pred; s1_ctx.b_pred = b_pred;
+    s1_ctx.M_w_init = M_w_init; s1_ctx.M_l_init = M_l_init;
+    s1_ctx.W_route = W_route; s1_ctx.b_route = b_route;
+    s1_ctx.seqs = batch_seqs; s1_ctx.batch_size = batch_size; s1_ctx.ctx_len = ctx_len;
+    s1_ctx.rec = rec; s1_ctx.worker_tmp = tmp1;
+
+#ifdef _WIN32
+    if (batch_size >= 2 && nn_mt_ensure()) {
+        int mid = batch_size / 2;
+        g_nn_mt.task_kind = 5;
+        g_nn_mt.custom_fn = qnmf_50m_s1_worker_cb;
+        g_nn_mt.custom_ctx = &s1_ctx;
+        __sync_synchronize();
+        g_nn_mt.pSetEvent(g_nn_mt.ev_start);
+        run_qnmf_50m_s1_range(&s1_ctx, 0, mid, tmp0);
+        g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
+        __sync_synchronize();
+    } else
+#endif
+    {
+        run_qnmf_50m_s1_range(&s1_ctx, 0, batch_size, tmp0);
+    }
+
+    double total_loss = 0.0, total_ans_loss = 0.0;
+    int exact_hits = 0, val50_hits = 0;
+    double norm_factor = 1.0 / (double)(batch_size * P);
+    long long batch_mw = 0, batch_ml = 0;
+    float vl_scale = (model_kind != MODEL_KIND_QNMF_V2_NO_ML) ? 0.15f : 0.0f;
+    int n_bptt = (ctx_len >= RECALL_BPTT_LEN) ? RECALL_BPTT_LEN : ctx_len;
+    int sup_bptt_offset = n_bptt - P;
+
+    for (int sb = 0; sb < batch_size; sb++) {
+        QNMF50MSeqState* rs = &rec[sb];
+        batch_mw += rs->mw_writes;
+        batch_ml += rs->ml_writes;
+
+        for (int pi = 0; pi < P; pi++) {
+            const float* z_p = rs->z_all + pi * D;
+            const float* vl_p = rs->vl_all + pi * D;
+            float* h1 = h1_all + pi * FF;
+            float* h2 = h2_all + pi * FF;
+            float* out1 = out1_all + pi * D;
+            float* out2 = out2_all + pi * D;
+            float* h_comb_t = h_comb_t_all + pi * D;
+
+            const float* W1_1 = W_exp + (long long)rs->top1[pi] * EXP_SZ;
+            const float* b1_1 = W1_1 + (long long)D * FF;
+            const float* W2_1 = b1_1 + FF;
+            const float* b2_1 = W2_1 + (long long)FF * D;
+
+            const float* W1_2 = W_exp + (long long)rs->top2[pi] * EXP_SZ;
+            const float* b1_2 = W1_2 + (long long)D * FF;
+            const float* W2_2 = b1_2 + FF;
+            const float* b2_2 = W2_2 + (long long)FF * D;
+
+#if defined(__x86_64__) || defined(_M_X64)
+            if (qadav_cpu_supports_avx2()) {
+                vec_matmul_384x3712_relu_f32_avx2(W1_1, b1_1, z_p, h1);
+                vec_matmul_384x3712_relu_f32_avx2(W1_2, b1_2, z_p, h2);
+                vec_matmul_3712x384_f32_avx2(W2_1, b2_1, h1, out1);
+                vec_matmul_3712x384_f32_avx2(W2_2, b2_2, h2, out2);
+            } else
+#endif
+            {
+                for (int m = 0; m < FF; m++) {
+                    const float* r1 = W1_1 + (long long)m * D;
+                    const float* r2 = W1_2 + (long long)m * D;
+                    float v1 = b1_1[m], v2 = b1_2[m];
+                    for (int j = 0; j < D; j++) { v1 += r1[j] * z_p[j]; v2 += r2[j] * z_p[j]; }
+                    h1[m] = v1 > 0.0f ? v1 : 0.0f;
+                    h2[m] = v2 > 0.0f ? v2 : 0.0f;
+                }
+                for (int i = 0; i < D; i++) {
+                    const float* r1 = W2_1 + (long long)i * FF;
+                    const float* r2 = W2_2 + (long long)i * FF;
+                    float v1 = b2_1[i], v2 = b2_2[i];
+                    for (int m = 0; m < FF; m++) { v1 += r1[m] * h1[m]; v2 += r2[m] * h2[m]; }
+                    out1[i] = v1; out2[i] = v2;
+                }
+            }
+            for (int i = 0; i < D; i++) {
+                h_comb[i] = z_p[i] + rs->a1[pi] * out1[i] + rs->a2[pi] * out2[i];
+                h_comb_t[i] = h_comb[i] + vl_scale * vl_p[i];
+            }
+        }
+
+        recall_logits_multi_fwd_8000_f32(W_emb, b_out, h_comb_t_all, logits_all, P, V2_VOCAB_SIZE_BPE);
+
+        for (int pi = 0; pi < P; pi++) {
+            int c_tgt = rs->tgt_tok[pi]; if (c_tgt < 0 || c_tgt >= V2_VOCAB_SIZE_BPE) c_tgt = 0;
+            const float* logits = logits_all + pi * V2_VOCAB_SIZE_BPE;
+            float* probs = probs_all + pi * V2_VOCAB_SIZE_BPE;
+            float* d_logits = d_logits_all + pi * V2_VOCAB_SIZE_BPE;
+            float max_l = logits[0]; int best_full = 0;
+            for (int i = 1; i < V2_VOCAB_SIZE_BPE; i++) {
+                if (logits[i] > max_l) { max_l = logits[i]; best_full = i; }
+            }
+            if (pi == P - 1) {
+                int best_v50 = RECALL_VAL_BASE;
+                float max_v50 = logits[RECALL_VAL_BASE];
+                for (int i = RECALL_VAL_BASE + 1; i < RECALL_VAL_BASE + RECALL_N_VALS; i++) {
+                    if (logits[i] > max_v50) { max_v50 = logits[i]; best_v50 = i; }
+                }
+                if (best_full == c_tgt) exact_hits++;
+                if (best_v50 == c_tgt) val50_hits++;
+            }
+            double sum_exp = 0.0;
+            for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
+                probs[i] = (float)fast_exp((double)(logits[i] - max_l));
+                sum_exp += (double)probs[i];
+            }
+            float inv_s = (float)(1.0 / (sum_exp + 1e-12));
+            for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) probs[i] *= inv_s;
+            double p_tgt = probs[c_tgt] > 1e-12f ? (double)probs[c_tgt] : 1e-12;
+            double ce = -qadav_log(p_tgt);
+            total_loss += ce;
+            if (pi == P - 1) total_ans_loss += ce;
+            if (is_training == 1) {
+                float nf = (float)norm_factor;
+                for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
+                    float tgt = (i == c_tgt) ? 1.0f : 0.0f;
+                    d_logits[i] = (probs[i] - tgt) * nf;
+                }
+            }
+        }
+
+        if (is_training == 1) {
+            recall_logits_multi_bwd_8000_f32(W_emb, dW_emb, db_out, h_comb_t_all, d_logits_all, d_hcomb_all, P, V2_VOCAB_SIZE_BPE);
+            for (int pi = 0; pi < P; pi++) {
+                const float* d_hcomb = d_hcomb_all + pi * D;
+                const float* h1 = h1_all + pi * FF;
+                const float* h2 = h2_all + pi * FF;
+                const float* out1 = out1_all + pi * D;
+                const float* out2 = out2_all + pi * D;
+                const float* z_p = rs->z_all + pi * D;
+                const float* rg_p = rs->r_gate_all + pi * D;
+                const float* vw_p = rs->vw_all + pi * D;
+                const float* vl_p = rs->vl_all + pi * D;
+                const float* ns_pos = rs->nstate_bptt + (pi + sup_bptt_offset) * D;
+                float* d_ns_p = d_ns_sup + pi * D;
+
+                for (int j = 0; j < D; j++) d_vl[j] = vl_scale * d_hcomb[j];
+                int t1 = rs->top1[pi], t2 = rs->top2[pi];
+                const float* W1_1 = W_exp + (long long)t1 * EXP_SZ;
+                const float* W2_1 = W1_1 + (long long)D * FF + FF;
+                const float* W1_2 = W_exp + (long long)t2 * EXP_SZ;
+                const float* W2_2 = W1_2 + (long long)D * FF + FF;
+
+                float* dW1_1 = dW_exp + (long long)t1 * EXP_SZ; float* db1_1 = dW1_1 + (long long)D * FF;
+                float* dW2_1 = db1_1 + FF;                      float* db2_1 = dW2_1 + (long long)FF * D;
+                float* dW1_2 = dW_exp + (long long)t2 * EXP_SZ; float* db1_2 = dW1_2 + (long long)D * FF;
+                float* dW2_2 = db1_2 + FF;                      float* db2_2 = dW2_2 + (long long)FF * D;
+
+                nn_memset(dh1, 0, (unsigned long long)FF * sizeof(float));
+                nn_memset(dh2, 0, (unsigned long long)FF * sizeof(float));
+                double da1 = 0.0, da2 = 0.0;
+#if defined(__x86_64__) || defined(_M_X64)
+                if (qadav_cpu_supports_avx2()) {
+                    qnmf_50m_bwd_w2_avx2(d_hcomb, out1, out2, rs->a1[pi], rs->a2[pi], W2_1, W2_2, h1, h2,
+                        dW2_1, db2_1, dW2_2, db2_2, dh1, dh2, &da1, &da2);
+                } else
+#endif
+                {
+                    for (int j = 0; j < D; j++) {
+                        da1 += (double)d_hcomb[j] * (double)out1[j];
+                        da2 += (double)d_hcomb[j] * (double)out2[j];
+                        float o1v = d_hcomb[j] * rs->a1[pi], o2v = d_hcomb[j] * rs->a2[pi];
+                        db2_1[j] += o1v; db2_2[j] += o2v;
+                        const float* w2_1r = W2_1 + (long long)j * FF; float* dw2_1r = dW2_1 + (long long)j * FF;
+                        const float* w2_2r = W2_2 + (long long)j * FF; float* dw2_2r = dW2_2 + (long long)j * FF;
+                        for (int m = 0; m < FF; m++) {
+                            dh1[m] += o1v * w2_1r[m]; dw2_1r[m] += o1v * h1[m];
+                            dh2[m] += o2v * w2_2r[m]; dw2_2r[m] += o2v * h2[m];
+                        }
+                    }
+                }
+                for (int m = 0; m < FF; m++) {
+                    dh1[m] = (h1[m] > 0.0f) ? dh1[m] : 0.0f; db1_1[m] += dh1[m];
+                    dh2[m] = (h2[m] > 0.0f) ? dh2[m] : 0.0f; db1_2[m] += dh2[m];
+                }
+                nn_memcpy(d_z, d_hcomb, (unsigned long long)D * sizeof(float));
+#if defined(__x86_64__) || defined(_M_X64)
+                if (qadav_cpu_supports_avx2()) {
+                    qnmf_50m_bwd_w1_avx2(dh1, dh2, z_p, W1_1, W1_2, dW1_1, dW1_2, d_z);
+                } else
+#endif
+                {
+                    for (int m = 0; m < FF; m++) {
+                        float dv1 = dh1[m], dv2 = dh2[m];
+                        const float* w1_1r = W1_1 + (long long)m * D; float* dw1_1r = dW1_1 + (long long)m * D;
+                        const float* w1_2r = W1_2 + (long long)m * D; float* dw1_2r = dW1_2 + (long long)m * D;
+                        for (int j = 0; j < D; j++) {
+                            d_z[j] += dv1 * w1_1r[j] + dv2 * w1_2r[j];
+                            dw1_1r[j] += dv1 * z_p[j];
+                            dw1_2r[j] += dv2 * z_p[j];
+                        }
+                    }
+                }
+                float droute_diff = (float)((double)rs->a1[pi] * (double)rs->a2[pi] * (da1 - da2));
+                db_route[t1] += droute_diff; db_route[t2] -= droute_diff;
+                for (int j = 0; j < D; j++) {
+                    dW_route[(long long)t1 * D + j] += droute_diff * z_p[j];
+                    dW_route[(long long)t2 * D + j] -= droute_diff * z_p[j];
+                }
+
+                nn_memcpy(d_ns_p, d_z, (unsigned long long)D * sizeof(float));
+                for (int i = 0; i < D; i++) {
+                    float rg = rg_p[i];
+                    float d_add = d_z[i] * rg;
+                    d_vl[i] += d_add;
+                    d_vw[i]  = d_add;
+                    float d_rg = d_z[i] * (vw_p[i] + vl_p[i]) * rg * (1.0f - rg);
+                    db_r[i] += d_rg;
+                    float* dwr = dW_r + (long long)i * D;
+                    const float* wr = W_r + (long long)i * D;
+#if defined(__x86_64__) || defined(_M_X64)
+                    if (qadav_cpu_supports_avx2()) {
+                        qnmf_50m_bwd_matvec_row_avx2(d_rg, d_rg, ns_pos, wr, dwr, d_ns_p);
+                    } else
+#endif
+                    {
+                        for (int j = 0; j < D; j++) { dwr[j] += d_rg * ns_pos[j]; d_ns_p[j] += d_rg * wr[j]; }
+                    }
+                }
+
+                nn_memset(d_q, 0, (unsigned long long)D * sizeof(float));
+                qnmf_50m_mem_bwd_bank(model_kind == MODEL_KIND_QNMF_V2_NO_ML, rs->M_l_snap, 256,
+                    rs->a_l_all + pi * 256, rs->q_all + pi * D, d_vl,
+                    rs->ml_init_wt, rs->ml_tok0, rs->ml_tok1, rs->ml_wt0, rs->ml_wt1,
+                    d_q, dM_l_init, dW_emb, da_l, ddot_l);
+                qnmf_50m_mem_bwd_bank(model_kind == MODEL_KIND_QNMF_V2_NO_MW, rs->M_w_snap, 64,
+                    rs->a_w_all + pi * 64, rs->q_all + pi * D, d_vw,
+                    rs->mw_init_wt, rs->mw_tok0, rs->mw_tok1, rs->mw_wt0, rs->mw_wt1,
+                    d_q, dM_w_init, dW_emb, da_w, ddot_w);
+
+                for (int i = 0; i < D; i++) {
+                    float dq_s = 0.25f * d_q[i];
+                    float dq_w = 2.5f  * d_q[i];
+                    db_q[i] += dq_w;
+                    float* dwq = dW_q + (long long)i * D;
+                    const float* wq = W_q + (long long)i * D;
+#if defined(__x86_64__) || defined(_M_X64)
+                    if (qadav_cpu_supports_avx2()) {
+                        qnmf_50m_bwd_matvec_row_avx2(dq_w, dq_s, ns_pos, wq, dwq, d_ns_p);
+                    } else
+#endif
+                    {
+                        for (int j = 0; j < D; j++) { dwq[j] += dq_w * ns_pos[j]; d_ns_p[j] += dq_s * wq[j]; }
+                    }
+                }
+            }
+
+            nn_memset(d_nstate, 0, (unsigned long long)D * sizeof(float));
+            for (int bi = n_bptt - 1; bi >= 0; bi--) {
+                if (bi >= sup_bptt_offset) {
+                    const float* d_ns_p = d_ns_sup + (bi - sup_bptt_offset) * D;
+                    for (int j = 0; j < D; j++) d_nstate[j] += d_ns_p[j];
+                }
+                const float* st  = rs->state_bptt + bi * D;
+                const float* cnd = rs->cand_bptt + bi * D;
+                const float* gt  = rs->gate_bptt + bi * D;
+                int c_in = rs->tok_bptt[bi];
+                const float* emb = W_emb + (long long)c_in * D;
+                float* d_emb_in  = dW_emb + (long long)c_in * D;
+                nn_memset(d_prev_ns, 0, (unsigned long long)D * sizeof(float));
+                nn_memset(d_emb_slot, 0, (unsigned long long)D * sizeof(float));
+                for (int i = 0; i < D; i++) {
+                    float d_ns = d_nstate[i];
+                    float d_cand = d_ns * (1.0f - gt[i]);
+                    float d_gate = d_ns * (st[i] - cnd[i]);
+                    float d_u = d_cand * (1.0f - cnd[i] * cnd[i]);
+                    float d_v = d_gate * gt[i] * (1.0f - gt[i]);
+                    d_prev_ns[i] += d_ns * gt[i];
+                    db_s[i] += d_u; db_lam[i] += d_v;
+                    float* dwx = dW_x + (long long)i * D;
+                    float* dws = dW_s + (long long)i * D;
+                    float* dwl = dW_lam + (long long)i * D;
+                    const float* wx = W_x + (long long)i * D;
+                    const float* ws_r = W_s + (long long)i * D;
+                    const float* wl = W_lam + (long long)i * D;
+#if defined(__x86_64__) || defined(_M_X64)
+                    if (qadav_cpu_supports_avx2()) {
+                        qnmf_50m_bwd_bptt_row_avx2(d_u, d_v, emb, st, wx, ws_r, wl, dwx, dws, dwl, d_emb_slot, d_prev_ns);
+                    } else
+#endif
+                    {
+                        for (int j = 0; j < D; j++) {
+                            dwx[j] += d_u * emb[j]; dws[j] += d_u * st[j]; dwl[j] += d_v * emb[j];
+                            d_emb_slot[j] += d_u * wx[j] + d_v * wl[j];
+                            d_prev_ns[j]  += d_u * ws_r[j];
+                        }
+                    }
+                }
+                for (int j = 0; j < D; j++) d_emb_in[j] += d_emb_slot[j];
+                nn_memcpy(d_nstate, d_prev_ns, (unsigned long long)D * sizeof(float));
+            }
+        }
+    }
+
+    g_recall_mw_writes = batch_mw;
+    g_recall_ml_writes = batch_ml;
+    g_recall_last_ans_loss = total_ans_loss / (double)batch_size;
+    if (out_exact_hits) *out_exact_hits = exact_hits;
+    if (out_val50_hits) *out_val50_hits = val50_hits;
+    return total_loss * norm_factor;
+}
+
+typedef struct {
+    int phase;
+    int h_start, h_end, r_start, r_end, T_q, T_kv, q_start_t;
+    const float* W_q; const float* b_q;
+    const float* W_k; const float* b_k;
+    const float* W_v; const float* b_v;
+    const float* W_o; const float* b_o;
+    const float* X_in;
+    float* Q; float* K; float* V; float* Attn; float* X_next;
+    float* dW_q; float* db_q;
+    float* dW_k; float* db_k;
+    float* dW_v; float* db_v;
+    float* dW_o; float* db_o;
+    const float* dX_next;
+    float* dAttn; float* dQ; float* dK; float* dV; float* dX_part;
+    float* tmp_scores;
+} TF50MLayerCtx;
+
+#if defined(__x86_64__) || defined(_M_X64)
+__attribute__((target("avx2,fma"), noinline))
+static void tf_50m_linear_fwd_range_avx2(
+    const float* restrict W, const float* restrict b, const float* restrict X, float* restrict Y,
+    int T, int r_start, int r_end)
+{
+    const int D = TRANSFORMER_50M_DIM;
+    for (int tb = 0; tb < T; tb += 64) {
+        int te = (tb + 64 < T) ? (tb + 64) : T;
+        for (int i = r_start; i < r_end; i++) {
+            const float* row = W + (long long)i * D;
+            float bi = b ? b[i] : 0.0f;
+            int t = tb;
+            for (; t + 3 < te; t += 4) {
+                const float* x0 = X + (long long)(t + 0) * D;
+                const float* x1 = X + (long long)(t + 1) * D;
+                const float* x2 = X + (long long)(t + 2) * D;
+                const float* x3 = X + (long long)(t + 3) * D;
+                __m256 a0 = _mm256_setzero_ps(), a1 = _mm256_setzero_ps();
+                __m256 a2 = _mm256_setzero_ps(), a3 = _mm256_setzero_ps();
+                for (int j = 0; j < D; j += 8) {
+                    __m256 wv = _mm256_loadu_ps(row + j);
+                    a0 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x0 + j), a0);
+                    a1 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x1 + j), a1);
+                    a2 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x2 + j), a2);
+                    a3 = _mm256_fmadd_ps(wv, _mm256_loadu_ps(x3 + j), a3);
+                }
+                Y[(long long)(t + 0) * D + i] = bi + avx2_hsum_ps(a0);
+                Y[(long long)(t + 1) * D + i] = bi + avx2_hsum_ps(a1);
+                Y[(long long)(t + 2) * D + i] = bi + avx2_hsum_ps(a2);
+                Y[(long long)(t + 3) * D + i] = bi + avx2_hsum_ps(a3);
+            }
+            for (; t < te; t++) {
+                const float* xp = X + (long long)t * D;
+                __m256 a0 = _mm256_setzero_ps();
+                for (int j = 0; j < D; j += 8) a0 = _mm256_fmadd_ps(_mm256_loadu_ps(row + j), _mm256_loadu_ps(xp + j), a0);
+                Y[(long long)t * D + i] = bi + avx2_hsum_ps(a0);
+            }
+        }
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void tf_50m_linear_bwd_range_avx2(
+    const float* restrict W, float* restrict dW, float* restrict db,
+    const float* restrict X, const float* restrict dY, float* restrict dX,
+    int T, int r_start, int r_end)
+{
+    const int D = TRANSFORMER_50M_DIM;
+    for (int i = r_start; i < r_end; i++) {
+        const float* wrow = W + (long long)i * D;
+        float* dwrow = dW + (long long)i * D;
+        float db_acc = 0.0f;
+        for (int t = 0; t < T; t++) {
+            float dy = dY[(long long)t * D + i];
+            db_acc += dy;
+            __m256 vdy = _mm256_set1_ps(dy);
+            const float* xp = X + (long long)t * D;
+            float* dxp = dX + (long long)t * D;
+            for (int j = 0; j < D; j += 8) {
+                _mm256_storeu_ps(dwrow + j, _mm256_fmadd_ps(vdy, _mm256_loadu_ps(xp + j), _mm256_loadu_ps(dwrow + j)));
+                _mm256_storeu_ps(dxp + j,   _mm256_fmadd_ps(vdy, _mm256_loadu_ps(wrow + j), _mm256_loadu_ps(dxp + j)));
+            }
+        }
+        if (db) db[i] += db_acc;
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void tf_50m_attn_fwd_heads_avx2(
+    const float* restrict Q, const float* restrict K, const float* restrict V, float* restrict Attn,
+    float* restrict scores, int q_start_t, int T_q, int T_kv, int h_start, int h_end)
+{
+    const int D = TRANSFORMER_50M_DIM;
+    const int HD = TRANSFORMER_50M_HEAD_DIM;
+    const float scale = 0.1767766953f;
+    for (int h = h_start; h < h_end; h++) {
+        int off = h * HD;
+        for (int qi = 0; qi < T_q; qi++) {
+            int q_pos = q_start_t + qi;
+            int k_limit = (q_pos + 1 < T_kv) ? (q_pos + 1) : T_kv;
+            const float* q = Q + (long long)qi * D + off;
+            __m256 vq0 = _mm256_loadu_ps(q), vq1 = _mm256_loadu_ps(q + 8);
+            __m256 vq2 = _mm256_loadu_ps(q + 16), vq3 = _mm256_loadu_ps(q + 24);
+            float max_s = -1e30f;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                const float* k = K + (long long)k_pos * D + off;
+                __m256 a0 = _mm256_mul_ps(vq0, _mm256_loadu_ps(k));
+                __m256 a1 = _mm256_mul_ps(vq1, _mm256_loadu_ps(k + 8));
+                __m256 a2 = _mm256_mul_ps(vq2, _mm256_loadu_ps(k + 16));
+                __m256 a3 = _mm256_mul_ps(vq3, _mm256_loadu_ps(k + 24));
+                float d = avx2_hsum_ps(_mm256_add_ps(_mm256_add_ps(a0, a1), _mm256_add_ps(a2, a3))) * scale;
+                scores[k_pos] = d;
+                if (d > max_s) max_s = d;
+            }
+            double se = 0.0;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                scores[k_pos] = (float)fast_exp((double)(scores[k_pos] - max_s));
+                se += (double)scores[k_pos];
+            }
+            float inv = (float)(1.0 / (se + 1e-12));
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) scores[k_pos] *= inv;
+            float* out = Attn + (long long)qi * D + off;
+            __m256 o0 = _mm256_setzero_ps(), o1 = _mm256_setzero_ps();
+            __m256 o2 = _mm256_setzero_ps(), o3 = _mm256_setzero_ps();
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                __m256 vw = _mm256_set1_ps(scores[k_pos]);
+                const float* v = V + (long long)k_pos * D + off;
+                o0 = _mm256_fmadd_ps(vw, _mm256_loadu_ps(v),      o0);
+                o1 = _mm256_fmadd_ps(vw, _mm256_loadu_ps(v + 8),  o1);
+                o2 = _mm256_fmadd_ps(vw, _mm256_loadu_ps(v + 16), o2);
+                o3 = _mm256_fmadd_ps(vw, _mm256_loadu_ps(v + 24), o3);
+            }
+            _mm256_storeu_ps(out,      o0);
+            _mm256_storeu_ps(out + 8,  o1);
+            _mm256_storeu_ps(out + 16, o2);
+            _mm256_storeu_ps(out + 24, o3);
+        }
+    }
+}
+
+__attribute__((target("avx2,fma"), noinline))
+static void tf_50m_attn_bwd_heads_avx2(
+    const float* restrict Q, const float* restrict K, const float* restrict V,
+    const float* restrict dAttn, float* restrict dQ, float* restrict dK, float* restrict dV,
+    float* restrict scores, float* restrict dalpha, int q_start_t, int T_q, int T_kv, int h_start, int h_end)
+{
+    const int D = TRANSFORMER_50M_DIM;
+    const int HD = TRANSFORMER_50M_HEAD_DIM;
+    const float scale = 0.1767766953f;
+    for (int h = h_start; h < h_end; h++) {
+        int off = h * HD;
+        for (int qi = 0; qi < T_q; qi++) {
+            int q_pos = q_start_t + qi;
+            int k_limit = (q_pos + 1 < T_kv) ? (q_pos + 1) : T_kv;
+            const float* q = Q + (long long)qi * D + off;
+            const float* do_h = dAttn + (long long)qi * D + off;
+            float* dq = dQ + (long long)qi * D + off;
+            __m256 vq0 = _mm256_loadu_ps(q), vq1 = _mm256_loadu_ps(q + 8);
+            __m256 vq2 = _mm256_loadu_ps(q + 16), vq3 = _mm256_loadu_ps(q + 24);
+            __m256 vdo0 = _mm256_loadu_ps(do_h), vdo1 = _mm256_loadu_ps(do_h + 8);
+            __m256 vdo2 = _mm256_loadu_ps(do_h + 16), vdo3 = _mm256_loadu_ps(do_h + 24);
+            float max_s = -1e30f;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                const float* k = K + (long long)k_pos * D + off;
+                __m256 a0 = _mm256_mul_ps(vq0, _mm256_loadu_ps(k));
+                __m256 a1 = _mm256_mul_ps(vq1, _mm256_loadu_ps(k + 8));
+                __m256 a2 = _mm256_mul_ps(vq2, _mm256_loadu_ps(k + 16));
+                __m256 a3 = _mm256_mul_ps(vq3, _mm256_loadu_ps(k + 24));
+                float d = avx2_hsum_ps(_mm256_add_ps(_mm256_add_ps(a0, a1), _mm256_add_ps(a2, a3))) * scale;
+                scores[k_pos] = d;
+                if (d > max_s) max_s = d;
+            }
+            double se = 0.0;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                scores[k_pos] = (float)fast_exp((double)(scores[k_pos] - max_s));
+                se += (double)scores[k_pos];
+            }
+            float inv = (float)(1.0 / (se + 1e-12));
+            double dot_ada = 0.0;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                scores[k_pos] *= inv;
+                const float* v = V + (long long)k_pos * D + off;
+                __m256 b0 = _mm256_mul_ps(vdo0, _mm256_loadu_ps(v));
+                __m256 b1 = _mm256_mul_ps(vdo1, _mm256_loadu_ps(v + 8));
+                __m256 b2 = _mm256_mul_ps(vdo2, _mm256_loadu_ps(v + 16));
+                __m256 b3 = _mm256_mul_ps(vdo3, _mm256_loadu_ps(v + 24));
+                float da = avx2_hsum_ps(_mm256_add_ps(_mm256_add_ps(b0, b1), _mm256_add_ps(b2, b3)));
+                dalpha[k_pos] = da;
+                dot_ada += (double)scores[k_pos] * (double)da;
+            }
+            __m256 vdq0 = _mm256_loadu_ps(dq), vdq1 = _mm256_loadu_ps(dq + 8);
+            __m256 vdq2 = _mm256_loadu_ps(dq + 16), vdq3 = _mm256_loadu_ps(dq + 24);
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                float al = scores[k_pos];
+                float dscore = (float)((double)al * ((double)dalpha[k_pos] - dot_ada)) * scale;
+                __m256 val = _mm256_set1_ps(al), vds = _mm256_set1_ps(dscore);
+                const float* k = K + (long long)k_pos * D + off;
+                float* dk = dK + (long long)k_pos * D + off;
+                float* dv = dV + (long long)k_pos * D + off;
+                __m256 vk0 = _mm256_loadu_ps(k), vk1 = _mm256_loadu_ps(k + 8);
+                __m256 vk2 = _mm256_loadu_ps(k + 16), vk3 = _mm256_loadu_ps(k + 24);
+                _mm256_storeu_ps(dv,      _mm256_fmadd_ps(val, vdo0, _mm256_loadu_ps(dv)));
+                _mm256_storeu_ps(dv + 8,  _mm256_fmadd_ps(val, vdo1, _mm256_loadu_ps(dv + 8)));
+                _mm256_storeu_ps(dv + 16, _mm256_fmadd_ps(val, vdo2, _mm256_loadu_ps(dv + 16)));
+                _mm256_storeu_ps(dv + 24, _mm256_fmadd_ps(val, vdo3, _mm256_loadu_ps(dv + 24)));
+                vdq0 = _mm256_fmadd_ps(vds, vk0, vdq0); vdq1 = _mm256_fmadd_ps(vds, vk1, vdq1);
+                vdq2 = _mm256_fmadd_ps(vds, vk2, vdq2); vdq3 = _mm256_fmadd_ps(vds, vk3, vdq3);
+                _mm256_storeu_ps(dk,      _mm256_fmadd_ps(vds, vq0, _mm256_loadu_ps(dk)));
+                _mm256_storeu_ps(dk + 8,  _mm256_fmadd_ps(vds, vq1, _mm256_loadu_ps(dk + 8)));
+                _mm256_storeu_ps(dk + 16, _mm256_fmadd_ps(vds, vq2, _mm256_loadu_ps(dk + 16)));
+                _mm256_storeu_ps(dk + 24, _mm256_fmadd_ps(vds, vq3, _mm256_loadu_ps(dk + 24)));
+            }
+            _mm256_storeu_ps(dq, vdq0); _mm256_storeu_ps(dq + 8, vdq1);
+            _mm256_storeu_ps(dq + 16, vdq2); _mm256_storeu_ps(dq + 24, vdq3);
+        }
+    }
+}
+#endif
+
+static void tf_50m_linear_fwd_range(
+    const float* W, const float* b, const float* X, float* Y, int T, int r_start, int r_end)
+{
+    const int D = TRANSFORMER_50M_DIM;
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        tf_50m_linear_fwd_range_avx2(W, b, X, Y, T, r_start, r_end);
+        return;
+    }
+#endif
+    for (int t = 0; t < T; t++) {
+        const float* xp = X + (long long)t * D;
+        float* yp = Y + (long long)t * D;
+        for (int i = r_start; i < r_end; i++) {
+            const float* row = W + (long long)i * D;
+            float s = b ? b[i] : 0.0f;
+            for (int j = 0; j < D; j++) s += row[j] * xp[j];
+            yp[i] = s;
+        }
+    }
+}
+
+static void tf_50m_linear_bwd_range(
+    const float* W, float* dW, float* db, const float* X, const float* dY, float* dX,
+    int T, int r_start, int r_end)
+{
+    const int D = TRANSFORMER_50M_DIM;
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        tf_50m_linear_bwd_range_avx2(W, dW, db, X, dY, dX, T, r_start, r_end);
+        return;
+    }
+#endif
+    for (int t = 0; t < T; t++) {
+        const float* xp = X + (long long)t * D;
+        const float* dyp = dY + (long long)t * D;
+        float* dxp = dX + (long long)t * D;
+        for (int i = r_start; i < r_end; i++) {
+            float dy = dyp[i];
+            if (db) db[i] += dy;
+            const float* wrow = W + (long long)i * D;
+            float* dwrow = dW + (long long)i * D;
+            for (int j = 0; j < D; j++) {
+                dwrow[j] += dy * xp[j];
+                dxp[j]   += dy * wrow[j];
+            }
+        }
+    }
+}
+
+static void tf_50m_attn_fwd_heads(
+    const float* Q, const float* K, const float* V, float* Attn,
+    float* scores, int q_start_t, int T_q, int T_kv, int h_start, int h_end)
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        tf_50m_attn_fwd_heads_avx2(Q, K, V, Attn, scores, q_start_t, T_q, T_kv, h_start, h_end);
+        return;
+    }
+#endif
+    const int D = TRANSFORMER_50M_DIM;
+    const int HD = TRANSFORMER_50M_HEAD_DIM;
+    const float scale = 0.1767766953f;
+    for (int h = h_start; h < h_end; h++) {
+        int off = h * HD;
+        for (int qi = 0; qi < T_q; qi++) {
+            int q_pos = q_start_t + qi;
+            int k_limit = (q_pos + 1 < T_kv) ? (q_pos + 1) : T_kv;
+            const float* q = Q + (long long)qi * D + off;
+            float max_s = -1e30f;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                const float* k = K + (long long)k_pos * D + off;
+                float d = 0.0f;
+                for (int j = 0; j < HD; j++) d += q[j] * k[j];
+                d *= scale;
+                scores[k_pos] = d;
+                if (d > max_s) max_s = d;
+            }
+            double se = 0.0;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                scores[k_pos] = (float)fast_exp((double)(scores[k_pos] - max_s));
+                se += (double)scores[k_pos];
+            }
+            float inv = (float)(1.0 / (se + 1e-12));
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) scores[k_pos] *= inv;
+            float* out = Attn + (long long)qi * D + off;
+            for (int j = 0; j < HD; j++) out[j] = 0.0f;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                float wt = scores[k_pos];
+                const float* v = V + (long long)k_pos * D + off;
+                for (int j = 0; j < HD; j++) out[j] += wt * v[j];
+            }
+        }
+    }
+}
+
+static void tf_50m_attn_bwd_heads(
+    const float* Q, const float* K, const float* V,
+    const float* dAttn, float* dQ, float* dK, float* dV,
+    float* scores, float* dalpha, int q_start_t, int T_q, int T_kv, int h_start, int h_end)
+{
+#if defined(__x86_64__) || defined(_M_X64)
+    if (qadav_cpu_supports_avx2()) {
+        tf_50m_attn_bwd_heads_avx2(Q, K, V, dAttn, dQ, dK, dV, scores, dalpha, q_start_t, T_q, T_kv, h_start, h_end);
+        return;
+    }
+#endif
+    const int D = TRANSFORMER_50M_DIM;
+    const int HD = TRANSFORMER_50M_HEAD_DIM;
+    const float scale = 0.1767766953f;
+    for (int h = h_start; h < h_end; h++) {
+        int off = h * HD;
+        for (int qi = 0; qi < T_q; qi++) {
+            int q_pos = q_start_t + qi;
+            int k_limit = (q_pos + 1 < T_kv) ? (q_pos + 1) : T_kv;
+            const float* q = Q + (long long)qi * D + off;
+            const float* do_h = dAttn + (long long)qi * D + off;
+            float* dq = dQ + (long long)qi * D + off;
+            float max_s = -1e30f;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                const float* k = K + (long long)k_pos * D + off;
+                float d = 0.0f;
+                for (int j = 0; j < HD; j++) d += q[j] * k[j];
+                d *= scale;
+                scores[k_pos] = d;
+                if (d > max_s) max_s = d;
+            }
+            double se = 0.0;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                scores[k_pos] = (float)fast_exp((double)(scores[k_pos] - max_s));
+                se += (double)scores[k_pos];
+            }
+            float inv = (float)(1.0 / (se + 1e-12));
+            double dot_ada = 0.0;
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                scores[k_pos] *= inv;
+                const float* v = V + (long long)k_pos * D + off;
+                float da = 0.0f;
+                for (int j = 0; j < HD; j++) da += do_h[j] * v[j];
+                dalpha[k_pos] = da;
+                dot_ada += (double)scores[k_pos] * (double)da;
+            }
+            for (int k_pos = 0; k_pos < k_limit; k_pos++) {
+                float al = scores[k_pos];
+                float dscore = (float)((double)al * ((double)dalpha[k_pos] - dot_ada)) * scale;
+                const float* k = K + (long long)k_pos * D + off;
+                float* dk = dK + (long long)k_pos * D + off;
+                float* dv = dV + (long long)k_pos * D + off;
+                for (int j = 0; j < HD; j++) {
+                    dv[j] += al * do_h[j];
+                    dq[j] += dscore * k[j];
+                    dk[j] += dscore * q[j];
+                }
+            }
+        }
+    }
+}
+
+static void tf_50m_worker_cb(void* ctx_ptr) {
+    TF50MLayerCtx* c = (TF50MLayerCtx*)ctx_ptr;
+    const int D = TRANSFORMER_50M_DIM;
+    if (c->phase == 0) {
+        tf_50m_linear_fwd_range(c->W_q, c->b_q, c->X_in + (long long)c->q_start_t * D, c->Q, c->T_q, c->r_start, c->r_end);
+        tf_50m_linear_fwd_range(c->W_k, c->b_k, c->X_in, c->K, c->T_kv, c->r_start, c->r_end);
+        tf_50m_linear_fwd_range(c->W_v, c->b_v, c->X_in, c->V, c->T_kv, c->r_start, c->r_end);
+    } else if (c->phase == 1) {
+        tf_50m_attn_fwd_heads(c->Q, c->K, c->V, c->Attn, c->tmp_scores, c->q_start_t, c->T_q, c->T_kv, c->h_start, c->h_end);
+    } else if (c->phase == 2) {
+        tf_50m_linear_fwd_range(c->W_o, c->b_o, c->Attn, c->X_next + (long long)c->q_start_t * D, c->T_q, c->r_start, c->r_end);
+    } else if (c->phase == 3) {
+        nn_memset(c->dX_part, 0, (unsigned long long)c->T_q * (unsigned long long)D * sizeof(float));
+        tf_50m_linear_bwd_range(c->W_o, c->dW_o, c->db_o, c->Attn, c->dX_next + (long long)c->q_start_t * D, c->dX_part, c->T_q, c->r_start, c->r_end);
+    } else if (c->phase == 4) {
+        tf_50m_attn_bwd_heads(c->Q, c->K, c->V, c->dAttn, c->dQ, c->dK, c->dV, c->tmp_scores, c->tmp_scores + 1024, c->q_start_t, c->T_q, c->T_kv, c->h_start, c->h_end);
+    } else if (c->phase == 5) {
+        nn_memset(c->dX_part, 0, (unsigned long long)c->T_kv * (unsigned long long)D * sizeof(float));
+        tf_50m_linear_bwd_range(c->W_q, c->dW_q, c->db_q, c->X_in + (long long)c->q_start_t * D, c->dQ, c->dX_part + (long long)c->q_start_t * D, c->T_q, c->r_start, c->r_end);
+        tf_50m_linear_bwd_range(c->W_k, c->dW_k, c->db_k, c->X_in, c->dK, c->dX_part, c->T_kv, c->r_start, c->r_end);
+        tf_50m_linear_bwd_range(c->W_v, c->dW_v, c->db_v, c->X_in, c->dV, c->dX_part, c->T_kv, c->r_start, c->r_end);
+    }
+}
+
+static void tf_50m_run_phase(TF50MLayerCtx* wc, int phase) {
+    const int D = TRANSFORMER_50M_DIM;
+    wc->phase = phase;
+#ifdef _WIN32
+    if (nn_mt_ensure()) {
+        wc->h_start = 6; wc->h_end = 12;
+        wc->r_start = 192; wc->r_end = 384;
+        g_nn_mt.task_kind = 5;
+        g_nn_mt.custom_fn = tf_50m_worker_cb;
+        g_nn_mt.custom_ctx = wc;
+        __sync_synchronize();
+        g_nn_mt.pSetEvent(g_nn_mt.ev_start);
+        TF50MLayerCtx mc = *wc;
+        if (phase == 0) {
+            tf_50m_linear_fwd_range(mc.W_q, mc.b_q, mc.X_in + (long long)mc.q_start_t * D, mc.Q, mc.T_q, 0, 192);
+            tf_50m_linear_fwd_range(mc.W_k, mc.b_k, mc.X_in, mc.K, mc.T_kv, 0, 192);
+            tf_50m_linear_fwd_range(mc.W_v, mc.b_v, mc.X_in, mc.V, mc.T_kv, 0, 192);
+        } else if (phase == 1) {
+            tf_50m_attn_fwd_heads(mc.Q, mc.K, mc.V, mc.Attn, mc.tmp_scores + 2048, mc.q_start_t, mc.T_q, mc.T_kv, 0, 6);
+        } else if (phase == 2) {
+            tf_50m_linear_fwd_range(mc.W_o, mc.b_o, mc.Attn, mc.X_next + (long long)mc.q_start_t * D, mc.T_q, 0, 192);
+        } else if (phase == 3) {
+            nn_memset(mc.dAttn, 0, (unsigned long long)mc.T_q * (unsigned long long)D * sizeof(float));
+            tf_50m_linear_bwd_range(mc.W_o, mc.dW_o, mc.db_o, mc.Attn, mc.dX_next + (long long)mc.q_start_t * D, mc.dAttn, mc.T_q, 0, 192);
+        } else if (phase == 4) {
+            tf_50m_attn_bwd_heads(mc.Q, mc.K, mc.V, mc.dAttn, mc.dQ, mc.dK, mc.dV, mc.tmp_scores + 2048, mc.tmp_scores + 3072, mc.q_start_t, mc.T_q, mc.T_kv, 0, 6);
+        } else if (phase == 5) {
+            tf_50m_linear_bwd_range(mc.W_q, mc.dW_q, mc.db_q, mc.X_in + (long long)mc.q_start_t * D, mc.dQ, mc.dAttn + (long long)mc.q_start_t * D, mc.T_q, 0, 192);
+            tf_50m_linear_bwd_range(mc.W_k, mc.dW_k, mc.db_k, mc.X_in, mc.dK, mc.dAttn, mc.T_kv, 0, 192);
+            tf_50m_linear_bwd_range(mc.W_v, mc.dW_v, mc.db_v, mc.X_in, mc.dV, mc.dAttn, mc.T_kv, 0, 192);
+        }
+        g_nn_mt.pWait(g_nn_mt.ev_done, 0xFFFFFFFFUL);
+        __sync_synchronize();
+        return;
+    }
+#endif
+    if (phase == 0) {
+        tf_50m_linear_fwd_range(wc->W_q, wc->b_q, wc->X_in + (long long)wc->q_start_t * D, wc->Q, wc->T_q, 0, D);
+        tf_50m_linear_fwd_range(wc->W_k, wc->b_k, wc->X_in, wc->K, wc->T_kv, 0, D);
+        tf_50m_linear_fwd_range(wc->W_v, wc->b_v, wc->X_in, wc->V, wc->T_kv, 0, D);
+    } else if (phase == 1) {
+        tf_50m_attn_fwd_heads(wc->Q, wc->K, wc->V, wc->Attn, wc->tmp_scores, wc->q_start_t, wc->T_q, wc->T_kv, 0, 12);
+    } else if (phase == 2) {
+        tf_50m_linear_fwd_range(wc->W_o, wc->b_o, wc->Attn, wc->X_next + (long long)wc->q_start_t * D, wc->T_q, 0, D);
+    } else if (phase == 3) {
+        nn_memset(wc->dAttn, 0, (unsigned long long)wc->T_q * (unsigned long long)D * sizeof(float));
+        tf_50m_linear_bwd_range(wc->W_o, wc->dW_o, wc->db_o, wc->Attn, wc->dX_next + (long long)wc->q_start_t * D, wc->dAttn, wc->T_q, 0, D);
+    } else if (phase == 4) {
+        tf_50m_attn_bwd_heads(wc->Q, wc->K, wc->V, wc->dAttn, wc->dQ, wc->dK, wc->dV, wc->tmp_scores, wc->tmp_scores + 1024, wc->q_start_t, wc->T_q, wc->T_kv, 0, 12);
+    } else if (phase == 5) {
+        tf_50m_linear_bwd_range(wc->W_q, wc->dW_q, wc->db_q, wc->X_in + (long long)wc->q_start_t * D, wc->dQ, wc->dAttn + (long long)wc->q_start_t * D, wc->T_q, 0, D);
+        tf_50m_linear_bwd_range(wc->W_k, wc->dW_k, wc->db_k, wc->X_in, wc->dK, wc->dAttn, wc->T_kv, 0, D);
+        tf_50m_linear_bwd_range(wc->W_v, wc->dW_v, wc->db_v, wc->X_in, wc->dV, wc->dAttn, wc->T_kv, 0, D);
+    }
+}
+
+static double compute_transformer_50m_recall_batch(
+    V2Weights* w, const int* batch_seqs, int batch_size, int is_training, int* out_exact_hits, int* out_val50_hits)
+{
+    const int D = TRANSFORMER_50M_DIM;         // 384
+    const int M_SZ = D * D;                    // 147,456
+    const long long LAY_ST = TRANSFORMER_50M_LAY_STRIDE; // 11,700,096
+    int ctx_len = RECALL_SEQ_LEN - 1;          // 511
+    int emb_len = V2_VOCAB_SIZE_BPE * D;       // 3,072,000
+    const int P = RECALL_SUP_POSITIONS;        // 12
+    int sup_start = ctx_len - P;               // 499
+    if (sup_start < 0) sup_start = 0;
+
+    float* W_emb  = w->params_f32;
+    float* W_pos  = W_emb + emb_len;
+    float* W_lay  = W_pos + 512 * D;
+    float* W_ln_f = W_lay + 4LL * LAY_ST;
+    float* b_out  = W_ln_f + 2 * D;
+
+    float* dW_emb = w->grads_f32;
+    float* dW_pos = dW_emb + emb_len;
+    float* dW_lay = dW_pos + 512 * D;
+    float* db_out = w->grads_f32 + (b_out - w->params_f32);
+
+    unsigned long long c384 = (unsigned long long)ctx_len * (unsigned long long)D; // 196,224
+    unsigned long long p384 = (unsigned long long)P * (unsigned long long)D;       // 4,608
+    unsigned long long floats_needed = c384 * 26ULL + 600000ULL;
+    unsigned char* raw_blk = (unsigned char*)nn_scratch_acquire(floats_needed * sizeof(float));
+    if (!raw_blk) return 0.0;
+    float* ws = (float*)raw_blk;
+
+    float* X_in[4];
+    float* Q_all[4];
+    float* K_all[4];
+    float* V_all[4];
+    float* Attn_all[4];
+    float* p = ws;
+    for (int l = 0; l < 4; l++) { X_in[l] = p; p += c384; }
+    for (int l = 0; l < 4; l++) { K_all[l] = p; p += c384; }
+    for (int l = 0; l < 4; l++) { V_all[l] = p; p += c384; }
+    for (int l = 0; l < 3; l++) { Q_all[l] = p; p += c384; } Q_all[3] = p; p += p384;
+    for (int l = 0; l < 3; l++) { Attn_all[l] = p; p += c384; } Attn_all[3] = p; p += p384;
+
+    float* X_last_out   = p; p += p384;
+    float* dX_last_in   = p; p += p384;
+    float* dX_curr      = p; p += c384;
+    float* dX_next      = p; p += c384;
+    float* dAttn        = p; p += c384;
+    float* dQ           = p; p += c384;
+    float* dK           = p; p += c384;
+    float* dV           = p; p += c384;
+    float* dX_part      = p; p += c384;
+    float* tmp_scores   = p; p += 8192;
+    float* logits_all   = p; p += (unsigned long long)P * (unsigned long long)V2_VOCAB_SIZE_BPE;
+    float* probs_all    = p; p += (unsigned long long)P * (unsigned long long)V2_VOCAB_SIZE_BPE;
+    float* d_logits_all = p;
+
+    double total_loss = 0.0, total_ans_loss = 0.0;
+    int exact_hits = 0, val50_hits = 0;
+    double norm_factor = 1.0 / (double)(batch_size * P);
+
+    for (int sb = 0; sb < batch_size; sb++) {
+        const int* seq = batch_seqs + (unsigned long long)sb * (unsigned long long)RECALL_SEQ_LEN;
+        for (int t = 0; t < ctx_len; t++) {
+            int tok = seq[t]; if (tok < 0 || tok >= V2_VOCAB_SIZE_BPE) tok = 0;
+            const float* emb = W_emb + (long long)tok * D;
+            const float* pos = W_pos + (long long)t * D;
+            float* x = X_in[0] + (long long)t * D;
+            for (int j = 0; j < D; j++) x[j] = emb[j] + pos[j];
+        }
+
+        for (int l = 0; l < 4; l++) {
+            const float* lw = W_lay + (long long)l * LAY_ST;
+            int T_q = (l < 3) ? ctx_len : P;
+            int q_start = (l < 3) ? 0 : sup_start;
+            float* X_out = (l < 3) ? X_in[l + 1] : (X_last_out - (long long)q_start * D);
+
+            TF50MLayerCtx lc;
+            nn_memset(&lc, 0, sizeof(lc));
+            lc.T_q = T_q; lc.T_kv = ctx_len; lc.q_start_t = q_start;
+            lc.W_q = lw;                     lc.b_q = lw + M_SZ;
+            lc.W_k = lw + M_SZ + D;          lc.b_k = lw + 2 * M_SZ + D;
+            lc.W_v = lw + 2 * M_SZ + 2 * D;  lc.b_v = lw + 3 * M_SZ + 2 * D;
+            lc.W_o = lw + 3 * M_SZ + 3 * D;  lc.b_o = lw + 4 * M_SZ + 3 * D;
+            lc.X_in = X_in[l]; lc.Q = Q_all[l]; lc.K = K_all[l]; lc.V = V_all[l];
+            lc.Attn = Attn_all[l]; lc.X_next = X_out; lc.tmp_scores = tmp_scores;
+
+            tf_50m_run_phase(&lc, 0);
+            tf_50m_run_phase(&lc, 1);
+            tf_50m_run_phase(&lc, 2);
+
+            for (int qi = 0; qi < T_q; qi++) {
+                int t = q_start + qi;
+                const float* xi = X_in[l] + (long long)t * D;
+                float* xo = (l < 3) ? (X_in[l + 1] + (long long)t * D) : (X_last_out + (long long)qi * D);
+                for (int j = 0; j < D; j++) xo[j] += xi[j];
+            }
+        }
+
+        recall_logits_multi_fwd_8000_f32(W_emb, b_out, X_last_out, logits_all, P, V2_VOCAB_SIZE_BPE);
+
+        for (int pi = 0; pi < P; pi++) {
+            int c_tgt = seq[sup_start + pi + 1]; if (c_tgt < 0 || c_tgt >= V2_VOCAB_SIZE_BPE) c_tgt = 0;
+            const float* logits = logits_all + pi * V2_VOCAB_SIZE_BPE;
+            float* probs = probs_all + pi * V2_VOCAB_SIZE_BPE;
+            float* d_logits = d_logits_all + pi * V2_VOCAB_SIZE_BPE;
+            float max_l = logits[0]; int best_full = 0;
+            for (int i = 1; i < V2_VOCAB_SIZE_BPE; i++) {
+                if (logits[i] > max_l) { max_l = logits[i]; best_full = i; }
+            }
+            if (pi == P - 1) {
+                int best_v50 = RECALL_VAL_BASE;
+                float max_v50 = logits[RECALL_VAL_BASE];
+                for (int i = RECALL_VAL_BASE + 1; i < RECALL_VAL_BASE + RECALL_N_VALS; i++) {
+                    if (logits[i] > max_v50) { max_v50 = logits[i]; best_v50 = i; }
+                }
+                if (best_full == c_tgt) exact_hits++;
+                if (best_v50 == c_tgt) val50_hits++;
+            }
+            double sum_exp = 0.0;
+            for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
+                probs[i] = (float)fast_exp((double)(logits[i] - max_l));
+                sum_exp += (double)probs[i];
+            }
+            float inv_s = (float)(1.0 / (sum_exp + 1e-12));
+            for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) probs[i] *= inv_s;
+            double p_tgt = probs[c_tgt] > 1e-12f ? (double)probs[c_tgt] : 1e-12;
+            double ce = -qadav_log(p_tgt);
+            total_loss += ce;
+            if (pi == P - 1) total_ans_loss += ce;
+            if (is_training == 1) {
+                float nf = (float)norm_factor;
+                for (int i = 0; i < V2_VOCAB_SIZE_BPE; i++) {
+                    float tgt = (i == c_tgt) ? 1.0f : 0.0f;
+                    d_logits[i] = (probs[i] - tgt) * nf;
+                }
+            }
+        }
+
+        if (is_training == 1) {
+            nn_memset(dX_next, 0, c384 * sizeof(float));
+            recall_logits_multi_bwd_8000_f32(W_emb, dW_emb, db_out, X_last_out, d_logits_all, dX_last_in, P, V2_VOCAB_SIZE_BPE);
+            nn_memcpy(dX_next + (long long)sup_start * D, dX_last_in, p384 * sizeof(float));
+
+            for (int l = 3; l >= 0; l--) {
+                const float* lw = W_lay + (long long)l * LAY_ST;
+                float* dlw      = dW_lay + (long long)l * LAY_ST;
+                int T_q = (l < 3) ? ctx_len : P;
+                int q_start = (l < 3) ? 0 : sup_start;
+
+                nn_memcpy(dX_curr, dX_next, c384 * sizeof(float));
+                nn_memset(dQ, 0, (unsigned long long)T_q * (unsigned long long)D * sizeof(float));
+                nn_memset(dK, 0, c384 * sizeof(float));
+                nn_memset(dV, 0, c384 * sizeof(float));
+
+                TF50MLayerCtx lc;
+                nn_memset(&lc, 0, sizeof(lc));
+                lc.T_q = T_q; lc.T_kv = ctx_len; lc.q_start_t = q_start;
+                lc.W_q = lw;                     lc.b_q = lw + M_SZ;
+                lc.W_k = lw + M_SZ + D;          lc.b_k = lw + 2 * M_SZ + D;
+                lc.W_v = lw + 2 * M_SZ + 2 * D;  lc.b_v = lw + 3 * M_SZ + 2 * D;
+                lc.W_o = lw + 3 * M_SZ + 3 * D;  lc.b_o = lw + 4 * M_SZ + 3 * D;
+                lc.dW_q = dlw;                   lc.db_q = dlw + M_SZ;
+                lc.dW_k = dlw + M_SZ + D;        lc.db_k = dlw + 2 * M_SZ + D;
+                lc.dW_v = dlw + 2 * M_SZ + 2 * D;lc.db_v = dlw + 3 * M_SZ + 2 * D;
+                lc.dW_o = dlw + 3 * M_SZ + 3 * D;lc.db_o = dlw + 4 * M_SZ + 3 * D;
+                lc.X_in = X_in[l]; lc.Q = Q_all[l]; lc.K = K_all[l]; lc.V = V_all[l];
+                lc.Attn = Attn_all[l]; lc.dX_next = dX_next; lc.dAttn = dAttn;
+                lc.dQ = dQ; lc.dK = dK; lc.dV = dV; lc.dX_part = dX_part; lc.tmp_scores = tmp_scores;
+
+                tf_50m_run_phase(&lc, 3);
+#ifdef _WIN32
+                if (nn_mt_ensure()) {
+                    for (int qi = 0; qi < T_q; qi++) {
+                        float* dst = dAttn + (long long)qi * D + 192;
+                        const float* src = dX_part + (long long)qi * D + 192;
+                        for (int j = 0; j < 192; j++) dst[j] += src[j];
+                    }
+                }
+#endif
+                tf_50m_run_phase(&lc, 4);
+                nn_memset(dAttn, 0, c384 * sizeof(float));
+                tf_50m_run_phase(&lc, 5);
+                for (int idx = 0; idx < ctx_len * D; idx++) {
+                    dX_curr[idx] += dAttn[idx];
+#ifdef _WIN32
+                    if (nn_mt_ensure()) dX_curr[idx] += dX_part[idx];
+#endif
+                }
+                nn_memcpy(dX_next, dX_curr, c384 * sizeof(float));
+            }
+
+            for (int t = 0; t < ctx_len; t++) {
+                int tok = seq[t]; if (tok < 0 || tok >= V2_VOCAB_SIZE_BPE) tok = 0;
+                const float* dx = dX_next + (long long)t * D;
+                float* dwe = dW_emb + (long long)tok * D;
+                float* dwp = dW_pos + (long long)t * D;
+                for (int j = 0; j < D; j++) { dwe[j] += dx[j]; dwp[j] += dx[j]; }
+            }
+        }
+    }
+
+    g_recall_last_ans_loss = total_ans_loss / (double)batch_size;
     if (out_exact_hits) *out_exact_hits = exact_hits;
     if (out_val50_hits) *out_val50_hits = val50_hits;
     return total_loss * norm_factor;
@@ -6430,6 +9174,22 @@ static double compute_transformer_v2_recall_batch(
 
 static void clip_v2_grads_global_l2(V2Weights* w, double max_norm) {
     if (!w || max_norm <= 0.0) return;
+    if (w->use_compact_50m) {
+        double sq_sum = 0.0;
+        const float* g = w->grads_f32;
+        int total = w->total_params;
+        for (int i = 0; i < total; i++) {
+            float v = g[i];
+            if (v != 0.0f) sq_sum += (double)v * (double)v;
+        }
+        if (sq_sum <= max_norm * max_norm) return;
+        float scale = (float)(max_norm / (qadav_sqrt(sq_sum) + 1e-12));
+        float* gp = w->grads_f32;
+        for (int i = 0; i < total; i++) {
+            if (gp[i] != 0.0f) gp[i] *= scale;
+        }
+        return;
+    }
     double sq_sum = 0.0;
     const double* g = w->grads;
     int total = w->total_params;
@@ -6454,6 +9214,15 @@ static double slice_max_abs(const double* a, int n) {
     return m;
 }
 
+static double slice_max_abs_f32(const float* a, int n) {
+    float m = 0.0f;
+    for (int i = 0; i < n; i++) {
+        float v = a[i] < 0.0f ? -a[i] : a[i];
+        if (v > m) m = v;
+    }
+    return (double)m;
+}
+
 static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
     int model_kind = MODEL_KIND_QNMF_V2;
     if (nn_strstr(cmd, "transformer")) model_kind = MODEL_KIND_TRANSFORMER_V2;
@@ -6465,41 +9234,70 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
     int total_steps = nn_parse_int_flag(cmd, "--steps", 2000);
     if (total_steps <= 0) total_steps = 2000;
     int force_regen = nn_strstr(cmd, "--generate-curriculum") ? 1 : 0;
+    int curriculum_only = nn_strstr(cmd, "--curriculum-only") ? 1 : 0;
+    int use_static = (nn_strstr(cmd, "--static") || force_regen || curriculum_only) ? 1 : 0;
     int dump_samples = nn_parse_int_flag(cmd, "--dump-samples", force_regen ? 3 : 0);
+    g_qnmf_trace_slots = nn_strstr(cmd, "--trace-slots") ? 1 : 0;
 
     char curr_path[256], bpe_path[256], toks_path[256];
     nn_parse_str_flag(cmd, "--curriculum", "TMP\\synthetic_recall_v1.bin", curr_path, 256);
     nn_parse_str_flag(cmd, "--bpe", "TMP\\bpe_v8k.bin", bpe_path, 256);
     nn_parse_str_flag(cmd, "--tokens", "TMP\\shakespeare_subset.tokens", toks_path, 256);
 
-    int n_train = 0, n_eval = 0, seq_len = 0;
-    int* curr_data = qadav_load_or_generate_curriculum(curr_path, toks_path, bpe_path, force_regen, dump_samples, &n_train, &n_eval, &seq_len);
-    if (!curr_data) return -1;
-
-    if (nn_strstr(cmd, "--curriculum-only")) {
-        nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
-        return 0;
+    int n_train = 0, n_eval = 0, seq_len = RECALL_SEQ_LEN;
+    int* curr_data = (int*)0;
+    if (use_static) {
+        curr_data = qadav_load_or_generate_curriculum(curr_path, toks_path, bpe_path, force_regen, dump_samples, &n_train, &n_eval, &seq_len);
+        if (!curr_data) { g_qnmf_trace_slots = 0; return -1; }
+        if (curriculum_only) {
+            nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
+            g_qnmf_trace_slots = 0;
+            return 0;
+        }
+    } else {
+        int cp = 0;
+        while (toks_path[cp] && cp < 254) { g_dyn_recall_corpus_path[cp] = toks_path[cp]; cp++; }
+        g_dyn_recall_corpus_path[cp] = 0;
+        if (!qadav_ensure_dynamic_corpus(toks_path)) {
+            nn_print("[ERROR] Failed to load dynamic corpus tokens: "); nn_print(toks_path); nn_print("\n");
+            g_qnmf_trace_slots = 0;
+            return -1;
+        }
     }
 
     nn_seed_rng((unsigned long long)seed);
-    int param_count = (model_kind == MODEL_KIND_TRANSFORMER_V2) ? TRANSFORMER_V2_BPE_PARAM_COUNT : QNMF_V2_BPE_PARAM_COUNT;
-    const char* m_name = (model_kind == MODEL_KIND_TRANSFORMER_V2) ? "Transformer v2 (BPE-8K)" :
-        (model_kind == MODEL_KIND_QNMF_V2_NO_ML ? "QNMF v2 (no-Ml, BPE-8K)" :
-        (model_kind == MODEL_KIND_QNMF_V2_NO_MW ? "QNMF v2 (no-Mw, BPE-8K)" : "QNMF v2 (BPE-8K)"));
+    int is_50m = (nn_strstr(cmd, "--scale 50m") || nn_strstr(cmd, "--50m")) ? 1 : 0;
+    int param_count = is_50m
+        ? ((model_kind == MODEL_KIND_TRANSFORMER_V2) ? TRANSFORMER_50M_BPE_PARAM_COUNT : QNMF_50M_BPE_PARAM_COUNT)
+        : ((model_kind == MODEL_KIND_TRANSFORMER_V2) ? TRANSFORMER_V2_BPE_PARAM_COUNT : QNMF_V2_BPE_PARAM_COUNT);
+    const char* m_name = is_50m
+        ? ((model_kind == MODEL_KIND_TRANSFORMER_V2) ? "Transformer 50M (BPE-8K)" : "QNMF 50M (BPE-8K)")
+        : ((model_kind == MODEL_KIND_TRANSFORMER_V2) ? "Transformer v2 (BPE-8K)" :
+            (model_kind == MODEL_KIND_QNMF_V2_NO_ML ? "QNMF v2 (no-Ml, BPE-8K)" :
+            (model_kind == MODEL_KIND_QNMF_V2_NO_MW ? "QNMF v2 (no-Mw, BPE-8K)" : "QNMF v2 (BPE-8K)")));
 
     V2Weights* w = alloc_v2_weights(param_count);
     if (!w) {
         nn_print("[ERROR] Out of memory allocating V=8000 model weights!\n");
-        nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
+        if (curr_data) nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
+        qadav_free_dynamic_corpus();
+        g_qnmf_trace_slots = 0;
         return -2;
     }
     w->total_params = param_count;
-    if (model_kind == MODEL_KIND_TRANSFORMER_V2) init_transformer_v2_params(w);
-    else init_qnmf_v2_params(w);
+    if (is_50m) {
+        if (model_kind == MODEL_KIND_TRANSFORMER_V2) init_transformer_50m_params(w);
+        else init_qnmf_50m_params(w);
+    } else {
+        if (model_kind == MODEL_KIND_TRANSFORMER_V2) init_transformer_v2_params(w);
+        else init_qnmf_v2_params(w);
+    }
 
-    nn_print("=== ["); nn_print(m_name); nn_print(" RECALL CURRICULUM TRAINING START] ===\n");
+    nn_print("=== ["); nn_print(m_name);
+    nn_print(use_static ? " STATIC RECALL TRAINING START] ===\n" : " DYNAMIC RECALL TRAINING START] ===\n");
     nn_print("Parameters: "); nn_print_i64(param_count);
-    nn_print(" | Vocab: 8000 | SeqLen: 512 | Batch: 4 | Seed: "); nn_print_i64(seed);
+    nn_print(" | Vocab: 8000 | SeqLen: 512 | SupPos: "); nn_print_i64(RECALL_SUP_POSITIONS);
+    nn_print(" | Batch: 4 | Seed: "); nn_print_i64(seed);
     nn_print(" | Steps: "); nn_print_i64(total_steps); nn_print("\n");
 
     int log_steps[256];
@@ -6511,19 +9309,30 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
     int* batch_buf = (int*)nn_large_alloc(4ULL * (unsigned long long)RECALL_SEQ_LEN * sizeof(int));
     if (!batch_buf) {
         free_v2_weights(w);
-        nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
+        if (curr_data) nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
+        qadav_free_dynamic_corpus();
+        g_qnmf_trace_slots = 0;
         return -3;
     }
 
     DWORD t_start = nn_get_ticks();
-    for (int b = 0; b < 4; b++) {
-        int ex = (int)(nn_rand_uniform() * (double)n_train) % n_train;
-        nn_memcpy(batch_buf + (unsigned long long)b * RECALL_SEQ_LEN, curr_data + (unsigned long long)ex * RECALL_SEQ_LEN, RECALL_SEQ_LEN * sizeof(int));
+    if (use_static) {
+        for (int b = 0; b < 4; b++) {
+            int ex = (int)(nn_rand_uniform() * (double)n_train) % n_train;
+            nn_memcpy(batch_buf + (unsigned long long)b * RECALL_SEQ_LEN, curr_data + (unsigned long long)ex * RECALL_SEQ_LEN, RECALL_SEQ_LEN * sizeof(int));
+        }
+    } else {
+        qadav_generate_dynamic_recall_batch_ex((uint32_t*)batch_buf, (uint32_t*)0, 4, RECALL_SEQ_LEN, (uint64_t)seed, 0ULL, 0);
     }
     int h_ex0 = 0, h_v0 = 0;
-    double loss_0 = (model_kind == MODEL_KIND_TRANSFORMER_V2)
-        ? compute_transformer_v2_recall_batch(w, batch_buf, 4, 0, &h_ex0, &h_v0)
-        : compute_qnmf_v2_recall_batch(model_kind, w, batch_buf, 4, 0, &h_ex0, &h_v0);
+    double loss_0 = is_50m
+        ? ((model_kind == MODEL_KIND_TRANSFORMER_V2)
+            ? compute_transformer_50m_recall_batch(w, batch_buf, 4, 0, &h_ex0, &h_v0)
+            : compute_qnmf_50m_recall_batch(model_kind, w, batch_buf, 4, 0, &h_ex0, &h_v0))
+        : ((model_kind == MODEL_KIND_TRANSFORMER_V2)
+            ? compute_transformer_v2_recall_batch(w, batch_buf, 4, 0, &h_ex0, &h_v0)
+            : compute_qnmf_v2_recall_batch(model_kind, w, batch_buf, 4, 0, &h_ex0, &h_v0));
+    double ans0 = g_recall_last_ans_loss;
 
     log_steps[log_idx] = 0;
     log_losses[log_idx] = loss_0;
@@ -6531,6 +9340,7 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
 
     nn_print("["); nn_print(m_name); nn_print("] Step 0/"); nn_print_i64(total_steps);
     nn_print(" | Loss: "); nn_print_f64(loss_0, 4);
+    nn_print(" | AnsLoss: "); nn_print_f64(ans0, 4);
     if (model_kind != MODEL_KIND_TRANSFORMER_V2) {
         nn_print(" | MwW="); nn_print_i64(g_recall_mw_writes / 4);
         nn_print(" MlW="); nn_print_i64(g_recall_ml_writes / 4);
@@ -6538,19 +9348,44 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
     nn_print(" | Time: 0.0s\n");
 
     double loss_accum = 0.0;
+    double ans_accum = 0.0;
     int loss_cnt = 0;
     for (int step = 1; step <= total_steps; step++) {
-        for (int b = 0; b < 4; b++) {
-            int ex = (int)(nn_rand_uniform() * (double)n_train) % n_train;
-            nn_memcpy(batch_buf + (unsigned long long)b * RECALL_SEQ_LEN, curr_data + (unsigned long long)ex * RECALL_SEQ_LEN, RECALL_SEQ_LEN * sizeof(int));
+        if (use_static) {
+            for (int b = 0; b < 4; b++) {
+                int ex = (int)(nn_rand_uniform() * (double)n_train) % n_train;
+                nn_memcpy(batch_buf + (unsigned long long)b * RECALL_SEQ_LEN, curr_data + (unsigned long long)ex * RECALL_SEQ_LEN, RECALL_SEQ_LEN * sizeof(int));
+            }
+        } else {
+            qadav_generate_dynamic_recall_batch_ex((uint32_t*)batch_buf, (uint32_t*)0, 4, RECALL_SEQ_LEN, (uint64_t)seed, (uint64_t)step, 0);
         }
         int hx = 0, hv = 0;
-        double sl = (model_kind == MODEL_KIND_TRANSFORMER_V2)
-            ? compute_transformer_v2_recall_batch(w, batch_buf, 4, 1, &hx, &hv)
-            : compute_qnmf_v2_recall_batch(model_kind, w, batch_buf, 4, 1, &hx, &hv);
+        double sl = is_50m
+            ? ((model_kind == MODEL_KIND_TRANSFORMER_V2)
+                ? compute_transformer_50m_recall_batch(w, batch_buf, 4, 1, &hx, &hv)
+                : compute_qnmf_50m_recall_batch(model_kind, w, batch_buf, 4, 1, &hx, &hv))
+            : ((model_kind == MODEL_KIND_TRANSFORMER_V2)
+                ? compute_transformer_v2_recall_batch(w, batch_buf, 4, 1, &hx, &hv)
+                : compute_qnmf_v2_recall_batch(model_kind, w, batch_buf, 4, 1, &hx, &hv));
+        double step_ans = g_recall_last_ans_loss;
         clip_v2_grads_global_l2(w, 2.0);
-        if (step == 1 || step == 20) {
-            if (model_kind == MODEL_KIND_TRANSFORMER_V2) {
+        if (step == 1 || step == 20 || (g_qnmf_trace_slots && step <= 3)) {
+            if (is_50m) {
+                if (model_kind == MODEL_KIND_TRANSFORMER_V2) {
+                    nn_print("  [GradMax-50M] Step "); nn_print_i64(step);
+                    nn_print(" dEmb="); nn_print_f64(slice_max_abs_f32(w->grads_f32, 3072000), 6);
+                    nn_print(" dPos="); nn_print_f64(slice_max_abs_f32(w->grads_f32 + 3072000, 196608), 6);
+                    nn_print(" dLay="); nn_print_f64(slice_max_abs_f32(w->grads_f32 + 3268608, 46800384), 6);
+                    nn_print("\n");
+                } else {
+                    nn_print("  [GradMax-50M] Step "); nn_print_i64(step);
+                    nn_print(" dEmb="); nn_print_f64(slice_max_abs_f32(w->grads_f32, 3072000), 6);
+                    nn_print(" dWx=");  nn_print_f64(slice_max_abs_f32(w->grads_f32 + 3072000, 147456), 6);
+                    nn_print(" dWq=");  nn_print_f64(slice_max_abs_f32(w->grads_f32 + 3515136, 147456), 6);
+                    nn_print(" dExp="); nn_print_f64(slice_max_abs_f32(w->grads_f32 + 4531216, 45678592), 6);
+                    nn_print("\n");
+                }
+            } else if (model_kind == MODEL_KIND_TRANSFORMER_V2) {
                 nn_print("  [GradMax] Step "); nn_print_i64(step);
                 nn_print(" dEmb="); nn_print_f64(slice_max_abs(w->grads, 2048000), 6);
                 nn_print(" dPos="); nn_print_f64(slice_max_abs(w->grads + 2048000, 131072), 6);
@@ -6569,10 +9404,12 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
         v2_adam_step(w, cur_lr, step);
 
         loss_accum += sl;
+        ans_accum += step_ans;
         loss_cnt++;
         if (step % log_interval == 0 || step == total_steps) {
             double avg_l = loss_accum / (double)loss_cnt;
-            loss_accum = 0.0; loss_cnt = 0;
+            double avg_ans = ans_accum / (double)loss_cnt;
+            loss_accum = 0.0; ans_accum = 0.0; loss_cnt = 0;
             if (log_idx < 256) {
                 log_steps[log_idx] = step;
                 log_losses[log_idx] = avg_l;
@@ -6583,13 +9420,18 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
             nn_print("["); nn_print(m_name); nn_print("] Step "); nn_print_i64(step);
             nn_print("/"); nn_print_i64(total_steps);
             nn_print(" | Loss: "); nn_print_f64(avg_l, 4);
+            nn_print(" | AnsLoss: "); nn_print_f64(avg_ans, 4);
             if (model_kind != MODEL_KIND_TRANSFORMER_V2) {
                 nn_print(" | MwW="); nn_print_i64(g_recall_mw_writes / 4);
                 nn_print(" MlW="); nn_print_i64(g_recall_ml_writes / 4);
             }
             nn_print(" | Time: "); nn_print_f64(elapsed_s, 1); nn_print("s\n");
             if (mctp_cert) {
-                qadav_mctp_record_epoch(mctp_cert, step, w->params, (long long)param_count * 8, curr_data, (long long)n_train * seq_len * 4, avg_l);
+                void* mdata = curr_data ? (void*)curr_data : (void*)g_dyn_recall_corpus;
+                long long mbytes = curr_data ? ((long long)n_train * seq_len * 4LL) : ((long long)((g_dyn_recall_corpus_cnt * 4) / 5) * 4LL);
+                void* pbuf = w->use_compact_50m ? (void*)w->params_f32 : (void*)w->params;
+                long long pbytes = w->use_compact_50m ? ((long long)param_count * 4LL) : ((long long)param_count * 8LL);
+                qadav_mctp_record_epoch(mctp_cert, step, pbuf, pbytes, mdata, mbytes, avg_l);
             }
         }
     }
@@ -6599,8 +9441,12 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
     double final_loss = log_losses[log_idx - 1];
 
     char csv_path[96], bin_path[96];
-    const char* csv_pfx = (model_kind == MODEL_KIND_TRANSFORMER_V2) ? "TMP\\transformer_v2_recall_loss_seed" : "TMP\\qnmf_v2_recall_loss_seed";
-    const char* bin_pfx = (model_kind == MODEL_KIND_TRANSFORMER_V2) ? "TMP\\transformer_v2_recall_seed" : "TMP\\qnmf_v2_recall_seed";
+    const char* csv_pfx = is_50m
+        ? ((model_kind == MODEL_KIND_TRANSFORMER_V2) ? "TMP\\transformer_50m_recall_loss_seed" : "TMP\\qnmf_50m_recall_loss_seed")
+        : ((model_kind == MODEL_KIND_TRANSFORMER_V2) ? "TMP\\transformer_v2_recall_loss_seed" : "TMP\\qnmf_v2_recall_loss_seed");
+    const char* bin_pfx = is_50m
+        ? ((model_kind == MODEL_KIND_TRANSFORMER_V2) ? "TMP\\transformer_50m_recall_seed" : "TMP\\qnmf_50m_recall_seed")
+        : ((model_kind == MODEL_KIND_TRANSFORMER_V2) ? "TMP\\transformer_v2_recall_seed" : "TMP\\qnmf_v2_recall_seed");
     nn_build_recall_csv_path(csv_path, 96, csv_pfx, seed);
     nn_build_recall_bin_path(bin_path, 96, bin_pfx, seed);
     save_loss_csv(csv_path, log_steps, log_losses, log_idx);
@@ -6614,35 +9460,43 @@ static int qadav_run_v2_training_recall(const char* cmd, void* mctp_cert) {
     nn_large_free(batch_buf, 4ULL * (unsigned long long)RECALL_SEQ_LEN * sizeof(int));
     free_v2_weights(w);
     nn_scratch_release();
-    nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
+    if (curr_data) nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
+    qadav_free_dynamic_corpus();
+    g_qnmf_trace_slots = 0;
     return 0;
 }
 
 static void eval_single_recall_ckpt(const char* ckpt_path, int expected_kind, const int* eval_seqs, int n_eval,
-                                    double* out_exact_acc, double* out_val50_acc, double* out_loss, double* out_train_s)
+                                    double* out_exact_acc, double* out_val50_acc, double* out_loss, double* out_ans_loss, double* out_train_s)
 {
     int kind = 0;
     double l_tr = 0.0, t_tr = 0.0;
-    V2Weights* w = load_v2_weights_bin(ckpt_path, &kind, &l_tr, &t_tr);
+    V2Weights* w = load_v2_weights_bin_mode(ckpt_path, &kind, &l_tr, &t_tr, 1);
     if (!w) {
         if (out_exact_acc) *out_exact_acc = -1.0;
         return;
     }
     int tot_exact = 0, tot_val50 = 0;
-    double tot_loss = 0.0;
+    double tot_loss = 0.0, tot_ans = 0.0;
     for (int i = 0; i < n_eval; i += 4) {
         int b = (i + 4 <= n_eval) ? 4 : (n_eval - i);
         int hx = 0, hv = 0;
-        double bl = (expected_kind == MODEL_KIND_TRANSFORMER_V2)
-            ? compute_transformer_v2_recall_batch(w, eval_seqs + (unsigned long long)i * RECALL_SEQ_LEN, b, 0, &hx, &hv)
-            : compute_qnmf_v2_recall_batch(expected_kind, w, eval_seqs + (unsigned long long)i * RECALL_SEQ_LEN, b, 0, &hx, &hv);
+        double bl = w->use_compact_50m
+            ? ((expected_kind == MODEL_KIND_TRANSFORMER_V2)
+                ? compute_transformer_50m_recall_batch(w, eval_seqs + (unsigned long long)i * RECALL_SEQ_LEN, b, 0, &hx, &hv)
+                : compute_qnmf_50m_recall_batch(expected_kind, w, eval_seqs + (unsigned long long)i * RECALL_SEQ_LEN, b, 0, &hx, &hv))
+            : ((expected_kind == MODEL_KIND_TRANSFORMER_V2)
+                ? compute_transformer_v2_recall_batch(w, eval_seqs + (unsigned long long)i * RECALL_SEQ_LEN, b, 0, &hx, &hv)
+                : compute_qnmf_v2_recall_batch(expected_kind, w, eval_seqs + (unsigned long long)i * RECALL_SEQ_LEN, b, 0, &hx, &hv));
         tot_exact += hx;
         tot_val50 += hv;
         tot_loss += bl * (double)b;
+        tot_ans += g_recall_last_ans_loss * (double)b;
     }
     if (out_exact_acc) *out_exact_acc = ((double)tot_exact / (double)n_eval) * 100.0;
     if (out_val50_acc) *out_val50_acc = ((double)tot_val50 / (double)n_eval) * 100.0;
     if (out_loss)      *out_loss      = tot_loss / (double)n_eval;
+    if (out_ans_loss)  *out_ans_loss  = tot_ans / (double)n_eval;
     if (out_train_s)   *out_train_s   = t_tr;
     free_v2_weights(w);
 }
@@ -6653,66 +9507,97 @@ static int qadav_run_v2_evaluation_recall(const char* cmd) {
     nn_parse_str_flag(cmd, "--bpe", "TMP\\bpe_v8k.bin", bpe_path, 256);
     nn_parse_str_flag(cmd, "--tokens", "TMP\\shakespeare_subset.tokens", toks_path, 256);
 
-    int n_train = 0, n_eval = 0, seq_len = 0;
-    int* curr_data = qadav_load_or_generate_curriculum(curr_path, toks_path, bpe_path, 0, 0, &n_train, &n_eval, &seq_len);
-    if (!curr_data) return -1;
-    const int* eval_seqs = curr_data + (unsigned long long)n_train * (unsigned long long)seq_len;
+    int is_50m = (nn_strstr(cmd, "--scale 50m") || nn_strstr(cmd, "--50m")) ? 1 : 0;
+    int use_static = nn_strstr(cmd, "--static") ? 1 : 0;
+    int n_train = 0, n_eval = 200, seq_len = RECALL_SEQ_LEN;
+    int* curr_data = (int*)0;
+    const int* eval_seqs = (const int*)0;
+    int dyn_seed = nn_parse_int_flag(cmd, "--seed", 999);
+    if (dyn_seed <= 0) dyn_seed = 999;
+
+    if (use_static) {
+        curr_data = qadav_load_or_generate_curriculum(curr_path, toks_path, bpe_path, 0, 0, &n_train, &n_eval, &seq_len);
+        if (!curr_data) return -1;
+        eval_seqs = curr_data + (unsigned long long)n_train * (unsigned long long)seq_len;
+    } else {
+        int cp = 0;
+        while (toks_path[cp] && cp < 254) { g_dyn_recall_corpus_path[cp] = toks_path[cp]; cp++; }
+        g_dyn_recall_corpus_path[cp] = 0;
+        if (!qadav_ensure_dynamic_corpus(toks_path)) {
+            nn_print("[ERROR] Failed to load dynamic corpus tokens: "); nn_print(toks_path); nn_print("\n");
+            return -1;
+        }
+        curr_data = (int*)nn_large_alloc((unsigned long long)n_eval * (unsigned long long)RECALL_SEQ_LEN * sizeof(int));
+        if (!curr_data) { qadav_free_dynamic_corpus(); return -2; }
+        for (int bi = 0; bi < n_eval / 4; bi++) {
+            qadav_generate_dynamic_recall_batch_ex(
+                (uint32_t*)(curr_data + (unsigned long long)(bi * 4) * RECALL_SEQ_LEN),
+                (uint32_t*)0, 4, RECALL_SEQ_LEN, (uint64_t)dyn_seed, (uint64_t)bi, 1);
+        }
+        eval_seqs = curr_data;
+    }
 
     int seeds[5] = { 42, 123, 999, 777, 1111 };
-    int only_seed = nn_parse_int_flag(cmd, "--seed", -1);
+    int n_seeds = is_50m ? 3 : 5;
+    int only_ckpt_seed = use_static ? nn_parse_int_flag(cmd, "--seed", -1) : nn_parse_int_flag(cmd, "--ckpt-seed", -1);
     int check_qnmf = (!nn_strstr(cmd, "--model transformer")) ? 1 : 0;
     int check_tf   = (!nn_strstr(cmd, "--model qnmf")) ? 1 : 0;
 
-    nn_print("\n========================================================================================\n");
-    nn_print("        M10.3 HELD-OUT ASSOCIATIVE RECALL EVALUATION (@500 TOKENS, V=8000 BPE)          \n");
-    nn_print("========================================================================================\n");
-    nn_print("Curriculum: "); nn_print(curr_path);
-    nn_print(" | Eval Held-Out Unseen: "); nn_print_i64(n_eval); nn_print(" examples\n");
-    nn_print("Model                 | Seed | Exact V=8K Acc | Top50-Val Acc | Eval Loss | Train Time\n");
-    nn_print("----------------------+------+----------------+---------------+-----------+-----------\n");
+    nn_print("\n====================================================================================================\n");
+    nn_print(is_50m ? "           M10.4 50M HELD-OUT ASSOCIATIVE RECALL EVALUATION (@500 TOKENS, V=8000 BPE)             \n"
+                    : "           M10.4 HELD-OUT ASSOCIATIVE RECALL EVALUATION (@500 TOKENS, V=8000 BPE)                 \n");
+    nn_print("====================================================================================================\n");
+    nn_print("Mode: "); nn_print(use_static ? "STATIC (" : "DYNAMIC (seed=");
+    if (use_static) { nn_print(curr_path); nn_print(")"); }
+    else { nn_print_i64(dyn_seed); nn_print(", held-out 20% split)"); }
+    nn_print(" | Eval Unseen: "); nn_print_i64(n_eval); nn_print(" examples\n");
+    nn_print("Model                 | Seed | Exact V=8K Acc | Top50-Val Acc | EvalLoss12 | AnsLoss511 | Train Time\n");
+    nn_print("----------------------+------+----------------+---------------+------------+------------+-----------\n");
 
-    double q_acc[5], q_v50[5], q_loss[5], q_t[5]; int q_n = 0;
-    double tf_acc[5], tf_v50[5], tf_loss[5], tf_t[5]; int tf_n = 0;
+    double q_acc[5], q_v50[5], q_loss[5], q_ans[5], q_t[5]; int q_n = 0;
+    double tf_acc[5], tf_v50[5], tf_loss[5], tf_ans[5], tf_t[5]; int tf_n = 0;
 
-    for (int si = 0; si < 5; si++) {
+    for (int si = 0; si < n_seeds; si++) {
         int sd = seeds[si];
-        if (only_seed > 0 && sd != only_seed) continue;
+        if (only_ckpt_seed > 0 && sd != only_ckpt_seed) continue;
         char bp[96];
         if (check_qnmf) {
-            nn_build_recall_bin_path(bp, 96, "TMP\\qnmf_v2_recall_seed", sd);
-            double acc = -1.0, v50 = 0.0, el = 0.0, tt = 0.0;
-            eval_single_recall_ckpt(bp, MODEL_KIND_QNMF_V2, eval_seqs, n_eval, &acc, &v50, &el, &tt);
+            nn_build_recall_bin_path(bp, 96, is_50m ? "TMP\\qnmf_50m_recall_seed" : "TMP\\qnmf_v2_recall_seed", sd);
+            double acc = -1.0, v50 = 0.0, el = 0.0, al = 0.0, tt = 0.0;
+            eval_single_recall_ckpt(bp, MODEL_KIND_QNMF_V2, eval_seqs, n_eval, &acc, &v50, &el, &al, &tt);
             if (acc >= 0.0) {
-                q_acc[q_n] = acc; q_v50[q_n] = v50; q_loss[q_n] = el; q_t[q_n] = tt; q_n++;
-                nn_print("QNMF v2 (19.55M)      | "); nn_print_i64(sd);
+                q_acc[q_n] = acc; q_v50[q_n] = v50; q_loss[q_n] = el; q_ans[q_n] = al; q_t[q_n] = tt; q_n++;
+                nn_print(is_50m ? "QNMF 50M (50.22M)     | " : "QNMF v2 (19.55M)      | "); nn_print_i64(sd);
                 if (sd < 100) nn_print("   | "); else if (sd < 1000) nn_print("  | "); else nn_print(" | ");
                 nn_print_f64(acc, 2); nn_print("%        | ");
                 nn_print_f64(v50, 2); nn_print("%       | ");
-                nn_print_f64(el, 4); nn_print("    | ");
+                nn_print_f64(el, 4); nn_print("     | ");
+                nn_print_f64(al, 4); nn_print("     | ");
                 nn_print_f64(tt, 1); nn_print("s\n");
             }
         }
         if (check_tf) {
-            nn_build_recall_bin_path(bp, 96, "TMP\\transformer_v2_recall_seed", sd);
-            double acc = -1.0, v50 = 0.0, el = 0.0, tt = 0.0;
-            eval_single_recall_ckpt(bp, MODEL_KIND_TRANSFORMER_V2, eval_seqs, n_eval, &acc, &v50, &el, &tt);
+            nn_build_recall_bin_path(bp, 96, is_50m ? "TMP\\transformer_50m_recall_seed" : "TMP\\transformer_v2_recall_seed", sd);
+            double acc = -1.0, v50 = 0.0, el = 0.0, al = 0.0, tt = 0.0;
+            eval_single_recall_ckpt(bp, MODEL_KIND_TRANSFORMER_V2, eval_seqs, n_eval, &acc, &v50, &el, &al, &tt);
             if (acc >= 0.0) {
-                tf_acc[tf_n] = acc; tf_v50[tf_n] = v50; tf_loss[tf_n] = el; tf_t[tf_n] = tt; tf_n++;
-                nn_print("Transformer v2(19.66M)| "); nn_print_i64(sd);
+                tf_acc[tf_n] = acc; tf_v50[tf_n] = v50; tf_loss[tf_n] = el; tf_ans[tf_n] = al; tf_t[tf_n] = tt; tf_n++;
+                nn_print(is_50m ? "Trans 50M (50.08M)    | " : "Transformer v2(19.66M)| "); nn_print_i64(sd);
                 if (sd < 100) nn_print("   | "); else if (sd < 1000) nn_print("  | "); else nn_print(" | ");
                 nn_print_f64(acc, 2); nn_print("%        | ");
                 nn_print_f64(v50, 2); nn_print("%       | ");
-                nn_print_f64(el, 4); nn_print("    | ");
+                nn_print_f64(el, 4); nn_print("     | ");
+                nn_print_f64(al, 4); nn_print("     | ");
                 nn_print_f64(tt, 1); nn_print("s\n");
             }
         }
     }
 
-    nn_print("----------------------+------+----------------+---------------+-----------+-----------\n");
+    nn_print("----------------------+------+----------------+---------------+------------+------------+-----------\n");
     if (q_n > 0) {
-        double m = 0, mv = 0, ml = 0, mt = 0;
-        for (int i = 0; i < q_n; i++) { m += q_acc[i]; mv += q_v50[i]; ml += q_loss[i]; mt += q_t[i]; }
-        m /= q_n; mv /= q_n; ml /= q_n; mt /= q_n;
+        double m = 0, mv = 0, ml = 0, ma = 0, mt = 0;
+        for (int i = 0; i < q_n; i++) { m += q_acc[i]; mv += q_v50[i]; ml += q_loss[i]; ma += q_ans[i]; mt += q_t[i]; }
+        m /= q_n; mv /= q_n; ml /= q_n; ma /= q_n; mt /= q_n;
         double var = 0, vv = 0;
         for (int i = 0; i < q_n; i++) { var += (q_acc[i] - m) * (q_acc[i] - m); vv += (q_v50[i] - mv) * (q_v50[i] - mv); }
         double sd_ex = (q_n > 1) ? qadav_sqrt(var / (double)(q_n - 1)) : 0.0;
@@ -6720,12 +9605,14 @@ static int qadav_run_v2_evaluation_recall(const char* cmd) {
         nn_print("SUMMARY QNMF v2 (N="); nn_print_i64(q_n); nn_print("): Exact V=8K = ");
         nn_print_f64(m, 2); nn_print("% +- "); nn_print_f64(sd_ex, 2);
         nn_print("% | Top50-Val = "); nn_print_f64(mv, 2); nn_print("% +- "); nn_print_f64(sd_v, 2);
-        nn_print("% | Mean Loss = "); nn_print_f64(ml, 4); nn_print(" | Mean Time = "); nn_print_f64(mt, 1); nn_print("s\n");
+        nn_print("% | Mean Loss12 = "); nn_print_f64(ml, 4);
+        nn_print(" | Mean AnsLoss511 = "); nn_print_f64(ma, 4);
+        nn_print(" | Mean Time = "); nn_print_f64(mt, 1); nn_print("s\n");
     }
     if (tf_n > 0) {
-        double m = 0, mv = 0, ml = 0, mt = 0;
-        for (int i = 0; i < tf_n; i++) { m += tf_acc[i]; mv += tf_v50[i]; ml += tf_loss[i]; mt += tf_t[i]; }
-        m /= tf_n; mv /= tf_n; ml /= tf_n; mt /= tf_n;
+        double m = 0, mv = 0, ml = 0, ma = 0, mt = 0;
+        for (int i = 0; i < tf_n; i++) { m += tf_acc[i]; mv += tf_v50[i]; ml += tf_loss[i]; ma += tf_ans[i]; mt += tf_t[i]; }
+        m /= tf_n; mv /= tf_n; ml /= tf_n; ma /= tf_n; mt /= tf_n;
         double var = 0, vv = 0;
         for (int i = 0; i < tf_n; i++) { var += (tf_acc[i] - m) * (tf_acc[i] - m); vv += (tf_v50[i] - mv) * (tf_v50[i] - mv); }
         double sd_ex = (tf_n > 1) ? qadav_sqrt(var / (double)(tf_n - 1)) : 0.0;
@@ -6733,12 +9620,16 @@ static int qadav_run_v2_evaluation_recall(const char* cmd) {
         nn_print("SUMMARY Transformer(N="); nn_print_i64(tf_n); nn_print("): Exact V=8K = ");
         nn_print_f64(m, 2); nn_print("% +- "); nn_print_f64(sd_ex, 2);
         nn_print("% | Top50-Val = "); nn_print_f64(mv, 2); nn_print("% +- "); nn_print_f64(sd_v, 2);
-        nn_print("% | Mean Loss = "); nn_print_f64(ml, 4); nn_print(" | Mean Time = "); nn_print_f64(mt, 1); nn_print("s\n");
+        nn_print("% | Mean Loss12 = "); nn_print_f64(ml, 4);
+        nn_print(" | Mean AnsLoss511 = "); nn_print_f64(ma, 4);
+        nn_print(" | Mean Time = "); nn_print_f64(mt, 1); nn_print("s\n");
     }
-    nn_print("========================================================================================\n\n");
+    nn_print("====================================================================================================\n\n");
 
     nn_scratch_release();
-    nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
+    if (use_static) nn_large_free(curr_data, (unsigned long long)(n_train + n_eval) * (unsigned long long)seq_len * sizeof(int));
+    else nn_large_free(curr_data, (unsigned long long)n_eval * (unsigned long long)RECALL_SEQ_LEN * sizeof(int));
+    qadav_free_dynamic_corpus();
     return 0;
 }
 
