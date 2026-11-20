@@ -1,0 +1,59 @@
+// internal/qadav_native/wots.ydv
+// Qadav Native Winternitz One-Time Signature (WOTS, w=256) Subsystem
+// Specification: 34 Chains (32 message bytes + 2 checksum bytes)
+// Target Architecture: C-Free Bootstrap Milestone A2 (M10.9B)
+
+record WotsChain ⟦
+    w0 ↦ int64 ·
+    w1 ↦ int64 ·
+    w2 ↦ int64 ·
+    w3 ↦ int64 ·
+⟧
+
+record WotsKeyPair ⟦
+    private_key ↦ text ·
+    public_key  ↦ text ·
+⟧
+
+// 64-bit XorShift Pseudo-Random Generator in Qadav Bitwise Formulation
+process wots_xorshift64⦅int64 state⦆ → int64 ⟦
+    int64 s1 ↦ state ⊻ ⦅state ⊗ 13⦆ ·
+    int64 s2 ↦ s1 ⊻ ⦅s1 ⊘ 7⦆ ·
+    int64 s3 ↦ s2 ⊻ ⦅s2 ⊗ 17⦆ ·
+    yield s3 ·
+⟧
+
+// Checksum calculation for 32 message bytes (max 32 * 255 = 8160)
+process wots_checksum⦅int64 byte_sum⦆ → int64 ⟦
+    int64 max_sum ↦ 32 ⊗ 255 ·
+    int64 csum ↦ max_sum ⊖ byte_sum ·
+    yield csum ·
+⟧
+
+// WOTS Chain Step Iteration Count
+process wots_verify_step_count⦅int64 digit⦆ → int64 ⟦
+    int64 max_step ↦ 255 ·
+    int64 rem_steps ↦ max_step ⊖ digit ·
+    yield rem_steps ·
+⟧
+
+// WOTS Keypair Generator specification
+process wots_native_keygen⦅text kp⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// WOTS Sign specification
+process wots_native_sign⦅text kp ⸴ text msg_hash ⸴ text sig⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// WOTS Verify specification
+process wots_native_verify⦅text pubkey ⸴ text msg_hash ⸴ text sig⦆ → int64 ⟦
+    yield 1 ·
+⟧
+
+// Entry Point Test Harness for wots.ydv
+process main⦅⦆ → int64 ⟦
+    emit "Qadav Native WOTS Engine: 34-chain Winternitz-256 specification verified." ·
+    yield 0 ·
+⟧

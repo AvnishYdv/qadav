@@ -210,6 +210,10 @@ process ast_variant_decl⦅text name ⸴ int64 count⦆ → CoreAst ⟦
 
 process parse_primary⦅int64 idx⦆ → CoreAst ⟦
     int64 kcode ↦ token_kind_code⦅idx⦆ ·
+    when kcode ≡ 40 ∨ token_literal⦅idx⦆ ≡ "¬" ∨ token_literal⦅idx⦆ ≡ "not" ⟦
+        CoreAst inner_p ↦ parse_primary⦅idx ⊕ 1⦆ ·
+        yield ast_binop⦅"⊻" ⸴ inner_p ⸴ ast_int_lit⦅0 ⊖ 1⦆⦆ ·
+    ⟧
     when kcode ≡ 3 ⟦
         text s ↦ token_literal⦅idx⦆ ·
         yield ast_str_lit⦅s⦆ ·
@@ -248,6 +252,18 @@ process get_tok_precedence⦅int64 kcode ⸴ text op⦆ → int64 ⟦
 
 process parse_expression⦅int64 idx⦆ → CoreAst ⟦
     int64 kcode ↦ token_kind_code⦅idx⦆ ·
+    when kcode ≡ 40 ∨ token_literal⦅idx⦆ ≡ "¬" ∨ token_literal⦅idx⦆ ≡ "not" ⟦
+        CoreAst inner_not ↦ parse_primary⦅idx ⊕ 1⦆ ·
+        CoreAst not_expr ↦ ast_binop⦅"⊻" ⸴ inner_not ⸴ ast_int_lit⦅0 ⊖ 1⦆⦆ ·
+        int64 next_tok ↦ idx ⊕ 2 ·
+        int64 next_code ↦ token_kind_code⦅next_tok⦆ ·
+        when next_code ≡ 38 ∨ next_code ≡ 39 ∨ next_code ≡ 13 ∨ next_code ≡ 14 ∨ next_code ≡ 15 ∨ next_code ≡ 16 ∨ next_code ≡ 17 ∨ next_code ≡ 18 ∨ next_code ≡ 19 ⟦
+            text next_op ↦ token_literal⦅next_tok⦆ ·
+            CoreAst right_expr ↦ parse_expression⦅next_tok ⊕ 1⦆ ·
+            yield parse_binary_op⦅next_op ⸴ not_expr ⸴ right_expr⦆ ·
+        ⟧
+        yield not_expr ·
+    ⟧
     when kcode ≡ 27 ∨ token_literal⦅idx⦆ ≡ "∑" ⟦
         int64 r_arg ↦ idx ⊕ 1 ·
         when token_kind_code⦅r_arg⦆ ≡ 22 ⟦
