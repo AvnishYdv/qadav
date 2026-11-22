@@ -1,6 +1,6 @@
 // internal/qadav_native/dataset.ydv
 // Qadav Native Dataset Pipeline (QDS Format, M2.7)
-// Provides header validation, min/max normalization, Fisher-Yates shuffle, and batch arithmetic.
+// Provides header validation, min/max normalization, Fisher-Yates shuffle, and full QDS loading.
 
 declare i64 @dataset_read_f64_as_i64(i64, i64)
 declare void @dataset_write_f64_as_i64(i64, i64, i64)
@@ -111,4 +111,89 @@ process dataset_shuffle_loop⦅int64 arr_ptr ⸴ int64 n ⸴ int64 seed⦆ → i
         i ← i ⊖ one ·
     ⟧
     yield n ·
+⟧
+
+process dataset_read_header⦅int64 fd ⸴ int64 header_out⦆ → int64 ⟦
+    int64 r ↦ qadav_file_read⦅fd ⸴ header_out ⸴ 32⦆ ·
+    when r ≺ 32 ⟦
+        yield 0 ·
+    ⟧
+    int64 tb ↦ dataset_read_f64_as_i64⦅header_out ⸴ 1⦆ ·
+    int64 ok ↦ dataset_header_validate⦅81 ⸴ 68 ⸴ 83 ⸴ 49 ⸴ tb ⸴ 1⦆ ·
+    yield ok ·
+⟧
+
+process dataset_read_tensor⦅int64 fd ⸴ int64 name_len ⸴ int64 rank ⸴ int64 dims ⸴ int64 elem_kind ⸴ int64 data_len⦆ → int64 ⟦
+    int64 ek ↦ 2 ·
+    when elem_kind ≡ 1 ⟦
+        ek ← 1 ·
+    ⟧
+    int64 t ↦ qadav_tensor_create⦅ek ⸴ rank ⸴ dims⦆ ·
+    when t ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 t_data ↦ dataset_read_f64_as_i64⦅t ⸴ 0⦆ ·
+    qadav_file_read⦅fd ⸴ t_data ⸴ data_len⦆ ·
+    yield t ·
+⟧
+
+process dataset_alloc_and_load⦅int64 fd ⸴ int64 tensor_out⦆ → int64 ⟦
+    int64 nl_buf ↦ qadav_alloc⦅8⦆ ·
+    dataset_write_f64_as_i64⦅nl_buf ⸴ 0 ⸴ 0⦆ ·
+    qadav_file_read⦅fd ⸴ nl_buf ⸴ 4⦆ ·
+    int64 name_len ↦ dataset_read_f64_as_i64⦅nl_buf ⸴ 0⦆ ·
+    int64 name_alloc ↦ name_len ⊕ 1 ·
+    int64 name_buf ↦ qadav_alloc⦅name_alloc⦆ ·
+    qadav_file_read⦅fd ⸴ name_buf ⸴ name_len⦆ ·
+    int64 rk_buf ↦ qadav_alloc⦅8⦆ ·
+    dataset_write_f64_as_i64⦅rk_buf ⸴ 0 ⸴ 0⦆ ·
+    qadav_file_read⦅fd ⸴ rk_buf ⸴ 4⦆ ·
+    int64 rank ↦ dataset_read_f64_as_i64⦅rk_buf ⸴ 0⦆ ·
+    int64 dims_buf ↦ qadav_alloc⦅16⦆ ·
+    dataset_write_f64_as_i64⦅dims_buf ⸴ 0 ⸴ 0⦆ ·
+    dataset_write_f64_as_i64⦅dims_buf ⸴ 1 ⸴ 0⦆ ·
+    qadav_file_read⦅fd ⸴ dims_buf ⸴ 8⦆ ·
+    int64 ek_buf ↦ qadav_alloc⦅8⦆ ·
+    dataset_write_f64_as_i64⦅ek_buf ⸴ 0 ⸴ 0⦆ ·
+    qadav_file_read⦅fd ⸴ ek_buf ⸴ 4⦆ ·
+    int64 elem_kind ↦ dataset_read_f64_as_i64⦅ek_buf ⸴ 0⦆ ·
+    int64 dl_buf ↦ qadav_alloc⦅8⦆ ·
+    dataset_write_f64_as_i64⦅dl_buf ⸴ 0 ⸴ 0⦆ ·
+    qadav_file_read⦅fd ⸴ dl_buf ⸴ 8⦆ ·
+    int64 data_len ↦ dataset_read_f64_as_i64⦅dl_buf ⸴ 0⦆ ·
+    int64 t ↦ dataset_read_tensor⦅fd ⸴ name_len ⸴ rank ⸴ dims_buf ⸴ elem_kind ⸴ data_len⦆ ·
+    when t ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 d ↦ qadav_alloc⦅32⦆ ·
+    dataset_write_f64_as_i64⦅d ⸴ 0 ⸴ 1⦆ ·
+    int64 names_arr ↦ qadav_alloc⦅8⦆ ·
+    dataset_write_f64_as_i64⦅names_arr ⸴ 0 ⸴ name_buf⦆ ·
+    dataset_write_f64_as_i64⦅d ⸴ 1 ⸴ names_arr⦆ ·
+    int64 tensors_arr ↦ qadav_alloc⦅8⦆ ·
+    dataset_write_f64_as_i64⦅tensors_arr ⸴ 0 ⸴ t⦆ ·
+    dataset_write_f64_as_i64⦅d ⸴ 2 ⸴ tensors_arr⦆ ·
+    int64 raw_dims ↦ dataset_read_f64_as_i64⦅dims_buf ⸴ 0⦆ ·
+    int64 two_32 ↦ 4294967296 ·
+    int64 q ↦ raw_dims ⊘ two_32 ·
+    int64 q_prod ↦ q ⊗ two_32 ·
+    int64 n_samples ↦ raw_dims ⊖ q_prod ·
+    dataset_write_f64_as_i64⦅d ⸴ 3 ⸴ n_samples⦆ ·
+    yield d ·
+⟧
+
+process dataset_load_full⦅int64 path⦆ → int64 ⟦
+    int64 fd ↦ qadav_file_open_read⦅path⦆ ·
+    when fd ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 hbuf ↦ qadav_alloc⦅64⦆ ·
+    int64 ok ↦ dataset_read_header⦅fd ⸴ hbuf⦆ ·
+    when ok ≡ 0 ⟦
+        qadav_file_close⦅fd⦆ ·
+        yield 0 ·
+    ⟧
+    int64 ds ↦ dataset_alloc_and_load⦅fd ⸴ hbuf⦆ ·
+    qadav_file_close⦅fd⦆ ·
+    yield ds ·
 ⟧
