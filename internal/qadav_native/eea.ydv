@@ -1,0 +1,70 @@
+// internal/qadav_native/eea.ydv
+// Qadav Native Evolution Envelope Attestation (EEA, Invention #21, M7.4)
+// Provides 8-iteration popcount loop, Hamming distance, decay formula loop, and envelope preimage metrics.
+
+process eea_popcount_byte⦅int64 b⦆ → int64 ⟦
+    int64 count ↦ 0 ·
+    int64 val ↦ b ·
+    int64 i ↦ 0 ·
+    int64 eight ↦ 8 ·
+    int64 two ↦ 2 ·
+    int64 one ↦ 1 ·
+    cycle i ≺ eight ⟦
+        int64 half ↦ val ⊘ two ·
+        int64 doubled ↦ half ⊗ two ·
+        int64 bit ↦ val ⊖ doubled ·
+        when bit ≡ one ⟦
+            count ← count ⊕ one ·
+        ⟧
+        val ← half ·
+        i ← i ⊕ one ·
+    ⟧
+    yield count ·
+⟧
+
+process eea_hamming_distance⦅int64 byte_diff⦆ → int64 ⟦
+    int64 flips ↦ eea_popcount_byte⦅byte_diff⦆ ·
+    yield flips ·
+⟧
+
+process eea_bound_check⦅int64 flips ⸴ int64 max_flips ⸴ int64 new_syms ⸴ int64 max_new_syms⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 neg_two ↦ zero ⊖ 2 ·
+    when flips ≻ max_flips ⟦
+        yield neg_two ·
+    ⟧
+    when new_syms ≻ max_new_syms ⟦
+        yield neg_two ·
+    ⟧
+    yield 0 ·
+⟧
+
+process eea_policy_decay⦅int64 rate_scaled ⸴ int64 iteration⦆ → int64 ⟦
+    int64 cur_rate ↦ rate_scaled ·
+    int64 i ↦ 0 ·
+    int64 decay_mult ↦ 95 ·
+    int64 decay_div ↦ 100 ·
+    int64 one ↦ 1 ·
+    cycle i ≺ iteration ⟦
+        int64 num ↦ cur_rate ⊗ decay_mult ·
+        int64 next_rate ↦ num ⊘ decay_div ·
+        cur_rate ← next_rate ·
+        i ← i ⊕ one ·
+    ⟧
+    yield cur_rate ·
+⟧
+
+process eea_preimage_len⦅⦆ → int64 ⟦
+    yield 187 ·
+⟧
+
+process eea_verify_check⦅int64 bounds_ok ⸴ int64 hash_match⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when bounds_ok ≡ zero ⟦
+        yield 0 ·
+    ⟧
+    when hash_match ≡ zero ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧

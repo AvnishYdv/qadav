@@ -1,0 +1,82 @@
+// internal/qadav_native/qhal.ydv
+// Qadav Native Quantum Hardware Abstraction Layer (QHAL, M7.1)
+// Provides mathematical circuit validation, QASM header dimensions, and preimage byte calculations.
+
+process qhal_qasm_header_len⦅⦆ → int64 ⟦
+    yield 37 ·
+⟧
+
+process qhal_backend_validate⦅int64 backend_kind⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 three ↦ 3 ·
+    when backend_kind ≺ zero ⟦
+        yield 0 ·
+    ⟧
+    when backend_kind ≻ three ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+process qhal_qubit_bound⦅int64 n_qubits⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 max_qubits ↦ 20 ·
+    when n_qubits ≺ one ⟦
+        yield one ·
+    ⟧
+    when n_qubits ≻ max_qubits ⟦
+        yield max_qubits ·
+    ⟧
+    yield n_qubits ·
+⟧
+
+process qhal_op_validate⦅int64 kind ⸴ int64 q1 ⸴ int64 q2 ⸴ int64 n_qubits⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 cnot_kind ↦ 4 ·
+    int64 neg_three ↦ zero ⊖ 3 ·
+    int64 neg_four ↦ zero ⊖ 4 ·
+    when q1 ≻ n_qubits ⟦
+        yield neg_three ·
+    ⟧
+    when q1 ≡ n_qubits ⟦
+        yield neg_three ·
+    ⟧
+    when kind ≡ cnot_kind ⟦
+        when q2 ≻ n_qubits ⟦
+            yield neg_four ·
+        ⟧
+        when q2 ≡ n_qubits ⟦
+            yield neg_four ·
+        ⟧
+    ⟧
+    yield 0 ·
+⟧
+
+process qhal_circuit_preimage_len⦅int64 n_ops⦆ → int64 ⟦
+    int64 hdr_len ↦ 12 ·
+    int64 op_sz ↦ 9 ·
+    int64 ops_len ↦ n_ops ⊗ op_sz ·
+    yield hdr_len ⊕ ops_len ·
+⟧
+
+process qhal_gate_name_code⦅int64 kind⦆ → int64 ⟦
+    when kind ≡ 0 ⟦
+        yield 104 ·
+    ⟧
+    when kind ≡ 1 ⟦
+        yield 120 ·
+    ⟧
+    when kind ≡ 2 ⟦
+        yield 121 ·
+    ⟧
+    when kind ≡ 3 ⟦
+        yield 122 ·
+    ⟧
+    when kind ≡ 4 ⟦
+        yield 99 ·
+    ⟧
+    when kind ≡ 5 ⟦
+        yield 109 ·
+    ⟧
+    yield 0 ·
+⟧

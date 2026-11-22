@@ -1,0 +1,58 @@
+// internal/qadav_native/sea.ydv
+// Qadav Native Self-Evolution Attestation (SEA, Invention #20, M7.2)
+// Provides mathematical preimage dimensions, lineage accumulation sizes, and monotonic validation logic.
+
+process sea_preimage_len⦅⦆ → int64 ⟦
+    yield 144 ·
+⟧
+
+process sea_lineage_buf_len⦅⦆ → int64 ⟦
+    yield 64 ·
+⟧
+
+process sea_reason_hash_validate⦅int64 is_from_zero ⸴ int64 is_to_zero ⸴ int64 is_reason_zero⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    when is_from_zero ≡ one ⟦
+        yield 0 ·
+    ⟧
+    when is_to_zero ≡ one ⟦
+        yield 0 ·
+    ⟧
+    when is_reason_zero ≡ one ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+process sea_step_validate⦅int64 step_index ⸴ int64 prev_step_index⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 expected ↦ prev_step_index ⊕ one ·
+    when step_index ≡ expected ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process sea_timestamp_monotonic⦅int64 prev_ts ⸴ int64 new_ts⦆ → int64 ⟦
+    when new_ts ≻ prev_ts ⟦
+        yield 1 ·
+    ⟧
+    when new_ts ≡ prev_ts ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process sea_proposal_check⦅int64 step_ok ⸴ int64 link_ok ⸴ int64 hash_ok⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when step_ok ≡ zero ⟦
+        yield 0 ·
+    ⟧
+    when link_ok ≡ zero ⟦
+        yield 0 ·
+    ⟧
+    when hash_ok ≡ zero ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
