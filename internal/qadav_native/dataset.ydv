@@ -1,0 +1,114 @@
+// internal/qadav_native/dataset.ydv
+// Qadav Native Dataset Pipeline (QDS Format, M2.7)
+// Provides header validation, min/max normalization, Fisher-Yates shuffle, and batch arithmetic.
+
+declare i64 @dataset_read_f64_as_i64(i64, i64)
+declare void @dataset_write_f64_as_i64(i64, i64, i64)
+declare void @dataset_swap_f64_entry(i64, i64, i64)
+
+process dataset_header_validate⦅int64 m0 ⸴ int64 m1 ⸴ int64 m2 ⸴ int64 m3 ⸴ int64 total_bytes ⸴ int64 n_tensors⦆ → int64 ⟦
+    when m0 ≺ 81 ⟦
+        yield 0 ·
+    ⟧
+    when m0 ≻ 81 ⟦
+        yield 0 ·
+    ⟧
+    when m1 ≺ 68 ⟦
+        yield 0 ·
+    ⟧
+    when m1 ≻ 68 ⟦
+        yield 0 ·
+    ⟧
+    when m2 ≺ 83 ⟦
+        yield 0 ·
+    ⟧
+    when m2 ≻ 83 ⟦
+        yield 0 ·
+    ⟧
+    when m3 ≺ 49 ⟦
+        yield 0 ·
+    ⟧
+    when m3 ≻ 49 ⟦
+        yield 0 ·
+    ⟧
+    when total_bytes ≻ 1073741824 ⟦
+        yield 0 ·
+    ⟧
+    when n_tensors ≻ 100 ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+process dataset_batch_split⦅int64 n ⸴ int64 batch_size ⸴ int64 total_batches⦆ → int64 ⟦
+    when batch_size ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 num ↦ n ⊕ batch_size ·
+    int64 num_adj ↦ num ⊖ one ·
+    int64 batches ↦ num_adj ⊘ batch_size ·
+    yield batches ·
+⟧
+
+process dataset_minmax_loop⦅int64 vals_ptr ⸴ int64 n⦆ → int64 ⟦
+    when n ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 min_val ↦ dataset_read_f64_as_i64⦅vals_ptr ⸴ 0⦆ ·
+    int64 max_val ↦ min_val ·
+    int64 i ↦ 1 ·
+    int64 one ↦ 1 ·
+    cycle i ≺ n ⟦
+        int64 cur ↦ dataset_read_f64_as_i64⦅vals_ptr ⸴ i⦆ ·
+        when cur ≺ min_val ⟦
+            min_val ← cur ·
+        ⟧
+        when cur ≻ max_val ⟦
+            max_val ← cur ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    int64 diff ↦ max_val ⊖ min_val ·
+    when diff ≻ 0 ⟦
+        int64 j ↦ 0 ·
+        cycle j ≺ n ⟦
+            int64 cur_v ↦ dataset_read_f64_as_i64⦅vals_ptr ⸴ j⦆ ·
+            int64 norm_num ↦ cur_v ⊖ min_val ·
+            int64 norm_scaled ↦ norm_num ⊗ 1000000 ·
+            int64 norm_val ↦ norm_scaled ⊘ diff ·
+            dataset_write_f64_as_i64⦅vals_ptr ⸴ j ⸴ norm_val⦆ ·
+            j ← j ⊕ one ·
+        ⟧
+    ⟧
+    yield n ·
+⟧
+
+process dataset_shuffle_loop⦅int64 arr_ptr ⸴ int64 n ⸴ int64 seed⦆ → int64 ⟦
+    when n ≼ 1 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 zero ↦ 0 ·
+    int64 i ↦ n ⊖ one ·
+    int64 cur_seed ↦ seed ·
+    cycle i ≻ zero ⟦
+        int64 s1 ↦ cur_seed ⊗ 6364136223846793005 ·
+        cur_seed ← s1 ⊕ 1442695040888963407 ·
+        int64 i_plus ↦ i ⊕ one ·
+        int64 q ↦ cur_seed ⊘ i_plus ·
+        int64 q_prod ↦ q ⊗ i_plus ·
+        int64 j ↦ cur_seed ⊖ q_prod ·
+        when j ≺ zero ⟦
+            j ← j ⊕ i_plus ·
+        ⟧
+        when i ≻ j ⟦
+            dataset_swap_f64_entry⦅arr_ptr ⸴ i ⸴ j⦆ ·
+        ⟧
+        when i ≺ j ⟦
+            dataset_swap_f64_entry⦅arr_ptr ⸴ i ⸴ j⦆ ·
+        ⟧
+        i ← i ⊖ one ·
+    ⟧
+    yield n ·
+⟧

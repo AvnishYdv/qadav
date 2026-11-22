@@ -1,0 +1,99 @@
+// internal/qadav_native/prime.ydv
+// Qadav Native Prime-Symbolic Knowledge Engine (Invention #2, M2.6)
+// Provides trial division, sieve nth-prime search, factorization loops, and concept composition.
+
+declare void @prime_store_i64(i64, i64, i64)
+declare i64 @prime_read_i64(i64, i64)
+
+process prime_is_prime⦅int64 n⦆ → int64 ⟦
+    int64 two ↦ 2 ·
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    when n ≺ two ⟦
+        yield 0 ·
+    ⟧
+    int64 d ↦ 2 ·
+    int64 is_p ↦ 1 ·
+    cycle is_p ≡ one ⟦
+        int64 d_sq ↦ d ⊗ d ·
+        when d_sq ≻ n ⟦
+            yield 1 ·
+        ⟧
+        int64 q ↦ n ⊘ d ·
+        int64 qd ↦ q ⊗ d ·
+        int64 rem ↦ n ⊖ qd ·
+        when rem ≡ zero ⟦
+            yield 0 ·
+        ⟧
+        d ← d ⊕ one ·
+    ⟧
+    yield 1 ·
+⟧
+
+process prime_find_nth⦅int64 k⦆ → int64 ⟦
+    int64 count ↦ 0 ·
+    int64 candidate ↦ 2 ·
+    int64 one ↦ 1 ·
+    cycle count ≺ k ⟦
+        int64 p ↦ prime_is_prime⦅candidate⦆ ·
+        when p ≡ one ⟦
+            count ← count ⊕ one ·
+            when count ≡ k ⟦
+                yield candidate ·
+            ⟧
+        ⟧
+        candidate ← candidate ⊕ one ·
+    ⟧
+    yield candidate ·
+⟧
+
+process prime_factorize_loop⦅int64 n ⸴ int64 out_ptr ⸴ int64 max_out⦆ → int64 ⟦
+    int64 cur_n ↦ n ·
+    int64 count ↦ 0 ·
+    int64 d ↦ 2 ·
+    int64 one ↦ 1 ·
+    int64 zero ↦ 0 ·
+    cycle count ≺ max_out ⟦
+        when cur_n ≼ one ⟦
+            yield count ·
+        ⟧
+        int64 d_sq ↦ d ⊗ d ·
+        when d_sq ≻ cur_n ⟦
+            prime_store_i64⦅out_ptr ⸴ count ⸴ cur_n⦆ ·
+            count ← count ⊕ one ·
+            yield count ·
+        ⟧
+        int64 q ↦ cur_n ⊘ d ·
+        int64 qd ↦ q ⊗ d ·
+        int64 rem ↦ cur_n ⊖ qd ·
+        when rem ≡ zero ⟦
+            prime_store_i64⦅out_ptr ⸴ count ⸴ d⦆ ·
+            count ← count ⊕ one ·
+            cur_n ← q ·
+        ⟧
+        when rem ≻ zero ⟦
+            d ← d ⊕ one ·
+        ⟧
+    ⟧
+    yield count ·
+⟧
+
+process prime_concept_compose⦅int64 p1 ⸴ int64 p2⦆ → int64 ⟦
+    int64 prod ↦ p1 ⊗ p2 ·
+    yield prod ·
+⟧
+
+process prime_encode_concept⦅int64 primes_ptr ⸴ int64 count⦆ → int64 ⟦
+    int64 result ↦ 1 ·
+    int64 i ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 zero ↦ 0 ·
+    cycle i ≺ count ⟦
+        int64 p ↦ prime_read_i64⦅primes_ptr ⸴ i⦆ ·
+        when p ≻ zero ⟦
+            result ← result ⊗ p ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    yield result ·
+⟧

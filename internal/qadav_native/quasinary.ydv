@@ -1,0 +1,92 @@
+// internal/qadav_native/quasinary.ydv
+// Qadav Native Quasinary Computing (Invention #3, M2.8)
+// Provides saturated ternary arithmetic, 2D Ising spin energy summation, and simulated annealing.
+
+declare i64 @quasi_grid_get_raw(i64, i64, i64, i64)
+declare void @quasi_grid_set_raw(i64, i64, i64, i64, i64)
+
+process quasi_add⦅int64 a ⸴ int64 b⦆ → int64 ⟦
+    int64 r ↦ a ⊕ b ·
+    int64 one ↦ 1 ·
+    int64 zero ↦ 0 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    when r ≻ one ⟦
+        yield one ·
+    ⟧
+    when r ≺ neg_one ⟦
+        yield neg_one ·
+    ⟧
+    yield r ·
+⟧
+
+process quasi_mul⦅int64 a ⸴ int64 b⦆ → int64 ⟦
+    int64 prod ↦ a ⊗ b ·
+    yield prod ·
+⟧
+
+process quasi_neg⦅int64 a⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 neg ↦ zero ⊖ a ·
+    yield neg ·
+⟧
+
+process quasi_ising_energy_loop⦅int64 grid_ptr ⸴ int64 R ⸴ int64 C⦆ → int64 ⟦
+    int64 total_energy ↦ 0 ·
+    int64 r ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 zero ↦ 0 ·
+    cycle r ≺ R ⟦
+        int64 r_down ↦ r ⊕ one ·
+        when r_down ≡ R ⟦
+            r_down ← zero ·
+        ⟧
+        int64 c ↦ 0 ·
+        cycle c ≺ C ⟦
+            int64 c_right ↦ c ⊕ one ·
+            when c_right ≡ C ⟦
+                c_right ← zero ·
+            ⟧
+            int64 cur ↦ quasi_grid_get_raw⦅grid_ptr ⸴ r ⸴ c ⸴ C⦆ ·
+            int64 right ↦ quasi_grid_get_raw⦅grid_ptr ⸴ r ⸴ c_right ⸴ C⦆ ·
+            int64 down ↦ quasi_grid_get_raw⦅grid_ptr ⸴ r_down ⸴ c ⸴ C⦆ ·
+            int64 p1 ↦ cur ⊗ right ·
+            int64 p2 ↦ cur ⊗ down ·
+            int64 pair_sum ↦ p1 ⊕ p2 ·
+            total_energy ← total_energy ⊖ pair_sum ·
+            c ← c ⊕ one ·
+        ⟧
+        r ← r ⊕ one ·
+    ⟧
+    yield total_energy ·
+⟧
+
+process quasi_minimize_loop⦅int64 grid_ptr ⸴ int64 R ⸴ int64 C ⸴ int64 iterations⦆ → int64 ⟦
+    int64 iter ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 zero ↦ 0 ·
+    int64 seed ↦ 12345 ·
+    cycle iter ≺ iterations ⟦
+        int64 num ↦ seed ⊗ 1103515245 ·
+        seed ← num ⊕ 12345 ·
+        int64 r ↦ seed ⊘ R ·
+        int64 r_prod ↦ r ⊗ R ·
+        int64 r_rem ↦ seed ⊖ r_prod ·
+        when r_rem ≺ zero ⟦
+            r_rem ← zero ⊖ r_rem ·
+        ⟧
+        int64 c ↦ seed ⊘ C ·
+        int64 c_prod ↦ c ⊗ C ·
+        int64 c_rem ↦ seed ⊖ c_prod ·
+        when c_rem ≺ zero ⟦
+            c_rem ← zero ⊖ c_rem ·
+        ⟧
+        int64 cur ↦ quasi_grid_get_raw⦅grid_ptr ⸴ r_rem ⸴ c_rem ⸴ C⦆ ·
+        int64 cand ↦ zero ⊖ cur ·
+        when cand ≡ zero ⟦
+            cand ← one ·
+        ⟧
+        quasi_grid_set_raw⦅grid_ptr ⸴ r_rem ⸴ c_rem ⸴ C ⸴ cand⦆ ·
+        iter ← iter ⊕ one ·
+    ⟧
+    yield iterations ·
+⟧
