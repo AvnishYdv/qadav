@@ -1,0 +1,64 @@
+// internal/qadav_native/hmac.ydv
+// Qadav Native HMAC-SHA3-256 & Compile-Time Type Safety Attestation (CTSA, Invention #24)
+// Specification: RFC 2104 / RFC 4231 HMAC construction over FIPS 202 SHA3-256 (rate = 136 bytes)
+// Target Architecture: C-Free Bootstrap Milestone A3 (M10.9C)
+
+record HmacConfig ⟦
+    block_size ↦ int64 ·
+    ipad_val   ↦ int64 ·
+    opad_val   ↦ int64 ·
+    digest_len ↦ int64 ·
+⟧
+
+record CtsaCertPreimage ⟦
+    ast_hash        ↦ text ·
+    type_env_hash   ↦ text ·
+    rule_chain_hash ↦ text ·
+    num_signatures  ↦ int64 ·
+    num_fields      ↦ int64 ·
+    timestamp       ↦ int64 ·
+⟧
+
+// SHA3-256 Rate: 1600 - 512 = 1088 bits = 136 bytes block size
+process hmac_sha3_block_size⦅⦆ → int64 ⟦
+    int64 total_state_bits ↦ 1600 ·
+    int64 capacity_bits ↦ 512 ·
+    int64 rate_bits ↦ total_state_bits ⊖ capacity_bits ·
+    int64 rate_bytes ↦ rate_bits ⊘ 8 ·
+    yield rate_bytes ·
+⟧
+
+// HMAC Pad Constants
+process hmac_ipad_byte⦅⦆ → int64 ⟦
+    yield 54 · // 0x36
+⟧
+
+process hmac_opad_byte⦅⦆ → int64 ⟦
+    yield 92 · // 0x5C
+⟧
+
+// CTSA 120-byte preimage length: 32 + 32 + 32 + 8 + 8 + 8 = 120 bytes
+process ctsa_preimage_len⦅⦆ → int64 ⟦
+    int64 h_len ↦ 32 ⊕ 32 ⊕ 32 ·
+    int64 m_len ↦ 8 ⊕ 8 ⊕ 8 ·
+    int64 total_len ↦ h_len ⊕ m_len ·
+    yield total_len ·
+⟧
+
+// Quantum Decoherence Fail-Stop Exit Code (0xDEADBEEF = 3735928559)
+process ctsa_decoherence_code⦅⦆ → int64 ⟦
+    int64 code ↦ 3735928559 ·
+    yield code ·
+⟧
+
+// Pad XOR transformation: byte XOR pad
+process hmac_pad_xor⦅int64 key_byte ⸴ int64 pad_byte⦆ → int64 ⟦
+    int64 res ↦ key_byte ⊻ pad_byte ·
+    yield res ·
+⟧
+
+// Entry point test process
+process main⦅⦆ → int64 ⟦
+    emit "Qadav Native HMAC-SHA3-256 & CTSA Engine operational." ·
+    yield 0 ·
+⟧

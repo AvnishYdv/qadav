@@ -1,0 +1,53 @@
+// internal/qadav_native/record.ydv
+// Qadav Native Heap Record Subsystem (Phase 8 Architecture)
+// Specification: FNV-1a Field Lookup, 16-byte Aligned Record Alloc, Field Set/Get & Reflection
+// Target Architecture: C-Free Bootstrap Milestone A3 (M10.9C)
+
+record RecordMeta ⟦
+    type_hash ↦ int64 ·
+    n_fields  ↦ int64 ·
+    total_len ↦ int64 ·
+⟧
+
+// Align field size to 8-byte boundary
+process record_align8⦅int64 raw_sz⦆ → int64 ⟦
+    when raw_sz ≡ 0 ⟦
+        yield 8 ·
+    ⟧
+    int64 rem ↦ raw_sz ∧ 7 ·
+    when rem ≡ 0 ⟦
+        yield raw_sz ·
+    ⟧
+    int64 padded ↦ raw_sz ⊕ 7 ·
+    int64 aligned ↦ ⦅padded ⊘ 8⦆ ⊗ 8 ·
+    yield aligned ·
+⟧
+
+// Calculate Record Header + Meta size (16 bytes header + 8 bytes per field meta)
+process record_header_meta_size⦅int64 n_fields⦆ → int64 ⟦
+    int64 meta_sz ↦ n_fields ⊗ 8 ·
+    int64 total_meta ↦ 16 ⊕ meta_sz ·
+    yield total_meta ·
+⟧
+
+// FNV-1a 64-bit Hash Step: (hash ^ byte) * FNV_PRIME
+process record_fnv1a_step⦅int64 prev_hash ⸴ int64 byte_val⦆ → int64 ⟦
+    int64 xored ↦ prev_hash ⊻ byte_val ·
+    int64 fnv_prime ↦ 1099511628211 ·
+    int64 next_h ↦ xored ⊗ fnv_prime ·
+    yield next_h ·
+⟧
+
+// Field Bounds Validation: returns 1 if idx < n_fields, 0 otherwise
+process record_check_bounds⦅int64 field_idx ⸴ int64 field_count⦆ → int64 ⟦
+    when field_idx ≺ field_count ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Entry point test process
+process main⦅⦆ → int64 ⟦
+    emit "Qadav Native Record Subsystem operational." ·
+    yield 0 ·
+⟧

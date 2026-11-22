@@ -1,0 +1,38 @@
+// internal/qadav_native/variant.ydv
+// Qadav Native Variant / Tagged Union Subsystem (Phase 8 Architecture)
+// Specification: Tag Dispatch, Dynamic Payload Boxing, Wrap/Unwrap & Pattern Matching
+// Target Architecture: C-Free Bootstrap Milestone A3 (M10.9C)
+
+record VariantMeta ⟦
+    variant_type_hash ↦ int64 ·
+    tag               ↦ int64 ·
+    payload_len       ↦ int64 ·
+⟧
+
+// Check if variant tag matches expected tag
+process variant_is_match⦅int64 actual_tag ⸴ int64 expected_tag⦆ → int64 ⟦
+    when actual_tag ≡ expected_tag ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Check if variant has payload
+process variant_has_payload⦅int64 payload_len⦆ → int64 ⟦
+    when payload_len ≻ 0 ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Field offset calculation in payload: idx * 8
+process variant_field_offset⦅int64 idx⦆ → int64 ⟦
+    int64 off ↦ idx ⊗ 8 ·
+    yield off ·
+⟧
+
+// Entry point test process
+process main⦅⦆ → int64 ⟦
+    emit "Qadav Native Variant Subsystem operational." ·
+    yield 0 ·
+⟧

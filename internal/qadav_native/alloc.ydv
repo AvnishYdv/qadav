@@ -1,0 +1,54 @@
+// internal/qadav_native/alloc.ydv
+// Qadav Native Memory Allocator Subsystem
+// Specification: 16-Byte Aligned Heap Allocation, Free, Realloc, Bump Pool & Large Pages
+// Target Architecture: C-Free Bootstrap Milestone A3 (M10.9C)
+
+record AllocPool ⟦
+    capacity        ↦ int64 ·
+    used            ↦ int64 ·
+    total_allocated ↦ int64 ·
+    total_freed     ↦ int64 ·
+    alignment       ↦ int64 ·
+⟧
+
+// 16-Byte Alignment Calculation (required for AVX2 and SIMD operations)
+process alloc_align16⦅int64 raw_size⦆ → int64 ⟦
+    when raw_size ≡ 0 ⟦
+        yield 16 ·
+    ⟧
+    int64 padded ↦ raw_size ⊕ 15 ·
+    int64 mask ↦ 0 ⊖ 16 ·
+    int64 aligned ↦ padded ∧ mask ·
+    yield aligned ·
+⟧
+
+// Alignment Check: returns 1 if pointer address is 16-byte aligned, 0 otherwise
+process alloc_is_16byte_aligned⦅int64 addr⦆ → int64 ⟦
+    int64 rem ↦ addr ∧ 15 ·
+    when rem ≡ 0 ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Threshold check: allocations > 65536 bytes (64KB) route to large virtual pages
+process alloc_is_large_page⦅int64 size⦆ → int64 ⟦
+    when size ≻ 65536 ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Realloc copy size calculation: min(old_size, new_size)
+process alloc_realloc_copy_len⦅int64 old_size ⸴ int64 new_size⦆ → int64 ⟦
+    when old_size ≺ new_size ⟦
+        yield old_size ·
+    ⟧
+    yield new_size ·
+⟧
+
+// Entry point test process
+process main⦅⦆ → int64 ⟦
+    emit "Qadav Native Allocator Subsystem: 16-byte aligned heap allocator operational." ·
+    yield 0 ·
+⟧

@@ -50,3 +50,4 @@ process main⦅⦆ → int64 ⟦
     emit "Qadav Native Merkle Engine: Binary Merkle tree specification verified." ·
     yield 0 ·
 ⟧
+
