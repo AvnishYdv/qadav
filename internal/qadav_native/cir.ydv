@@ -1,0 +1,71 @@
+// internal/qadav_native/cir.ydv
+// Qadav Native Cognitive Intermediate Representation (CIR, Invention #4)
+// Specification: Multi-valued Epistemic States, Confidence Propagation & Strict Threshold Assertions
+// Target Architecture: C-Free Bootstrap Milestone A4 (M10.9D)
+
+record CirConfidenceState ⟦
+    epistemic   ↦ int64 ·
+    scaled_val  ↦ int64 ·
+    scaled_sc   ↦ int64 ·
+⟧
+
+// Epistemic Contagion Rule:
+// 0 = KNOWN, 1 = UNKNOWN, 2 = EXPLORE
+// UNKNOWN (1) is contagious and forces resulting state = 1 (UNKNOWN)
+// If neither is UNKNOWN, EXPLORE (2) propagates if present; otherwise KNOWN (0)
+process cir_epistemic_propagate⦅int64 state_a ⸴ int64 state_b⦆ → int64 ⟦
+    when state_a ≡ 1 ∨ state_b ≡ 1 ⟦
+        yield 1 ·
+    ⟧
+    when state_a ≡ 2 ∨ state_b ≡ 2 ⟦
+        yield 2 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Product rule for independent conjunction: scaled score product
+// Scaled by 10000 (e.g., 10000 = 1.0)
+process cir_score_product⦅int64 s_a ⸴ int64 s_b ⸴ int64 state⦆ → int64 ⟦
+    when state ≡ 1 ⟦
+        yield 0 ·
+    ⟧
+    int64 raw_prod ↦ s_a ⊗ s_b ·
+    int64 scaled ↦ raw_prod ÷ 10000 ·
+    yield scaled ·
+⟧
+
+// Conservative minimum rule: min(s_a, s_b)
+process cir_score_min⦅int64 s_a ⸴ int64 s_b ⸴ int64 state⦆ → int64 ⟦
+    when state ≡ 1 ⟦
+        yield 0 ·
+    ⟧
+    when s_a ≺ s_b ⟦
+        yield s_a ·
+    ⟧
+    yield s_b ·
+⟧
+
+// Epistemic state validation (1 = invalid/unknown, 0 or 2 = valid)
+process cir_epistemic_is_valid⦅int64 state⦆ → int64 ⟦
+    when state ≡ 1 ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+// Threshold assertion check: returns 1 if valid and >= threshold, 0 if failure
+process cir_check_threshold⦅int64 score ⸴ int64 state ⸴ int64 threshold⦆ → int64 ⟦
+    when state ≡ 1 ⟦
+        yield 0 ·
+    ⟧
+    when score ≺ threshold ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+// Subsystem process
+process cir_ydv_main⦅⦆ → int64 ⟦
+    emit "Qadav Native CIR Cognitive Runtime operational." ·
+    yield 0 ·
+⟧
