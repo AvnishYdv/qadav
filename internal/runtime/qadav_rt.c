@@ -457,15 +457,8 @@ long long is_logic_returning_proc(const char* name) { return qadav_is_logic_retu
 long long qadav_is_void_call_proc(const char* name);
 long long is_void_call_proc(const char* name) { return qadav_is_void_call_proc(name); }
 
-void* qadav_alloc(unsigned long long size) {
-    return HeapAlloc(GetProcessHeap(), 0x00000008 /* HEAP_ZERO_MEMORY */, size);
-}
-
-void qadav_free(void* p) {
-    if (p) {
-        HeapFree(GetProcessHeap(), 0, p);
-    }
-}
+extern void* qadav_alloc(unsigned long long size);
+extern void  qadav_free(void* p);
 
 static HANDLE g_custom_out = NULL;
 

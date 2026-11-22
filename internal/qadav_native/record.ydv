@@ -26,7 +26,8 @@ process record_align8⦅int64 raw_sz⦆ → int64 ⟦
 // Calculate Record Header + Meta size (16 bytes header + 8 bytes per field meta)
 process record_header_meta_size⦅int64 n_fields⦆ → int64 ⟦
     int64 meta_sz ↦ n_fields ⊗ 8 ·
-    int64 total_meta ↦ 16 ⊕ meta_sz ·
+    int64 base_h ↦ 16 ·
+    int64 total_meta ↦ base_h ⊕ meta_sz ·
     yield total_meta ·
 ⟧
 
