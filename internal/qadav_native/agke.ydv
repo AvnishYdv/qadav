@@ -1,34 +1,51 @@
 // internal/qadav_native/agke.ydv
-// Qadav Native Attested GPU Kernel Execution (AGKE, Invention #17)
-// Specification: 144-Byte Compound Preimage, Device UUID Binding & Active Fail-Stop
-// Target Architecture: C-Free Bootstrap Milestone A4 (M10.9D)
+// Qadav Native Attested GPU Kernel Execution (AGKE, Invention #22)
+// Specification: 144-Byte Cryptographic Preimage Verification & Fail-Stop Decoherence
+// Target Architecture: C-Free Bootstrap Milestone A4 (M10.9D-FIX)
 
-record AgkeCompoundRecord ⟦
+record AgkeRecordHeader ⟦
     dispatch_id   ↦ int64 ·
     timestamp     ↦ int64 ·
-    kernel_name   ↦ text ·
+    status        ↦ int64 ·
 ⟧
 
-// AGKE Compound Preimage Length: 8 + 8 + 32 + 32 + 32 + 32 = 144 bytes
+// Preimage constant size: 8 (dispatch_id) + 8 (timestamp) + 32 (kernel) + 32 (in) + 32 (out) + 32 (uuid) = 144 bytes
 process agke_preimage_size⦅⦆ → int64 ⟦
     int64 meta_len ↦ 8 ⊕ 8 ·
-    int64 digests_len ↦ 32 ⊕ 32 ⊕ 32 ⊕ 32 ·
-    int64 total_len ↦ meta_len ⊕ digests_len ·
-    yield total_len ·
+    int64 hashes_len ↦ 32 ⊕ 32 ·
+    int64 out_len ↦ 32 ⊕ 32 ·
+    int64 total ↦ meta_len ⊕ hashes_len ⊕ out_len ·
+    yield total · // 144 bytes
 ⟧
 
 // Quantum Decoherence Fail-Stop Exit Code (0xDEADBEEF = 3735928559)
 process agke_decoherence_code⦅⦆ → int64 ⟦
-    int64 code ↦ 3735928559 ·
+    int64 code ↦ 3735928559 · // 0xDEADBEEF
     yield code ·
 ⟧
 
-// Capacity limit: 256 active kernel dispatch records
+// Maximum ledger records bound
 process agke_max_records⦅⦆ → int64 ⟦
     yield 256 ·
 ⟧
 
-// Check if dispatch index is within valid bounds
+// Dispatch admissibility check
+process agke_can_dispatch⦅int64 current_count ⸴ int64 max_count⦆ → int64 ⟦
+    when current_count ≺ max_count ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Verification Step: evaluates both hardware UUID identity and cryptographic hash integrity
+process agke_verify_step⦅int64 uuid_match ⸴ int64 hash_match⦆ → int64 ⟦
+    when uuid_match ≡ 1 ∧ hash_match ≡ 1 ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Index bounds validation
 process agke_is_valid_index⦅int64 idx ⸴ int64 count⦆ → int64 ⟦
     when idx ≺ count ⟦
         yield 1 ·
@@ -36,8 +53,8 @@ process agke_is_valid_index⦅int64 idx ⸴ int64 count⦆ → int64 ⟦
     yield 0 ·
 ⟧
 
-// Entry point test process
-process main⦅⦆ → int64 ⟦
-    emit "Qadav Native AGKE Subsystem operational." ·
+// Subsystem process
+process agke_ydv_main⦅⦆ → int64 ⟦
+    emit "Qadav Native AGKE Subsystem operational (144-byte cryptographic preimages & fail-stop verification)." ·
     yield 0 ·
 ⟧

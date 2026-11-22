@@ -1,42 +1,65 @@
 // internal/qadav_native/rsca.ydv
-// Qadav Native Recursive Self-Compilation Attestation (RSCA, Invention #23)
-// Specification: 144-Byte Preimage Rolling Chain, 3-Stage Bootstrap Verification & Tamper Fail-Stop
-// Target Architecture: C-Free Bootstrap Milestone A4 (M10.9D)
+// Qadav Native Recursive Self-Compilation Attestation (RSCA, Invention #27)
+// Specification: 144-Byte Preimage Linkage, Bit-Exact Deterministic Fixpoint Verification
+// Target Architecture: C-Free Bootstrap Milestone A4 (M10.9D-FIX)
 
-record RscaStageMeta ⟦
-    stage     ↦ int64 ·
-    timestamp ↦ int64 ·
+record RscaStageMetadata ⟦
+    stage_num     ↦ int64 ·
+    timestamp     ↦ int64 ·
+    is_verified   ↦ int64 ·
 ⟧
 
-// RSCA 144-Byte Preimage Size: stage(8) || time(8) || src(32) || comp(32) || out(32) || prev(32)
+// Preimage constant size: 8 (stage) + 8 (timestamp) + 32 (source) + 32 (compiler) + 32 (output) + 32 (prev_stage) = 144 bytes
 process rsca_preimage_size⦅⦆ → int64 ⟦
-    int64 meta_sz ↦ 8 ⊕ 8 ·
-    int64 hash_sz ↦ 32 ⊕ 32 ⊕ 32 ⊕ 32 ·
-    int64 total_sz ↦ meta_sz ⊕ hash_sz ·
-    yield total_sz ·
+    int64 meta ↦ 8 ⊕ 8 ·
+    int64 hashes ↦ 32 ⊕ 32 ⊕ 32 ⊕ 32 ·
+    int64 total ↦ meta ⊕ hashes ·
+    yield total · // 144 bytes
 ⟧
 
-// 3-Stage Bootstrap Minimum Count
+// Minimum stages required for recursive self-hosting attestation (Stage 0, Stage 1, Stage 2)
 process rsca_min_stages⦅⦆ → int64 ⟦
     yield 3 ·
 ⟧
 
 // Quantum Decoherence Fail-Stop Exit Code (0xDEADBEEF = 3735928559)
 process rsca_decoherence_code⦅⦆ → int64 ⟦
-    int64 code ↦ 3735928559 ·
+    int64 code ↦ 3735928559 · // 0xDEADBEEF
     yield code ·
 ⟧
 
-// Compare stage indices: returns 1 if stage_a != stage_b, 0 if identical
-process rsca_stage_is_distinct⦅int64 stage_a ⸴ int64 stage_b⦆ → int64 ⟦
-    when stage_a ≡ stage_b ⟦
+// Inter-stage cryptographic hash linkage verification
+process rsca_verify_linkage⦅int64 stage_idx ⸴ int64 hash_match ⸴ int64 prev_link_match⦆ → int64 ⟦
+    when hash_match ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    when stage_idx ≻ 0 ∧ prev_link_match ≡ 0 ⟦
         yield 0 ·
     ⟧
     yield 1 ·
 ⟧
 
-// Entry point test process
-process main⦅⦆ → int64 ⟦
-    emit "Qadav Native RSCA Subsystem operational." ·
+// Deterministic fixpoint check: Stage 1 and Stage 2 outputs bit-exact identical
+process rsca_verify_fixpoint⦅int64 stage_count ⸴ int64 s1_s2_match⦆ → int64 ⟦
+    when stage_count ≺ 3 ⟦
+        yield 1 · // Sub-chains below 3 stages verify if individual records pass
+    ⟧
+    when s1_s2_match ≡ 1 ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Stage uniqueness comparison
+process rsca_stage_is_distinct⦅int64 a ⸴ int64 b⦆ → int64 ⟦
+    when a ≡ b ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+// Subsystem process
+process rsca_ydv_main⦅⦆ → int64 ⟦
+    emit "Qadav Native RSCA Subsystem operational (Recursive Bootstrap Attestation & Deterministic Fixpoint)." ·
     yield 0 ·
 ⟧

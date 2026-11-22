@@ -1,12 +1,35 @@
 // internal/qadav_native/cir.ydv
 // Qadav Native Cognitive Intermediate Representation (CIR, Invention #4)
 // Specification: Multi-valued Epistemic States, Confidence Propagation & Strict Threshold Assertions
-// Target Architecture: C-Free Bootstrap Milestone A4 (M10.9D)
+// Target Architecture: C-Free Bootstrap Milestone A4 (M10.9D-FIX)
 
 record CirConfidenceState ⟦
     epistemic   ↦ int64 ·
     scaled_val  ↦ int64 ·
     scaled_sc   ↦ int64 ·
+⟧
+
+// Newton-Raphson Square Root Algorithm over Fixed-Point Integers (Scale: 1,000,000)
+// Computes sqrt(x_scaled / 1,000,000) * 1,000,000 with 25 convergence cycles
+process cir_sqrt⦅int64 x_scaled⦆ → int64 ⟦
+    when x_scaled ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 guess ↦ x_scaled ·
+    when guess ≻ 1000000 ⟦
+        guess ← 1000000 ·
+    ⟧
+    int64 scale ↦ 1000000 ·
+    int64 two ↦ 2 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ 25 ⟦
+        int64 num ↦ x_scaled ⊗ scale ·
+        int64 term ↦ num ⊘ guess ·
+        int64 sum_val ↦ guess ⊕ term ·
+        guess ← sum_val ⊘ two ·
+        i ← i ⊕ 1 ·
+    ⟧
+    yield guess ·
 ⟧
 
 // Epistemic Contagion Rule:
@@ -23,19 +46,29 @@ process cir_epistemic_propagate⦅int64 state_a ⸴ int64 state_b⦆ → int64 �
     yield 0 ·
 ⟧
 
-// Product rule for independent conjunction: scaled score product
-// Scaled by 10000 (e.g., 10000 = 1.0)
-process cir_score_product⦅int64 s_a ⸴ int64 s_b ⸴ int64 state⦆ → int64 ⟦
+// Independent Sum Score: sqrt(s_a * s_b) via Qadav-native Newton-Raphson loop
+process cir_calc_add_score⦅int64 s_a ⸴ int64 s_b ⸴ int64 state⦆ → int64 ⟦
     when state ≡ 1 ⟦
         yield 0 ·
     ⟧
-    int64 raw_prod ↦ s_a ⊗ s_b ·
-    int64 scaled ↦ raw_prod ÷ 10000 ·
-    yield scaled ·
+    int64 scale ↦ 1000000 ·
+    int64 prod ↦ ⦅s_a ⊗ s_b⦆ ⊘ scale ·
+    int64 res ↦ cir_sqrt⦅prod⦆ ·
+    yield res ·
 ⟧
 
-// Conservative minimum rule: min(s_a, s_b)
-process cir_score_min⦅int64 s_a ⸴ int64 s_b ⸴ int64 state⦆ → int64 ⟦
+// Conjunction Product Score: (s_a * s_b) / 1,000,000
+process cir_calc_mul_score⦅int64 s_a ⸴ int64 s_b ⸴ int64 state⦆ → int64 ⟦
+    when state ≡ 1 ⟦
+        yield 0 ·
+    ⟧
+    int64 scale ↦ 1000000 ·
+    int64 prod ↦ ⦅s_a ⊗ s_b⦆ ⊘ scale ·
+    yield prod ·
+⟧
+
+// Conservative Minimum Score: min(s_a, s_b)
+process cir_calc_min_score⦅int64 s_a ⸴ int64 s_b ⸴ int64 state⦆ → int64 ⟦
     when state ≡ 1 ⟦
         yield 0 ·
     ⟧
@@ -45,7 +78,7 @@ process cir_score_min⦅int64 s_a ⸴ int64 s_b ⸴ int64 state⦆ → int64 ⟦
     yield s_b ·
 ⟧
 
-// Epistemic state validation (1 = invalid/unknown, 0 or 2 = valid)
+// Epistemic State Validation (1 = invalid/unknown, 0 or 2 = valid)
 process cir_epistemic_is_valid⦅int64 state⦆ → int64 ⟦
     when state ≡ 1 ⟦
         yield 0 ·
@@ -53,8 +86,8 @@ process cir_epistemic_is_valid⦅int64 state⦆ → int64 ⟦
     yield 1 ·
 ⟧
 
-// Threshold assertion check: returns 1 if valid and >= threshold, 0 if failure
-process cir_check_threshold⦅int64 score ⸴ int64 state ⸴ int64 threshold⦆ → int64 ⟦
+// Threshold Assertion Check: returns 1 if valid and >= threshold, 0 if failure
+process cir_assert_valid⦅int64 score ⸴ int64 state ⸴ int64 threshold⦆ → int64 ⟦
     when state ≡ 1 ⟦
         yield 0 ·
     ⟧
@@ -64,8 +97,8 @@ process cir_check_threshold⦅int64 score ⸴ int64 state ⸴ int64 threshold⦆
     yield 1 ·
 ⟧
 
-// Subsystem process
+// Subsystem Process
 process cir_ydv_main⦅⦆ → int64 ⟦
-    emit "Qadav Native CIR Cognitive Runtime operational." ·
+    emit "Qadav Native CIR Cognitive Runtime operational (Newton-Raphson Sqrt + Epistemic Contagion)." ·
     yield 0 ·
 ⟧
