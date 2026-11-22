@@ -1,0 +1,67 @@
+// internal/qadav_native/consolidate.ydv
+// Qadav Native Memory Consolidation Subsystem (Invention #19)
+// Specification: Episodic to Semantic Memory Promotion, Prime Coordinate Projection & Boundary Gating
+// Target Architecture: C-Free Bootstrap Milestone A5 (M10.9E)
+
+record ConsolidateState ⟦
+    threshold       ↦ int64 ·
+    consolidated    ↦ int64 ·
+    boundary_valid  ↦ int64 ·
+⟧
+
+// Deterministic Prime Coordinate Step
+// Formula: (coord * 31 + byte_val) mod 7919
+process consolidate_prime_step⦅int64 current_coord ⸴ int64 byte_val⦆ → int64 ⟦
+    int64 thirty_one ↦ 31 ·
+    int64 mod_prime ↦ 7919 ·
+    int64 prod ↦ current_coord ⊗ thirty_one ·
+    int64 term ↦ prod ⊕ byte_val ·
+    int64 q ↦ term ⊘ mod_prime ·
+    int64 q_mod ↦ q ⊗ mod_prime ·
+    int64 rem ↦ term ⊖ q_mod ·
+    yield rem ·
+⟧
+
+// Prime Coordinate Finalization: ensures coordinate is non-zero (0 -> 2)
+process consolidate_prime_finalize⦅int64 coord⦆ → int64 ⟦
+    when coord ≡ 0 ⟦
+        yield 2 ·
+    ⟧
+    yield coord ·
+⟧
+
+// Seed for Prime Coordinate Projection (101)
+process consolidate_prime_seed⦅⦆ → int64 ⟦
+    yield 101 ·
+⟧
+
+// Threshold Gating: returns 1 if confidence >= threshold, 0 otherwise
+process consolidate_should_promote⦅int64 confidence_scaled ⸴ int64 threshold_scaled⦆ → int64 ⟦
+    when confidence_scaled ≽ threshold_scaled ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Lock Check: skip locked episodic memory records
+// Returns 1 if entry is locked and must be skipped, 0 if eligible
+process consolidate_skip_locked⦅int64 is_locked⦆ → int64 ⟦
+    when is_locked ≡ 0 ⟦
+        yield 0 · // Not locked, eligible for consolidation
+    ⟧
+    yield 1 · // Locked, must be skipped
+⟧
+
+// Boundary Conformance Verification: boundary hashes must match exactly
+process consolidate_is_boundary_valid⦅int64 hash_match⦆ → int64 ⟦
+    when hash_match ≡ 0 ⟦
+        yield 0 · // Mismatch: trigger fail-stop
+    ⟧
+    yield 1 ·
+⟧
+
+// Subsystem Process
+process consolidate_ydv_main⦅⦆ → int64 ⟦
+    emit "Qadav Native Memory Consolidation Subsystem operational (Prime-Symbolic Coordinate Projection)." ·
+    yield 0 ·
+⟧

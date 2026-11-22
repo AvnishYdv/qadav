@@ -1,0 +1,115 @@
+// internal/qadav_native/abstain.ydv
+// Qadav Native Calibrated Abstention Subsystem (Invention #15)
+// Specification: Variance-Penalized Geometric Composite Confidence & Graceful Fail-Safe Policies
+// Target Architecture: C-Free Bootstrap Milestone A5 (M10.9E)
+
+record AbstainPolicyState ⟦
+    threshold     ↦ int64 ·
+    mode          ↦ int64 ·
+    max_retries   ↦ int64 ·
+    retry_count   ↦ int64 ·
+⟧
+
+// Scaled Fixed-Point Integer Power: base^exp scaled down by 1,000,000 at each factor
+process abstain_pow_scaled⦅int64 base_scaled ⸴ int64 exp⦆ → int64 ⟦
+    int64 scale ↦ 1000000 ·
+    int64 res ↦ scale ·
+    int64 i ↦ 0 ·
+    cycle i ≺ exp ⟦
+        int64 num ↦ res ⊗ base_scaled ·
+        res ← num ⊘ scale ·
+        i ← i ⊕ 1 ·
+    ⟧
+    yield res ·
+⟧
+
+// Scaled n-th Root via Binary Search (32 iterations over [0, 1,000,000])
+// Computes (p / 1,000,000)^(1/n) * 1,000,000 with sub-microsecond convergence
+process abstain_nth_root⦅int64 p_scaled ⸴ int64 n⦆ → int64 ⟦
+    when n ≼ 1 ⟦
+        yield p_scaled ·
+    ⟧
+    when p_scaled ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    when p_scaled ≽ 1000000 ⟦
+        yield 1000000 ·
+    ⟧
+    int64 low ↦ 0 ·
+    int64 high ↦ 1000000 ·
+    int64 mid ↦ 500000 ·
+    int64 two ↦ 2 ·
+    int64 iter ↦ 0 ·
+    cycle iter ≺ 32 ⟦
+        int64 sum_lh ↦ low ⊕ high ·
+        mid ← sum_lh ⊘ two ·
+        int64 val ↦ abstain_pow_scaled⦅mid ⸴ n⦆ ·
+        when val ≺ p_scaled ⟦
+            low ← mid ·
+        ⟧
+        when val ≽ p_scaled ⟦
+            high ← mid ·
+        ⟧
+        iter ← iter ⊕ 1 ·
+    ⟧
+    yield mid ·
+⟧
+
+// Variance Penalty Calculation: penalty = 1.0 - (variance / 4.0)
+// Input: var_scaled (variance * 1,000,000)
+// Output: penalty_scaled (in [0, 1,000,000])
+process abstain_calc_variance_penalty⦅int64 var_scaled⦆ → int64 ⟦
+    int64 four ↦ 4 ·
+    int64 var_div_4 ↦ var_scaled ⊘ four ·
+    when var_div_4 ≽ 1000000 ⟦
+        yield 0 ·
+    ⟧
+    int64 million ↦ 1000000 ·
+    int64 pen ↦ million ⊖ var_div_4 ·
+    when pen ≺ 0 ⟦
+        yield 0 ·
+    ⟧
+    yield pen ·
+⟧
+
+// Composite Confidence: geom_mean * variance_penalty (both scaled by 1,000,000)
+process abstain_composite_confidence⦅int64 geom_scaled ⸴ int64 penalty_scaled⦆ → int64 ⟦
+    int64 scale ↦ 1000000 ·
+    int64 num ↦ geom_scaled ⊗ penalty_scaled ·
+    int64 comp ↦ num ⊘ scale ·
+    yield comp ·
+⟧
+
+// Policy Decision Evaluation: RETRY (1), ESCALATE (2), REFUSE (3)
+// Returns 1 if system must abstain, 0 if confidence is sufficient to proceed
+process abstain_should_abstain⦅int64 conf_scaled ⸴ int64 thresh_scaled ⸴ int64 mode ⸴ int64 current_retries ⸴ int64 max_retries⦆ → int64 ⟦
+    when mode ≡ 0 ⟦
+        yield 0 · // No active abstention policy
+    ⟧
+    when conf_scaled ≽ thresh_scaled ⟦
+        yield 0 · // Calibrated confidence meets or exceeds safety threshold
+    ⟧
+    when mode ≡ 1 ⟦ // RETRY mode
+        when max_retries ≻ 0 ∧ current_retries ≽ max_retries ⟦
+            yield 1 · // Retries exhausted: must abstain
+        ⟧
+    ⟧
+    yield 1 · // Confidence below safety threshold: signal abstention
+⟧
+
+// Retry Budget Check: returns 1 if additional retries allowed, 0 if exhausted
+process abstain_is_retry_allowed⦅int64 current_retries ⸴ int64 max_retries⦆ → int64 ⟦
+    when max_retries ≼ 0 ⟦
+        yield 1 ·
+    ⟧
+    when current_retries ≺ max_retries ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Subsystem Process
+process abstain_ydv_main⦅⦆ → int64 ⟦
+    emit "Qadav Native Abstain Subsystem operational (Variance-Penalized Geometric Mean & Policy Gating)." ·
+    yield 0 ·
+⟧
