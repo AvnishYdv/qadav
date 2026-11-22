@@ -1,0 +1,72 @@
+// internal/qadav_native/scoped.ydv
+// Qadav Native Scoped Token & Cross-Boundary Recall Subsystem (Invention #14)
+// Provides mathematical token validation, boundary checking, and Merkle leaf length calculations.
+
+process scoped_check_revoked⦅int64 revoked⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 two ↦ 2 ·
+    int64 neg_two ↦ zero ⊖ two ·
+    when revoked ≡ 1 ⟦
+        yield neg_two ·
+    ⟧
+    yield 0 ·
+⟧
+
+process scoped_check_expiry⦅int64 expiry ⸴ int64 current_time⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 three ↦ 3 ·
+    int64 neg_three ↦ zero ⊖ three ·
+    when current_time ≻ expiry ⟦
+        yield neg_three ·
+    ⟧
+    yield 0 ·
+⟧
+
+process scoped_check_recipient⦅int64 is_matched⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 four ↦ 4 ·
+    int64 neg_four ↦ zero ⊖ four ·
+    when is_matched ≡ zero ⟦
+        yield neg_four ·
+    ⟧
+    yield 0 ·
+⟧
+
+process scoped_check_boundary⦅int64 is_matched⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 six ↦ 6 ·
+    int64 neg_six ↦ zero ⊖ six ·
+    when is_matched ≡ zero ⟦
+        yield neg_six ·
+    ⟧
+    yield 0 ·
+⟧
+
+process scoped_leaf_len⦅int64 key_len⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    yield key_len ⊕ one ·
+⟧
+
+process scoped_id_len⦅⦆ → int64 ⟦
+    yield 104 ·
+⟧
+
+process scoped_token_valid⦅int64 is_revoked ⸴ int64 is_expired ⸴ int64 is_recip_match⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 two ↦ 2 ·
+    int64 three ↦ 3 ·
+    int64 four ↦ 4 ·
+    int64 neg_two ↦ zero ⊖ two ·
+    int64 neg_three ↦ zero ⊖ three ·
+    int64 neg_four ↦ zero ⊖ four ·
+    when is_revoked ≡ 1 ⟦
+        yield neg_two ·
+    ⟧
+    when is_expired ≡ 1 ⟦
+        yield neg_three ·
+    ⟧
+    when is_recip_match ≡ zero ⟦
+        yield neg_four ·
+    ⟧
+    yield 0 ·
+⟧

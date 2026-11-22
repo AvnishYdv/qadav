@@ -1,0 +1,53 @@
+// internal/qadav_native/sandbox.ydv
+// Qadav Native Quantum-Entangled Sandbox Isolation (QESI #16)
+// Provides mathematical state transition, boundary verification, and contained decoherence logic.
+
+process sandbox_can_run⦅int64 state⦆ → int64 ⟦
+    int64 quarantined ↦ 2 ·
+    when state ≡ quarantined ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+process sandbox_is_trigger_violation⦅int64 is_named_trigger ⸴ int64 tool_res⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when is_named_trigger ≡ 1 ⟦
+        yield 1 ·
+    ⟧
+    when tool_res ≺ zero ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process sandbox_preimage_len⦅int64 name_len⦆ → int64 ⟦
+    int64 fixed_meta ↦ 20 ·
+    yield name_len ⊕ fixed_meta ·
+⟧
+
+process sandbox_state_transition⦅int64 current_state ⸴ int64 is_violation⦆ → int64 ⟦
+    when is_violation ≡ 1 ⟦
+        int64 violated_state ↦ 1 ·
+        yield violated_state ·
+    ⟧
+    yield current_state ·
+⟧
+
+process sandbox_check_attestation⦅int64 is_matched⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when is_matched ≡ zero ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+process sandbox_should_decohere_host⦅int64 is_matched ⸴ int64 is_tamper_flag⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when is_matched ≡ zero ⟦
+        when is_tamper_flag ≡ 1 ⟦
+            yield 1 ·
+        ⟧
+    ⟧
+    yield 0 ·
+⟧

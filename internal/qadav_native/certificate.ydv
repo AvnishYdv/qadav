@@ -1,0 +1,74 @@
+// internal/qadav_native/certificate.ydv
+// Qadav Native Reason Certificate Subsystem (Invention #15 - TTPCR)
+// Provides mathematical validation of certificate kinds, witness bounds, confidence ranges, and preimages.
+
+process cert_validate_kind⦅int64 kind⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 four ↦ 4 ·
+    int64 zero ↦ 0 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    when kind ≺ one ⟦
+        yield neg_one ·
+    ⟧
+    when kind ≻ four ⟦
+        yield neg_one ·
+    ⟧
+    yield 0 ·
+⟧
+
+process cert_validate_witness_len⦅int64 wlen⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 max_len ↦ 512 ·
+    int64 zero ↦ 0 ·
+    int64 neg_two ↦ zero ⊖ 2 ·
+    when wlen ≺ one ⟦
+        yield neg_two ·
+    ⟧
+    when wlen ≻ max_len ⟦
+        yield neg_two ·
+    ⟧
+    yield 0 ·
+⟧
+
+process cert_validate_confidence⦅int64 conf_scaled⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 max_conf ↦ 1000000 ·
+    int64 neg_three ↦ zero ⊖ 3 ·
+    when conf_scaled ≺ zero ⟦
+        yield neg_three ·
+    ⟧
+    when conf_scaled ≻ max_conf ⟦
+        yield neg_three ·
+    ⟧
+    yield 0 ·
+⟧
+
+process cert_preimage_len⦅int64 witness_len⦆ → int64 ⟦
+    int64 fixed_hdr ↦ 77 ·
+    yield fixed_hdr ⊕ witness_len ·
+⟧
+
+process cert_commit_len⦅int64 id_len⦆ → int64 ⟦
+    int64 fixed_commit ↦ 32 ·
+    yield fixed_commit ⊕ id_len ·
+⟧
+
+process cert_check_hashes_nonzero⦅int64 p_zero ⸴ int64 c_zero⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 neg_four ↦ zero ⊖ 4 ·
+    when p_zero ≡ 1 ⟦
+        yield neg_four ·
+    ⟧
+    when c_zero ≡ 1 ⟦
+        yield neg_four ·
+    ⟧
+    yield 0 ·
+⟧
+
+process cert_check_diff⦅int64 diff ⸴ int64 err_code⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when diff ≡ zero ⟦
+        yield zero ·
+    ⟧
+    yield err_code ·
+⟧
