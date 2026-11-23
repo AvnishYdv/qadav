@@ -1,0 +1,320 @@
+// internal/qadav_native/qera.ydv
+// Qadav Native Reasoning Audit Chain (RAC / QERA, Invention #11, M5.1)
+// Provides 185-byte step commitments, rolling chain root accumulation, link verification, and audit loops.
+
+declare void @qadav_sha3_256(i64, i64, i64)
+declare i32 @qadav_sha3_ct_compare(i64, i64, i64)
+declare void @qadav_qeeh_trigger_decoherence(i64)
+declare i32 @qadav_qeeh_boundary_hash(i64, i64)
+declare void @qadav_sandbox_set_host_chain(i64)
+declare void @ExitProcess(i32)
+declare void @qera_memcpy(i64, i64, i64)
+declare long long @qera_get_byte(i64)
+declare long long @qera_deref(i64)
+declare void @qera_store(i64, i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+
+process qera_preimage_len⦅⦆ → int64 ⟦
+    yield 185 ·
+⟧
+
+process qera_opcode_validate⦅int64 op⦆ → int64 ⟦
+    when op ≺ 1 ⟦
+        yield 0 ·
+    ⟧
+    when op ≻ 6 ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+process qera_get_step⦅int64 steps_base ⸴ int64 idx⦆ → int64 ⟦
+    int64 step_size ↦ 224 ·
+    int64 offset ↦ idx ⊗ step_size ·
+    int64 p ↦ steps_base ⊕ offset ·
+    yield p ·
+⟧
+
+process qera_compute_step_commitment⦅int64 step_bytes_ptr ⸴ int64 out32_ptr⦆ → int64 ⟦
+    int64 len ↦ 185 ·
+    qadav_sha3_256⦅step_bytes_ptr ⸴ len ⸴ out32_ptr⦆ ·
+    yield 1 ·
+⟧
+
+process qera_chain_root_accumulate⦅int64 prev_root_ptr ⸴ int64 step_comm_ptr ⸴ int64 out_root_ptr⦆ → int64 ⟦
+    int64 sixty_four ↦ 64 ·
+    int64 thirty_two ↦ 32 ·
+    int64 buf ↦ qadav_alloc⦅sixty_four⦆ ·
+    qera_memcpy⦅buf ⸴ prev_root_ptr ⸴ thirty_two⦆ ·
+    int64 buf_second ↦ buf ⊕ thirty_two ·
+    qera_memcpy⦅buf_second ⸴ step_comm_ptr ⸴ thirty_two⦆ ·
+    qadav_sha3_256⦅buf ⸴ sixty_four ⸴ out_root_ptr⦆ ·
+    qadav_free⦅buf⦆ ·
+    yield 1 ·
+⟧
+
+process qera_verify_chain_link⦅int64 step_idx ⸴ int64 prev_comm_ptr ⸴ int64 expected_comm_ptr⦆ → int64 ⟦
+    int64 thirty_two ↦ 32 ·
+    when step_idx ≡ 0 ⟦
+        int64 i ↦ 0 ·
+        int64 one ↦ 1 ·
+        cycle i ≺ thirty_two ⟦
+            int64 p ↦ prev_comm_ptr ⊕ i ·
+            int64 byte_val ↦ qera_get_byte⦅p⦆ ·
+            when byte_val ≻ 0 ⟦
+                yield 0 ·
+            ⟧
+            i ← i ⊕ one ·
+        ⟧
+        yield 1 ·
+    ⟧
+    int64 cmp ↦ qadav_sha3_ct_compare⦅prev_comm_ptr ⸴ expected_comm_ptr ⸴ thirty_two⦆ ·
+    when cmp ≡ 0 ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process qera_pack_step_preimage⦅int64 s ⸴ int64 b⦆ → int64 ⟦
+    qera_memcpy⦅b ⸴ s ⸴ 144⦆ ·
+    int64 b144 ↦ b ⊕ 144 ·
+    int64 s144 ↦ s ⊕ 144 ·
+    qera_memcpy⦅b144 ⸴ s144 ⸴ 1⦆ ·
+    int64 b145 ↦ b ⊕ 145 ·
+    int64 s152 ↦ s ⊕ 152 ·
+    qera_memcpy⦅b145 ⸴ s152 ⸴ 8⦆ ·
+    int64 b153 ↦ b ⊕ 153 ·
+    int64 s192 ↦ s ⊕ 192 ·
+    qera_memcpy⦅b153 ⸴ s192 ⸴ 32⦆ ·
+    yield 1 ·
+⟧
+
+process qera_chain_verify_loop⦅int64 chain_ptr ⸴ int64 n_steps ⸴ int64 steps_ptr ⸴ int64 chain_root_ptr⦆ → int64 ⟦
+    int64 thirty_two ↦ 32 ·
+    int64 one ↦ 1 ·
+    int64 sixty_four ↦ 64 ·
+    int64 local_root ↦ qadav_alloc⦅thirty_two⦆ ·
+    qera_zero⦅local_root ⸴ thirty_two⦆ ·
+    int64 expected_comm ↦ qadav_alloc⦅thirty_two⦆ ·
+    qera_zero⦅expected_comm ⸴ thirty_two⦆ ·
+    int64 step_buf ↦ qadav_alloc⦅185⦆ ·
+    qera_zero⦅step_buf ⸴ 185⦆ ·
+    int64 step_idx ↦ 0 ·
+    cycle step_idx ≺ n_steps ⟦
+        int64 step_cur ↦ qera_get_step⦅steps_ptr ⸴ step_idx⦆ ·
+        int64 prev_comm_ptr ↦ step_cur ⊕ 192 ·
+        int64 link_ok ↦ 0 ·
+        when step_idx ≡ 0 ⟦
+            link_ok ← qera_verify_chain_link⦅0 ⸴ prev_comm_ptr ⸴ 0⦆ ·
+            when link_ok ≡ 0 ⟦
+                qadav_free⦅local_root⦆ ·
+                qadav_free⦅expected_comm⦆ ·
+                qadav_free⦅step_buf⦆ ·
+                yield 0 ·
+            ⟧
+        ⟧
+        when step_idx ≻ 0 ⟦
+            int64 prev_idx ↦ step_idx ⊖ one ·
+            int64 step_prev ↦ qera_get_step⦅steps_ptr ⸴ prev_idx⦆ ·
+            int64 expected_prev_ptr ↦ step_prev ⊕ 160 ·
+            link_ok ← qera_verify_chain_link⦅step_idx ⸴ prev_comm_ptr ⸴ expected_prev_ptr⦆ ·
+            when link_ok ≡ 0 ⟦
+                qadav_free⦅local_root⦆ ·
+                qadav_free⦅expected_comm⦆ ·
+                qadav_free⦅step_buf⦆ ·
+                yield 0 ·
+            ⟧
+        ⟧
+        qera_pack_step_preimage⦅step_cur ⸴ step_buf⦆ ·
+        qera_compute_step_commitment⦅step_buf ⸴ expected_comm⦆ ·
+        int64 stored_comm_ptr ↦ step_cur ⊕ 160 ·
+        int64 comm_cmp ↦ qadav_sha3_ct_compare⦅expected_comm ⸴ stored_comm_ptr ⸴ thirty_two⦆ ·
+        when comm_cmp ≻ 0 ⟦
+            qadav_free⦅local_root⦆ ·
+            qadav_free⦅expected_comm⦆ ·
+            qadav_free⦅step_buf⦆ ·
+            yield 0 ·
+        ⟧
+        when comm_cmp ≺ 0 ⟦
+            qadav_free⦅local_root⦆ ·
+            qadav_free⦅expected_comm⦆ ·
+            qadav_free⦅step_buf⦆ ·
+            yield 0 ·
+        ⟧
+        qera_chain_root_accumulate⦅local_root ⸴ stored_comm_ptr ⸴ local_root⦆ ·
+        step_idx ← step_idx ⊕ one ·
+    ⟧
+    int64 root_cmp ↦ qadav_sha3_ct_compare⦅local_root ⸴ chain_root_ptr ⸴ thirty_two⦆ ·
+    qadav_free⦅local_root⦆ ·
+    qadav_free⦅expected_comm⦆ ·
+    qadav_free⦅step_buf⦆ ·
+    when root_cmp ≡ 0 ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process qera_create_chain⦅int64 name_ptr ⸴ int64 cap ⸴ int64 auth_ptr⦆ → int64 ⟦
+    int64 chain_size ↦ 168 ·
+    int64 c ↦ qadav_alloc⦅chain_size⦆ ·
+    when c ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    qera_zero⦅c ⸴ chain_size⦆ ·
+    int64 real_cap ↦ 100 ·
+    when cap ≻ 0 ⟦
+        when cap ≼ 10000 ⟦
+            real_cap ← cap ·
+        ⟧
+    ⟧
+    int64 cap_ptr ↦ c ⊕ 68 ·
+    qera_set_i32⦅cap_ptr ⸴ real_cap⦆ ·
+    int64 step_size ↦ 224 ·
+    int64 total_steps_bytes ↦ real_cap ⊗ step_size ·
+    int64 steps ↦ qadav_alloc⦅total_steps_bytes⦆ ·
+    qera_zero⦅steps ⸴ total_steps_bytes⦆ ·
+    int64 steps_ptr ↦ c ⊕ 104 ·
+    qera_store⦅steps_ptr ⸴ steps⦆ ·
+    when name_ptr ≻ 0 ⟦
+        qera_memcpy⦅c ⸴ name_ptr ⸴ 63⦆ ·
+    ⟧
+    when auth_ptr ≻ 0 ⟦
+        int64 auth_id_ptr ↦ c ⊕ 72 ·
+        qadav_qeeh_boundary_hash⦅auth_ptr ⸴ auth_id_ptr⦆ ·
+    ⟧
+    qadav_sandbox_set_host_chain⦅c⦆ ·
+    yield c ·
+⟧
+
+process qera_reason_native⦅int64 chain_ptr ⸴ int64 op ⸴ int64 in_ptr ⸴ int64 in_len ⸴ int64 out_ptr ⸴ int64 out_len⦆ → int64 ⟦
+    when chain_ptr ≡ 0 ⟦
+        yield -1 ·
+    ⟧
+    int64 op_ok ↦ qera_opcode_validate⦅op⦆ ·
+    when op_ok ≡ 0 ⟦
+        yield -2 ·
+    ⟧
+    when in_ptr ≡ 0 ⟦
+        yield -5 ·
+    ⟧
+    when in_len ≡ 0 ⟦
+        yield -5 ·
+    ⟧
+    when out_ptr ≡ 0 ⟦
+        yield -6 ·
+    ⟧
+    when out_len ≡ 0 ⟦
+        yield -6 ·
+    ⟧
+    int64 n_steps_ptr ↦ chain_ptr ⊕ 64 ·
+    int64 n_steps ↦ qera_get_i32⦅n_steps_ptr⦆ ·
+    int64 cap_ptr ↦ chain_ptr ⊕ 68 ·
+    int64 capacity ↦ qera_get_i32⦅cap_ptr⦆ ·
+    when n_steps ≽ capacity ⟦
+        yield -1 ·
+    ⟧
+    int64 steps_arr_ptr ↦ chain_ptr ⊕ 104 ·
+    int64 steps_base ↦ qera_deref⦅steps_arr_ptr⦆ ·
+    int64 step_cur ↦ qera_get_step⦅steps_base ⸴ n_steps⦆ ·
+    qera_store⦅step_cur ⸴ n_steps⦆ ·
+    int64 ts_ptr ↦ step_cur ⊕ 8 ·
+    qera_store⦅ts_ptr ⸴ n_steps⦆ ·
+    int64 in_hash_ptr ↦ step_cur ⊕ 16 ·
+    qadav_sha3_256⦅in_ptr ⸴ in_len ⸴ in_hash_ptr⦆ ·
+    int64 out_hash_ptr ↦ step_cur ⊕ 112 ·
+    qadav_sha3_256⦅out_ptr ⸴ out_len ⸴ out_hash_ptr⦆ ·
+    int64 eth_dst ↦ step_cur ⊕ 80 ·
+    int64 eth_src ↦ chain_ptr ⊕ 72 ·
+    qera_memcpy⦅eth_dst ⸴ eth_src ⸴ 32⦆ ·
+    int64 op_byte_ptr ↦ step_cur ⊕ 144 ·
+    qera_store⦅op_byte_ptr ⸴ op⦆ ·
+    when n_steps ≻ 0 ⟦
+        int64 one ↦ 1 ·
+        int64 prev_idx ↦ n_steps ⊖ one ·
+        int64 step_prev ↦ qera_get_step⦅steps_base ⸴ prev_idx⦆ ·
+        int64 prev_comm_dst ↦ step_cur ⊕ 192 ·
+        int64 prev_comm_src ↦ step_prev ⊕ 160 ·
+        qera_memcpy⦅prev_comm_dst ⸴ prev_comm_src ⸴ 32⦆ ·
+    ⟧
+    int64 step_buf ↦ qadav_alloc⦅185⦆ ·
+    qera_pack_step_preimage⦅step_cur ⸴ step_buf⦆ ·
+    int64 comm_dst ↦ step_cur ⊕ 160 ·
+    qera_compute_step_commitment⦅step_buf ⸴ comm_dst⦆ ·
+    qadav_free⦅step_buf⦆ ·
+    int64 chain_root ↦ chain_ptr ⊕ 112 ·
+    qera_chain_root_accumulate⦅chain_root ⸴ comm_dst ⸴ chain_root⦆ ·
+    int64 next_steps ↦ n_steps ⊕ 1 ·
+    qera_set_i32⦅n_steps_ptr ⸴ next_steps⦆ ·
+    yield 0 ·
+⟧
+
+process qera_verify_chain_native⦅int64 chain_ptr ⸴ int64 auth_ptr⦆ → int64 ⟦
+    when chain_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    when auth_ptr ≻ 0 ⟦
+        int64 cur_hash ↦ qadav_alloc⦅32⦆ ·
+        qadav_qeeh_boundary_hash⦅auth_ptr ⸴ cur_hash⦆ ·
+        int64 expected_id ↦ chain_ptr ⊕ 72 ·
+        int64 auth_cmp ↦ qadav_sha3_ct_compare⦅cur_hash ⸴ expected_id ⸴ 32⦆ ·
+        qadav_free⦅cur_hash⦆ ·
+        when auth_cmp ≻ 0 ⟦
+            qadav_qeeh_trigger_decoherence⦅0⦆ ·
+            ExitProcess⦅3735928559⦆ ·
+            yield 0 ·
+        ⟧
+        when auth_cmp ≺ 0 ⟦
+            qadav_qeeh_trigger_decoherence⦅0⦆ ·
+            ExitProcess⦅3735928559⦆ ·
+            yield 0 ·
+        ⟧
+    ⟧
+    int64 n_steps_ptr ↦ chain_ptr ⊕ 64 ·
+    int64 n_steps ↦ qera_get_i32⦅n_steps_ptr⦆ ·
+    int64 steps_arr_ptr ↦ chain_ptr ⊕ 104 ·
+    int64 real_steps ↦ qera_deref⦅steps_arr_ptr⦆ ·
+    int64 chain_root ↦ chain_ptr ⊕ 112 ·
+    int64 v_ok ↦ qera_chain_verify_loop⦅chain_ptr ⸴ n_steps ⸴ real_steps ⸴ chain_root⦆ ·
+    when v_ok ≡ 0 ⟦
+        qadav_qeeh_trigger_decoherence⦅0⦆ ·
+        ExitProcess⦅3735928559⦆ ·
+        yield 0 ·
+    ⟧
+    int64 is_ver_ptr ↦ chain_ptr ⊕ 144 ·
+    qera_store⦅is_ver_ptr ⸴ 1⦆ ·
+    yield 1 ·
+⟧
+
+process qera_corrupt_native⦅int64 chain_ptr ⸴ int64 step_idx ⸴ int64 at_idx⦆ → int64 ⟦
+    when chain_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 n_steps_ptr ↦ chain_ptr ⊕ 64 ·
+    int64 n_steps ↦ qera_get_i32⦅n_steps_ptr⦆ ·
+    when n_steps ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 idx ↦ step_idx ·
+    when idx ≺ 0 ⟦
+        idx ← n_steps ⊖ 1 ·
+    ⟧
+    when idx ≽ n_steps ⟦
+        idx ← n_steps ⊖ 1 ·
+    ⟧
+    int64 steps_arr_ptr ↦ chain_ptr ⊕ 104 ·
+    int64 steps_base ↦ qera_deref⦅steps_arr_ptr⦆ ·
+    int64 step_target ↦ qera_get_step⦅steps_base ⸴ idx⦆ ·
+    int64 comm_target ↦ step_target ⊕ 160 ·
+    int64 byte_pos ↦ at_idx ·
+    int64 thirty_two ↦ 32 ·
+    when byte_pos ≽ thirty_two ⟦
+        byte_pos ← byte_pos ⊖ thirty_two ·
+    ⟧
+    int64 target_byte_ptr ↦ comm_target ⊕ byte_pos ·
+    int64 old_val ↦ qera_get_byte⦅target_byte_ptr⦆ ·
+    int64 mask ↦ 255 ·
+    int64 new_val ↦ mask ⊖ old_val ·
+    qera_store⦅target_byte_ptr ⸴ new_val⦆ ·
+    yield 1 ·
+⟧

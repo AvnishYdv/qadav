@@ -1,0 +1,48 @@
+// internal/qadav_native/qeeh.ydv
+// Qadav Native Ethical Penalty Function Subsystem (formerly QEEH, Invention #6, M3.5)
+// Provides rule penalty summation, boundary hash preimage accumulation, and threshold evaluation.
+
+declare i64 @qeeh_deref(i64)
+
+process qeeh_boundary_hash_preimage_len⦅int64 num_rules ⸴ int64 avg_name_len⦆ → int64 ⟦
+    int64 four ↦ 4 ·
+    int64 nine ↦ 9 ·
+    int64 rule_bytes ↦ avg_name_len ⊕ nine ·
+    int64 all_rules ↦ num_rules ⊗ rule_bytes ·
+    int64 total ↦ four ⊕ all_rules ·
+    yield total ·
+⟧
+
+process qeeh_rule_penalty_sum⦅int64 penalties_ptr ⸴ int64 conditions_ptr ⸴ int64 n_rules⦆ → int64 ⟦
+    when n_rules ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 scale ↦ 1000000 ·
+    int64 total_energy ↦ 0 ·
+    int64 i ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 eight ↦ 8 ·
+    cycle i ≺ n_rules ⟦
+        int64 off ↦ i ⊗ eight ·
+        int64 p_ptr ↦ penalties_ptr ⊕ off ·
+        int64 c_ptr ↦ conditions_ptr ⊕ off ·
+        int64 pen ↦ qeeh_deref⦅p_ptr⦆ ·
+        int64 cond ↦ qeeh_deref⦅c_ptr⦆ ·
+        int64 violation ↦ scale ⊖ cond ·
+        when violation ≺ 0 ⟦
+            violation ← 0 ·
+        ⟧
+        int64 prod ↦ pen ⊗ violation ·
+        int64 term ↦ prod ⊘ scale ·
+        total_energy ← total_energy ⊕ term ·
+        i ← i ⊕ one ·
+    ⟧
+    yield total_energy ·
+⟧
+
+process qeeh_energy_above_threshold⦅int64 energy ⸴ int64 threshold⦆ → int64 ⟦
+    when energy ≻ threshold ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧

@@ -1,0 +1,447 @@
+// internal/qadav_native/mctp.ydv
+// Qadav Native Model Certification & Training Provenance (MCTP, Invention #8, M4.2)
+// Provides 108-byte leaf hashing, Merkle tree reduction with odd duplication, and provenance recording loops.
+
+declare void @qadav_sha3_256(i64, i64, i64)
+declare i32 @qadav_sha3_ct_compare(i64, i64, i64)
+declare void @qadav_lamport_keygen(i64)
+declare void @qadav_lamport_sign(i64, i64, i64)
+declare i32 @qadav_lamport_verify(i64, i64, i64)
+declare i64 @qadav_file_open_write(i64)
+declare i64 @qadav_file_write(i64, i64, i64)
+declare i64 @qadav_file_open_read(i64)
+declare i64 @qadav_file_read(i64, i64, i64)
+declare i64 @qadav_file_close(i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare void @mctp_memcpy(i64, i64, i64)
+declare void @mctp_zero(i64, i64)
+declare i64 @mctp_deref(i64)
+declare void @mctp_store(i64, i64)
+declare i64 @mctp_get_i32(i64)
+declare void @mctp_set_i32(i64, i64)
+
+process mctp_leaf_preimage_len⦅⦆ → int64 ⟦
+    yield 108 ·
+⟧
+
+process mctp_leaf_hash⦅int64 leaf_bytes_ptr ⸴ int64 out32_ptr⦆ → int64 ⟦
+    int64 len ↦ 108 ·
+    qadav_sha3_256⦅leaf_bytes_ptr ⸴ len ⸴ out32_ptr⦆ ·
+    yield 1 ·
+⟧
+
+process mctp_merkle_parent⦅int64 left_ptr ⸴ int64 right_ptr ⸴ int64 out32_ptr⦆ → int64 ⟦
+    int64 sixty_four ↦ 64 ·
+    int64 thirty_two ↦ 32 ·
+    int64 buf ↦ qadav_alloc⦅sixty_four⦆ ·
+    mctp_memcpy⦅buf ⸴ left_ptr ⸴ thirty_two⦆ ·
+    int64 buf_right ↦ buf ⊕ thirty_two ·
+    mctp_memcpy⦅buf_right ⸴ right_ptr ⸴ thirty_two⦆ ·
+    qadav_sha3_256⦅buf ⸴ sixty_four ⸴ out32_ptr⦆ ·
+    qadav_free⦅buf⦆ ·
+    yield 1 ·
+⟧
+
+process mctp_merkle_root⦅int64 leaf_hashes_ptr ⸴ int64 count ⸴ int64 root_out_ptr⦆ → int64 ⟦
+    when count ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 thirty_two ↦ 32 ·
+    when count ≡ 1 ⟦
+        mctp_memcpy⦅root_out_ptr ⸴ leaf_hashes_ptr ⸴ thirty_two⦆ ·
+        yield 1 ·
+    ⟧
+    int64 cur_count ↦ count ·
+    int64 cur_level ↦ leaf_hashes_ptr ·
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    cycle cur_count ≻ one ⟦
+        int64 num ↦ cur_count ⊕ one ·
+        int64 next_count ↦ num ⊘ two ·
+        int64 next_bytes ↦ next_count ⊗ thirty_two ·
+        int64 next_level ↦ qadav_alloc⦅next_bytes⦆ ·
+        int64 i ↦ 0 ·
+        cycle i ≺ next_count ⟦
+            int64 left_idx ↦ i ⊗ two ·
+            int64 right_cand ↦ left_idx ⊕ one ·
+            int64 right_idx ↦ left_idx ·
+            when right_cand ≺ cur_count ⟦
+                right_idx ← right_cand ·
+            ⟧
+            int64 left_off ↦ left_idx ⊗ thirty_two ·
+            int64 left_ptr ↦ cur_level ⊕ left_off ·
+            int64 right_off ↦ right_idx ⊗ thirty_two ·
+            int64 right_ptr ↦ cur_level ⊕ right_off ·
+            int64 out_off ↦ i ⊗ thirty_two ·
+            int64 out_pos ↦ next_level ⊕ out_off ·
+            mctp_merkle_parent⦅left_ptr ⸴ right_ptr ⸴ out_pos⦆ ·
+            i ← i ⊕ one ·
+        ⟧
+        when cur_level ≻ leaf_hashes_ptr ⟦
+            qadav_free⦅cur_level⦆ ·
+        ⟧
+        cur_level ← next_level ·
+        cur_count ← next_count ·
+    ⟧
+    mctp_memcpy⦅root_out_ptr ⸴ cur_level ⸴ thirty_two⦆ ·
+    when cur_level ≻ leaf_hashes_ptr ⟦
+        qadav_free⦅cur_level⦆ ·
+    ⟧
+    yield 1 ·
+⟧
+
+process mctp_wots_chain_steps⦅int64 byte_val⦆ → int64 ⟦
+    int64 mask ↦ 255 ·
+    int64 b ↦ byte_val ·
+    when b ≺ 0 ⟦
+        b ← 0 ·
+    ⟧
+    when b ≻ mask ⟦
+        b ← mask ·
+    ⟧
+    int64 steps ↦ mask ⊖ b ·
+    yield steps ·
+⟧
+
+process mctp_init⦅int64 max_epochs⦆ → int64 ⟦
+    int64 cert_size ↦ 2280 ·
+    int64 c ↦ qadav_alloc⦅cert_size⦆ ·
+    when c ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    mctp_zero⦅c ⸴ cert_size⦆ ·
+    int64 cap ↦ max_epochs ·
+    when cap ≼ 0 ⟦
+        cap ← 10000 ·
+    ⟧
+    int64 leaf_size ↦ 112 ·
+    int64 leaves_bytes ↦ cap ⊗ leaf_size ·
+    int64 leaves ↦ qadav_alloc⦅leaves_bytes⦆ ·
+    mctp_zero⦅leaves ⸴ leaves_bytes⦆ ·
+    int64 leaves_field ↦ c ⊕ 8 ·
+    mctp_store⦅leaves_field ⸴ leaves⦆ ·
+    int64 cap_field ↦ c ⊕ 4 ·
+    mctp_set_i32⦅cap_field ⸴ cap⦆ ·
+    yield c ·
+⟧
+
+process mctp_record_epoch_native⦅int64 c ⸴ int64 ep ⸴ int64 w_ptr ⸴ int64 ws ⸴ int64 d_ptr ⸴ int64 ds ⸴ int64 ls⦆ → int64 ⟦
+    when c ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 cap_field ↦ c ⊕ 4 ·
+    int64 leaves_field ↦ c ⊕ 8 ·
+    int64 n ↦ mctp_get_i32⦅c⦆ ·
+    int64 cap ↦ mctp_get_i32⦅cap_field⦆ ·
+    when n ≽ cap ⟦
+        yield 0 ·
+    ⟧
+    int64 leaves_base ↦ mctp_deref⦅leaves_field⦆ ·
+    int64 leaf_sz ↦ 112 ·
+    int64 leaf_off ↦ n ⊗ leaf_sz ·
+    int64 leaf_ptr ↦ leaves_base ⊕ leaf_off ·
+    mctp_set_i32⦅leaf_ptr ⸴ ep⦆ ·
+    int64 four ↦ 4 ·
+    int64 eight ↦ 8 ·
+    int64 w_hash_ptr ↦ leaf_ptr ⊕ four ·
+    when ws ≻ 0 ⟦
+        qadav_sha3_256⦅w_ptr ⸴ ws ⸴ w_hash_ptr⦆ ·
+    ⟧
+    when ws ≼ 0 ⟦
+        qadav_sha3_256⦅leaf_ptr ⸴ four ⸴ w_hash_ptr⦆ ·
+    ⟧
+    int64 thirty_six ↦ 36 ·
+    int64 d_hash_ptr ↦ leaf_ptr ⊕ thirty_six ·
+    when ds ≻ 0 ⟦
+        qadav_sha3_256⦅d_ptr ⸴ ds ⸴ d_hash_ptr⦆ ·
+    ⟧
+    when ds ≼ 0 ⟦
+        qadav_sha3_256⦅leaf_ptr ⸴ four ⸴ d_hash_ptr⦆ ·
+    ⟧
+    int64 seventy_two ↦ 72 ·
+    int64 loss_ptr ↦ leaf_ptr ⊕ seventy_two ·
+    mctp_store⦅loss_ptr ⸴ ls⦆ ·
+    int64 eighty ↦ 80 ·
+    int64 hp_hash_ptr ↦ leaf_ptr ⊕ eighty ·
+    qadav_sha3_256⦅leaf_ptr ⸴ eight ⸴ hp_hash_ptr⦆ ·
+    int64 next_n ↦ n ⊕ 1 ·
+    mctp_set_i32⦅c ⸴ next_n⦆ ·
+    yield 1 ·
+⟧
+
+process mctp_record_epochs_loop⦅int64 c ⸴ int64 epochs ⸴ int64 w_ptr ⸴ int64 ws ⸴ int64 d_ptr ⸴ int64 ds ⸴ int64 init_ls⦆ → int64 ⟦
+    when epochs ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 ep ↦ 1 ·
+    int64 one ↦ 1 ·
+    cycle ep ≼ epochs ⟦
+        int64 ls ↦ init_ls ⊘ ep ·
+        mctp_record_epoch_native⦅c ⸴ ep ⸴ w_ptr ⸴ ws ⸴ d_ptr ⸴ ds ⸴ ls⦆ ·
+        ep ← ep ⊕ one ·
+    ⟧
+    yield epochs ·
+⟧
+
+process mctp_pack_leaves⦅int64 leaves_base ⸴ int64 n_epochs ⸴ int64 out_buf⦆ → int64 ⟦
+    int64 i ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 leaf_sz ↦ 112 ·
+    int64 rec_sz ↦ 108 ·
+    int64 sixty_eight ↦ 68 ·
+    int64 forty ↦ 40 ·
+    cycle i ≺ n_epochs ⟦
+        int64 leaf_off ↦ i ⊗ leaf_sz ·
+        int64 leaf_ptr ↦ leaves_base ⊕ leaf_off ·
+        int64 out_off ↦ i ⊗ rec_sz ·
+        int64 out_ptr ↦ out_buf ⊕ out_off ·
+        mctp_memcpy⦅out_ptr ⸴ leaf_ptr ⸴ sixty_eight⦆ ·
+        int64 out_loss ↦ out_ptr ⊕ sixty_eight ·
+        int64 leaf_loss ↦ leaf_ptr ⊕ 72 ·
+        mctp_memcpy⦅out_loss ⸴ leaf_loss ⸴ forty⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    int64 total_bytes ↦ n_epochs ⊗ rec_sz ·
+    yield total_bytes ·
+⟧
+
+process mctp_unpack_leaves⦅int64 in_buf ⸴ int64 n_epochs ⸴ int64 leaves_base⦆ → int64 ⟦
+    int64 i ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 leaf_sz ↦ 112 ·
+    int64 rec_sz ↦ 108 ·
+    int64 sixty_eight ↦ 68 ·
+    int64 forty ↦ 40 ·
+    cycle i ≺ n_epochs ⟦
+        int64 in_off ↦ i ⊗ rec_sz ·
+        int64 in_ptr ↦ in_buf ⊕ in_off ·
+        int64 leaf_off ↦ i ⊗ leaf_sz ·
+        int64 leaf_ptr ↦ leaves_base ⊕ leaf_off ·
+        mctp_memcpy⦅leaf_ptr ⸴ in_ptr ⸴ sixty_eight⦆ ·
+        int64 in_loss ↦ in_ptr ⊕ sixty_eight ·
+        int64 leaf_loss ↦ leaf_ptr ⊕ 72 ·
+        mctp_memcpy⦅leaf_loss ⸴ in_loss ⸴ forty⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    yield n_epochs ·
+⟧
+
+process mctp_save_native⦅int64 c ⸴ int64 path_ptr⦆ → int64 ⟦
+    when c ≡ 0 ⟦
+        yield -1 ·
+    ⟧
+    when path_ptr ≡ 0 ⟦
+        yield -1 ·
+    ⟧
+    int64 fd ↦ qadav_file_open_write⦅path_ptr⦆ ·
+    when fd ≺ 0 ⟦
+        yield -2 ·
+    ⟧
+    int64 ten ↦ 10 ·
+    int64 hdr_buf ↦ qadav_alloc⦅ten⦆ ·
+    int64 magic ↦ 1347707725 ·
+    int64 version ↦ 1 ·
+    mctp_set_i32⦅hdr_buf ⸴ magic⦆ ·
+    int64 hdr_4 ↦ hdr_buf ⊕ 4 ·
+    mctp_set_i32⦅hdr_4 ⸴ version⦆ ·
+    int64 n ↦ mctp_get_i32⦅c⦆ ·
+    int64 hdr_6 ↦ hdr_buf ⊕ 6 ·
+    mctp_set_i32⦅hdr_6 ⸴ n⦆ ·
+    qadav_file_write⦅fd ⸴ hdr_buf ⸴ ten⦆ ·
+    qadav_free⦅hdr_buf⦆ ·
+    int64 rec_sz ↦ 108 ·
+    int64 packed_len ↦ n ⊗ rec_sz ·
+    when n ≻ 0 ⟦
+        int64 packed_buf ↦ qadav_alloc⦅packed_len⦆ ·
+        int64 leaves_field ↦ c ⊕ 8 ·
+        int64 leaves_base ↦ mctp_deref⦅leaves_field⦆ ·
+        mctp_pack_leaves⦅leaves_base ⸴ n ⸴ packed_buf⦆ ·
+        qadav_file_write⦅fd ⸴ packed_buf ⸴ packed_len⦆ ·
+        qadav_free⦅packed_buf⦆ ·
+    ⟧
+    int64 thirty_two ↦ 32 ·
+    int64 root_ptr ↦ c ⊕ 16 ·
+    qadav_file_write⦅fd ⸴ root_ptr ⸴ thirty_two⦆ ·
+    int64 sig_sz ↦ 1088 ·
+    int64 sig_ptr ↦ c ⊕ 48 ·
+    qadav_file_write⦅fd ⸴ sig_ptr ⸴ sig_sz⦆ ·
+    int64 pub_ptr ↦ c ⊕ 1136 ·
+    qadav_file_write⦅fd ⸴ pub_ptr ⸴ sig_sz⦆ ·
+    qadav_file_close⦅fd⦆ ·
+    yield 0 ·
+⟧
+
+process mctp_load_native⦅int64 path_ptr⦆ → int64 ⟦
+    when path_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 fd ↦ qadav_file_open_read⦅path_ptr⦆ ·
+    when fd ≺ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 ten ↦ 10 ·
+    int64 hdr_buf ↦ qadav_alloc⦅ten⦆ ·
+    int64 read_bytes ↦ qadav_file_read⦅fd ⸴ hdr_buf ⸴ ten⦆ ·
+    when read_bytes ≺ ten ⟦
+        qadav_free⦅hdr_buf⦆ ·
+        qadav_file_close⦅fd⦆ ·
+        yield 0 ·
+    ⟧
+    int64 hdr_6 ↦ hdr_buf ⊕ 6 ·
+    int64 n ↦ mctp_get_i32⦅hdr_6⦆ ·
+    qadav_free⦅hdr_buf⦆ ·
+    when n ≼ 0 ⟦
+        qadav_file_close⦅fd⦆ ·
+        yield 0 ·
+    ⟧
+    int64 c ↦ mctp_init⦅n⦆ ·
+    when c ≡ 0 ⟦
+        qadav_file_close⦅fd⦆ ·
+        yield 0 ·
+    ⟧
+    mctp_set_i32⦅c ⸴ n⦆ ·
+    int64 rec_sz ↦ 108 ·
+    int64 packed_len ↦ n ⊗ rec_sz ·
+    int64 packed_buf ↦ qadav_alloc⦅packed_len⦆ ·
+    qadav_file_read⦅fd ⸴ packed_buf ⸴ packed_len⦆ ·
+    int64 leaves_field ↦ c ⊕ 8 ·
+    int64 leaves_base ↦ mctp_deref⦅leaves_field⦆ ·
+    mctp_unpack_leaves⦅packed_buf ⸴ n ⸴ leaves_base⦆ ·
+    qadav_free⦅packed_buf⦆ ·
+    int64 thirty_two ↦ 32 ·
+    int64 root_ptr ↦ c ⊕ 16 ·
+    qadav_file_read⦅fd ⸴ root_ptr ⸴ thirty_two⦆ ·
+    int64 sig_sz ↦ 1088 ·
+    int64 sig_ptr ↦ c ⊕ 48 ·
+    qadav_file_read⦅fd ⸴ sig_ptr ⸴ sig_sz⦆ ·
+    int64 pub_ptr ↦ c ⊕ 1136 ·
+    qadav_file_read⦅fd ⸴ pub_ptr ⸴ sig_sz⦆ ·
+    qadav_file_close⦅fd⦆ ·
+    yield c ·
+⟧
+
+process mctp_certify_native⦅int64 c⦆ → int64 ⟦
+    when c ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 n ↦ mctp_get_i32⦅c⦆ ·
+    when n ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 thirty_two ↦ 32 ·
+    int64 hash_bytes ↦ n ⊗ thirty_two ·
+    int64 hashes ↦ qadav_alloc⦅hash_bytes⦆ ·
+    int64 one_hundred_eight ↦ 108 ·
+    int64 leaf_buf ↦ qadav_alloc⦅one_hundred_eight⦆ ·
+    int64 leaves_field ↦ c ⊕ 8 ·
+    int64 leaves_base ↦ mctp_deref⦅leaves_field⦆ ·
+    int64 i ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 leaf_stride ↦ 112 ·
+    int64 sixty_eight ↦ 68 ·
+    int64 forty ↦ 40 ·
+    cycle i ≺ n ⟦
+        int64 leaf_off ↦ i ⊗ leaf_stride ·
+        int64 leaf_ptr ↦ leaves_base ⊕ leaf_off ·
+        mctp_memcpy⦅leaf_buf ⸴ leaf_ptr ⸴ sixty_eight⦆ ·
+        int64 leaf_buf_68 ↦ leaf_buf ⊕ sixty_eight ·
+        int64 leaf_ptr_72 ↦ leaf_ptr ⊕ 72 ·
+        mctp_memcpy⦅leaf_buf_68 ⸴ leaf_ptr_72 ⸴ forty⦆ ·
+        int64 out_off ↦ i ⊗ thirty_two ·
+        int64 out_h ↦ hashes ⊕ out_off ·
+        mctp_leaf_hash⦅leaf_buf ⸴ out_h⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    qadav_free⦅leaf_buf⦆ ·
+    int64 root_ptr ↦ c ⊕ 16 ·
+    mctp_merkle_root⦅hashes ⸴ n ⸴ root_ptr⦆ ·
+    qadav_free⦅hashes⦆ ·
+    int64 kp_sz ↦ 2176 ·
+    int64 kp ↦ qadav_alloc⦅kp_sz⦆ ·
+    qadav_lamport_keygen⦅kp⦆ ·
+    int64 half_kp ↦ 1088 ·
+    int64 kp_pub ↦ kp ⊕ half_kp ·
+    int64 pub_ptr ↦ c ⊕ 1136 ·
+    mctp_memcpy⦅pub_ptr ⸴ kp_pub ⸴ half_kp⦆ ·
+    int64 sig_ptr ↦ c ⊕ 48 ·
+    qadav_lamport_sign⦅kp ⸴ root_ptr ⸴ sig_ptr⦆ ·
+    qadav_free⦅kp⦆ ·
+    int64 valid_field ↦ c ⊕ 2224 ·
+    int64 val_one ↦ 1 ·
+    mctp_set_i32⦅valid_field ⸴ val_one⦆ ·
+    yield 1 ·
+⟧
+
+process mctp_verify_native⦅int64 c ⸴ int64 final_weights_ptr ⸴ int64 size⦆ → int64 ⟦
+    when c ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 n ↦ mctp_get_i32⦅c⦆ ·
+    when n ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 root_ptr ↦ c ⊕ 16 ·
+    int64 sig_ptr ↦ c ⊕ 48 ·
+    int64 pub_ptr ↦ c ⊕ 1136 ·
+    int64 sig_ok ↦ qadav_lamport_verify⦅pub_ptr ⸴ root_ptr ⸴ sig_ptr⦆ ·
+    when sig_ok ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 thirty_two ↦ 32 ·
+    int64 hash_bytes ↦ n ⊗ thirty_two ·
+    int64 hashes ↦ qadav_alloc⦅hash_bytes⦆ ·
+    int64 one_hundred_eight ↦ 108 ·
+    int64 leaf_buf ↦ qadav_alloc⦅one_hundred_eight⦆ ·
+    int64 leaves_field ↦ c ⊕ 8 ·
+    int64 leaves_base ↦ mctp_deref⦅leaves_field⦆ ·
+    int64 i ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 leaf_stride ↦ 112 ·
+    int64 sixty_eight ↦ 68 ·
+    int64 forty ↦ 40 ·
+    cycle i ≺ n ⟦
+        int64 leaf_off ↦ i ⊗ leaf_stride ·
+        int64 leaf_ptr ↦ leaves_base ⊕ leaf_off ·
+        mctp_memcpy⦅leaf_buf ⸴ leaf_ptr ⸴ sixty_eight⦆ ·
+        int64 leaf_buf_68 ↦ leaf_buf ⊕ sixty_eight ·
+        int64 leaf_ptr_72 ↦ leaf_ptr ⊕ 72 ·
+        mctp_memcpy⦅leaf_buf_68 ⸴ leaf_ptr_72 ⸴ forty⦆ ·
+        int64 out_off ↦ i ⊗ thirty_two ·
+        int64 out_h ↦ hashes ⊕ out_off ·
+        mctp_leaf_hash⦅leaf_buf ⸴ out_h⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    qadav_free⦅leaf_buf⦆ ·
+    int64 local_root ↦ qadav_alloc⦅thirty_two⦆ ·
+    mctp_merkle_root⦅hashes ⸴ n ⸴ local_root⦆ ·
+    qadav_free⦅hashes⦆ ·
+    int64 root_cmp ↦ qadav_sha3_ct_compare⦅local_root ⸴ root_ptr ⸴ thirty_two⦆ ·
+    qadav_free⦅local_root⦆ ·
+    when root_cmp ≻ 0 ⟦
+        yield 0 ·
+    ⟧
+    when root_cmp ≺ 0 ⟦
+        yield 0 ·
+    ⟧
+    when size ≻ 0 ⟦
+        when final_weights_ptr ≻ 0 ⟦
+            int64 w_hash ↦ qadav_alloc⦅thirty_two⦆ ·
+            qadav_sha3_256⦅final_weights_ptr ⸴ size ⸴ w_hash⦆ ·
+            int64 last_idx ↦ n ⊖ one ·
+            int64 last_off ↦ last_idx ⊗ leaf_stride ·
+            int64 last_leaf ↦ leaves_base ⊕ last_off ·
+            int64 four ↦ 4 ·
+            int64 stored_w_hash ↦ last_leaf ⊕ four ·
+            int64 w_cmp ↦ qadav_sha3_ct_compare⦅w_hash ⸴ stored_w_hash ⸴ thirty_two⦆ ·
+            qadav_free⦅w_hash⦆ ·
+            when w_cmp ≻ 0 ⟦
+                yield 0 ·
+            ⟧
+            when w_cmp ≺ 0 ⟦
+                yield 0 ·
+            ⟧
+        ⟧
+    ⟧
+    yield 1 ·
+⟧
