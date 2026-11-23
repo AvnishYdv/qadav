@@ -9,6 +9,7 @@ process main⦅⦆ → int64 ⟦
     verify_syndrome qm with syn0 ·
 
     qecd_decode distance ↦ 3 from syn0 into decoded ·
+    int64 is_valid ↦ 1 ·
     qecd_verify decoded into is_valid ·
     emit "QEC decode attestation verified" ·
     emit is_valid ·

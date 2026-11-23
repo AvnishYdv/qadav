@@ -1,0 +1,440 @@
+// internal/qadav_native/aad.ydv
+// Qadav Native Attested Adaptive Decoding Subsystem (AAD, Invention #13, M7.1)
+// Provides training certificate preimages, decode envelope attestation, and meta-adaptive lineage chaining.
+
+declare void @qadav_sha3_256(i64, i64, i64)
+declare i32 @qadav_sha3_ct_compare(i64, i64, i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare void @memcpy(i64, i64, i64)
+declare void @memset(i64, i64, i64)
+
+declare i64 @aad_gb(i64)
+declare void @aad_sb(i64, i64)
+declare i64 @aad_dr(i64)
+declare void @aad_st(i64, i64)
+declare i64 @aad_g32(i64)
+declare void @aad_s32(i64, i64)
+
+process aad_popcount_byte⦅int64 b⦆ → int64 ⟦
+    int64 count ↦ 0 ·
+    int64 val ↦ b ·
+    int64 i ↦ 0 ·
+    int64 eight ↦ 8 ·
+    int64 two ↦ 2 ·
+    int64 one ↦ 1 ·
+    cycle i ≺ eight ⟦
+        int64 half ↦ val ⊘ two ·
+        int64 doubled ↦ half ⊗ two ·
+        int64 bit ↦ val ⊖ doubled ·
+        when bit ≡ one ⟦
+            count ← count ⊕ one ·
+        ⟧
+        val ← half ·
+        i ← i ⊕ one ·
+    ⟧
+    yield count ·
+⟧
+
+process aad_syndrome_hamming_weight⦅int64 syn_ptr ⸴ int64 syn_len⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when syn_ptr ≡ zero ⟦
+        yield zero ·
+    ⟧
+    when syn_len ≼ zero ⟦
+        yield zero ·
+    ⟧
+    int64 total_weight ↦ 0 ·
+    int64 i ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 s_p ↦ 0 ·
+    int64 b ↦ 0 ·
+    int64 pc ↦ 0 ·
+    cycle i ≺ syn_len ⟦
+        s_p ← syn_ptr ⊕ i ·
+        b ← aad_gb⦅s_p⦆ ·
+        pc ← aad_popcount_byte⦅b⦆ ·
+        total_weight ← total_weight ⊕ pc ·
+        i ← i ⊕ one ·
+    ⟧
+    yield total_weight ·
+⟧
+
+process aad_pack_u64_native⦅int64 buf_ptr ⸴ int64 val⦆ → int64 ⟦
+    int64 two_five_six ↦ 256 ·
+    int64 cur_v ↦ val ·
+    int64 i ↦ 0 ·
+    int64 eight ↦ 8 ·
+    int64 one ↦ 1 ·
+    int64 p ↦ 0 ·
+    int64 v_div ↦ 0 ·
+    int64 v_mul ↦ 0 ·
+    int64 b ↦ 0 ·
+    cycle i ≺ eight ⟦
+        v_div ← cur_v ⊘ two_five_six ·
+        v_mul ← v_div ⊗ two_five_six ·
+        b ← cur_v ⊖ v_mul ·
+        p ← buf_ptr ⊕ i ·
+        aad_sb⦅p ⸴ b⦆ ·
+        cur_v ← v_div ·
+        i ← i ⊕ one ·
+    ⟧
+    yield 1 ·
+⟧
+
+process aad_pack_u32_native⦅int64 buf_ptr ⸴ int64 val⦆ → int64 ⟦
+    int64 two_five_six ↦ 256 ·
+    int64 cur_v ↦ val ·
+    int64 i ↦ 0 ·
+    int64 four ↦ 4 ·
+    int64 one ↦ 1 ·
+    int64 p ↦ 0 ·
+    int64 v_div ↦ 0 ·
+    int64 v_mul ↦ 0 ·
+    int64 b ↦ 0 ·
+    cycle i ≺ four ⟦
+        v_div ← cur_v ⊘ two_five_six ·
+        v_mul ← v_div ⊗ two_five_six ·
+        b ← cur_v ⊖ v_mul ·
+        p ← buf_ptr ⊕ i ·
+        aad_sb⦅p ⸴ b⦆ ·
+        cur_v ← v_div ·
+        i ← i ⊕ one ·
+    ⟧
+    yield 1 ·
+⟧
+
+process aad_compute_cert_hash_native⦅int64 cert_ptr ⸴ int64 out_hash_ptr⦆ → int64 ⟦
+    int64 pre ↦ qadav_alloc⦅88⦆ ·
+    when pre ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    memcpy⦅pre ⸴ cert_ptr ⸴ 32⦆ ·
+    int64 p_ts ↦ pre ⊕ 32 ·
+    int64 s_ts ↦ cert_ptr ⊕ 32 ·
+    memcpy⦅p_ts ⸴ s_ts ⸴ 32⦆ ·
+
+    int64 p_sz ↦ pre ⊕ 64 ·
+    int64 s_sz ↦ cert_ptr ⊕ 64 ·
+    int64 train_size ↦ aad_dr⦅s_sz⦆ ·
+    aad_pack_u64_native⦅p_sz ⸴ train_size⦆ ·
+
+    int64 p_mw ↦ pre ⊕ 72 ·
+    int64 s_mw ↦ cert_ptr ⊕ 72 ·
+    int64 max_syn_w ↦ aad_dr⦅s_mw⦆ ·
+    aad_pack_u64_native⦅p_mw ⸴ max_syn_w⦆ ·
+
+    int64 p_md ↦ pre ⊕ 80 ·
+    int64 s_md ↦ cert_ptr ⊕ 80 ·
+    int64 max_corr_d ↦ aad_dr⦅s_md⦆ ·
+    aad_pack_u64_native⦅p_md ⸴ max_corr_d⦆ ·
+
+    qadav_sha3_256⦅pre ⸴ 88 ⸴ out_hash_ptr⦆ ·
+    qadav_free⦅pre⦆ ·
+    yield 1 ·
+⟧
+
+process aad_compute_envelope_hash_native⦅int64 env_ptr ⸴ int64 out_hash_ptr⦆ → int64 ⟦
+    int64 pre ↦ qadav_alloc⦅92⦆ ·
+    when pre ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 step_idx ↦ aad_dr⦅env_ptr⦆ ·
+    aad_pack_u64_native⦅pre ⸴ step_idx⦆ ·
+
+    int64 p_sh ↦ pre ⊕ 8 ·
+    int64 s_sh ↦ env_ptr ⊕ 8 ·
+    memcpy⦅p_sh ⸴ s_sh ⸴ 32⦆ ·
+
+    int64 p_sw ↦ pre ⊕ 40 ·
+    int64 s_sw ↦ env_ptr ⊕ 40 ·
+    int64 syn_w ↦ aad_g32⦅s_sw⦆ ·
+    aad_pack_u32_native⦅p_sw ⸴ syn_w⦆ ·
+
+    int64 p_nc ↦ pre ⊕ 44 ·
+    int64 s_nc ↦ env_ptr ⊕ 44 ·
+    int64 n_corr ↦ aad_g32⦅s_nc⦆ ·
+    aad_pack_u32_native⦅p_nc ⸴ n_corr⦆ ·
+
+    int64 p_cd ↦ pre ⊕ 48 ·
+    int64 s_cd ↦ env_ptr ⊕ 48 ·
+    int64 corr_d ↦ aad_g32⦅s_cd⦆ ·
+    aad_pack_u32_native⦅p_cd ⸴ corr_d⦆ ·
+
+    int64 p_conf ↦ pre ⊕ 52 ·
+    int64 s_conf ↦ env_ptr ⊕ 56 ·
+    memcpy⦅p_conf ⸴ s_conf ⸴ 8⦆ ·
+
+    int64 p_ch ↦ pre ⊕ 60 ·
+    int64 s_ch ↦ env_ptr ⊕ 64 ·
+    memcpy⦅p_ch ⸴ s_ch ⸴ 32⦆ ·
+
+    qadav_sha3_256⦅pre ⸴ 92 ⸴ out_hash_ptr⦆ ·
+    qadav_free⦅pre⦆ ·
+    yield 1 ·
+⟧
+
+process aad_meta_adapt_lineage_native⦅int64 chain_ptr ⸴ int64 env_hash_ptr ⸴ int64 out_chain_ptr⦆ → int64 ⟦
+    int64 buf ↦ qadav_alloc⦅64⦆ ·
+    when buf ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    memcpy⦅buf ⸴ chain_ptr ⸴ 32⦆ ·
+    int64 b2 ↦ buf ⊕ 32 ·
+    memcpy⦅b2 ⸴ env_hash_ptr ⸴ 32⦆ ·
+    qadav_sha3_256⦅buf ⸴ 64 ⸴ out_chain_ptr⦆ ·
+    qadav_free⦅buf⦆ ·
+    yield 1 ·
+⟧
+
+process aad_wrap_native⦅int64 cert_ptr ⸴ int64 decode_ptr ⸴ int64 syn_ptr ⸴ int64 syn_len ⸴ int64 out_env_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    int64 neg_three ↦ zero ⊖ 3 ·
+    when cert_ptr ≡ zero ⟦
+        yield neg_one ·
+    ⟧
+    when decode_ptr ≡ zero ⟦
+        yield neg_one ·
+    ⟧
+    when out_env_ptr ≡ zero ⟦
+        yield neg_one ·
+    ⟧
+
+    int64 weight ↦ aad_syndrome_hamming_weight⦅syn_ptr ⸴ syn_len⦆ ·
+    int64 s_mw ↦ cert_ptr ⊕ 72 ·
+    int64 max_syn_w ↦ aad_dr⦅s_mw⦆ ·
+    when weight ≻ max_syn_w ⟦
+        yield neg_three ·
+    ⟧
+
+    int64 s_md ↦ cert_ptr ⊕ 80 ·
+    int64 max_corr_d ↦ aad_dr⦅s_md⦆ ·
+    int64 p_dc_nc ↦ decode_ptr ⊕ 524 ·
+    int64 n_corr ↦ aad_g32⦅p_dc_nc⦆ ·
+    when n_corr ≻ max_corr_d ⟦
+        yield neg_three ·
+    ⟧
+
+    memset⦅out_env_ptr ⸴ 0 ⸴ 128⦆ ·
+    aad_st⦅out_env_ptr ⸴ 1⦆ ·
+
+    int64 p_sh ↦ out_env_ptr ⊕ 8 ·
+    when syn_ptr ≻ zero ⟦
+        when syn_len ≻ zero ⟦
+            qadav_sha3_256⦅syn_ptr ⸴ syn_len ⸴ p_sh⦆ ·
+        ⟧
+    ⟧
+
+    int64 p_sw ↦ out_env_ptr ⊕ 40 ·
+    aad_s32⦅p_sw ⸴ weight⦆ ·
+    int64 p_nc ↦ out_env_ptr ⊕ 44 ·
+    aad_s32⦅p_nc ⸴ n_corr⦆ ·
+    int64 p_cd ↦ out_env_ptr ⊕ 48 ·
+    aad_s32⦅p_cd ⸴ n_corr⦆ ·
+
+    int64 p_cf ↦ out_env_ptr ⊕ 56 ·
+    int64 cf_raw ↦ 4607182418800017408 ·
+    aad_st⦅p_cf ⸴ cf_raw⦆ ·
+
+    int64 p_th ↦ out_env_ptr ⊕ 64 ·
+    int64 s_ch ↦ cert_ptr ⊕ 88 ·
+    memcpy⦅p_th ⸴ s_ch ⸴ 32⦆ ·
+
+    int64 p_eh ↦ out_env_ptr ⊕ 96 ·
+    aad_compute_envelope_hash_native⦅out_env_ptr ⸴ p_eh⦆ ·
+    yield 0 ·
+⟧
+
+process aad_verify_native⦅int64 env_ptr ⸴ int64 cert_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when env_ptr ≡ zero ⟦
+        yield zero ·
+    ⟧
+    int64 exp_buf ↦ qadav_alloc⦅32⦆ ·
+    when exp_buf ≡ zero ⟦
+        yield zero ·
+    ⟧
+    aad_compute_envelope_hash_native⦅env_ptr ⸴ exp_buf⦆ ·
+    int64 s_eh ↦ env_ptr ⊕ 96 ·
+    int64 cmp ↦ qadav_sha3_ct_compare⦅s_eh ⸴ exp_buf ⸴ 32⦆ ·
+    qadav_free⦅exp_buf⦆ ·
+    when cmp ≺ zero ∨ cmp ≻ zero ⟦
+        yield zero ·
+    ⟧
+
+    when cert_ptr ≻ zero ⟦
+        int64 s_th ↦ env_ptr ⊕ 64 ·
+        int64 s_ch ↦ cert_ptr ⊕ 88 ·
+        int64 cmp_c ↦ qadav_sha3_ct_compare⦅s_th ⸴ s_ch ⸴ 32⦆ ·
+        when cmp_c ≺ zero ∨ cmp_c ≻ zero ⟦
+            yield zero ·
+        ⟧
+        int64 p_sw ↦ env_ptr ⊕ 40 ·
+        int64 sw ↦ aad_g32⦅p_sw⦆ ·
+        int64 s_mw ↦ cert_ptr ⊕ 72 ·
+        int64 mw ↦ aad_dr⦅s_mw⦆ ·
+        when sw ≻ mw ⟦
+            yield zero ·
+        ⟧
+        int64 p_nc ↦ env_ptr ⊕ 44 ·
+        int64 nc ↦ aad_g32⦅p_nc⦆ ·
+        int64 s_md ↦ cert_ptr ⊕ 80 ·
+        int64 md ↦ aad_dr⦅s_md⦆ ·
+        when nc ≻ md ⟦
+            yield zero ·
+        ⟧
+    ⟧
+    yield 1 ·
+⟧
+
+process aad_adapt_native⦅int64 state_ptr ⸴ int64 env_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 neg_one ↦ zero ⊖ 1 ·
+    int64 neg_two ↦ zero ⊖ 2 ·
+    when state_ptr ≡ zero ⟦
+        yield neg_one ·
+    ⟧
+    when env_ptr ≡ zero ⟦
+        yield neg_one ·
+    ⟧
+    int64 v ↦ aad_verify_native⦅env_ptr ⸴ state_ptr⦆ ·
+    when v ≡ zero ⟦
+        yield neg_two ·
+    ⟧
+    int64 chain_p ↦ state_ptr ⊕ 256 ·
+    int64 env_h ↦ env_ptr ⊕ 96 ·
+    aad_meta_adapt_lineage_native⦅chain_p ⸴ env_h ⸴ chain_p⦆ ·
+    int64 last_env_p ↦ state_ptr ⊕ 120 ·
+    memcpy⦅last_env_p ⸴ env_ptr ⸴ 128⦆ ·
+    int64 p_steps ↦ state_ptr ⊕ 248 ·
+    int64 st ↦ aad_dr⦅p_steps⦆ ·
+    int64 next_st ↦ st ⊕ 1 ·
+    aad_st⦅p_steps ⸴ next_st⦆ ·
+    yield 0 ·
+⟧
+
+process aad_mver_native⦅int64 state_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when state_ptr ≡ zero ⟦
+        yield zero ·
+    ⟧
+    int64 exp ↦ qadav_alloc⦅32⦆ ·
+    when exp ≡ zero ⟦
+        yield zero ·
+    ⟧
+    aad_compute_cert_hash_native⦅state_ptr ⸴ exp⦆ ·
+    int64 cert_h ↦ state_ptr ⊕ 88 ·
+    int64 cmp ↦ qadav_sha3_ct_compare⦅cert_h ⸴ exp ⸴ 32⦆ ·
+    when cmp ≺ zero ∨ cmp ≻ zero ⟦
+        qadav_free⦅exp⦆ ·
+        yield zero ·
+    ⟧
+
+    int64 p_steps ↦ state_ptr ⊕ 248 ·
+    int64 st ↦ aad_dr⦅p_steps⦆ ·
+    when st ≻ zero ⟦
+        int64 last_env ↦ state_ptr ⊕ 120 ·
+        aad_compute_envelope_hash_native⦅last_env ⸴ exp⦆ ·
+        int64 env_h ↦ last_env ⊕ 96 ·
+        int64 cmp_e ↦ qadav_sha3_ct_compare⦅env_h ⸴ exp ⸴ 32⦆ ·
+        when cmp_e ≺ zero ∨ cmp_e ≻ zero ⟦
+            qadav_free⦅exp⦆ ·
+            yield zero ·
+        ⟧
+    ⟧
+    qadav_free⦅exp⦆ ·
+    yield 1 ·
+⟧
+
+process aad_build_native⦅int64 m_ptr ⸴ int64 ml ⸴ int64 t_ptr ⸴ int64 tl ⸴ int64 cfg_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when m_ptr ≡ zero ⟦
+        yield zero ·
+    ⟧
+    when ml ≼ zero ⟦
+        yield zero ·
+    ⟧
+    when t_ptr ≡ zero ⟦
+        yield zero ·
+    ⟧
+    when tl ≼ zero ⟦
+        yield zero ·
+    ⟧
+    when cfg_ptr ≡ zero ⟦
+        yield zero ·
+    ⟧
+    int64 n ↦ aad_dr⦅cfg_ptr⦆ ·
+    when n ≻ 1024 ⟦
+        yield zero ·
+    ⟧
+    int64 p_mw ↦ cfg_ptr ⊕ 8 ·
+    int64 mw ↦ aad_dr⦅p_mw⦆ ·
+    when mw ≻ 128 ⟦
+        yield zero ·
+    ⟧
+    int64 p_md ↦ cfg_ptr ⊕ 16 ·
+    int64 md ↦ aad_dr⦅p_md⦆ ·
+    when md ≻ 16 ⟦
+        yield zero ·
+    ⟧
+
+    int64 c ↦ qadav_alloc⦅120⦆ ·
+    when c ≡ zero ⟦
+        yield zero ·
+    ⟧
+    memset⦅c ⸴ 0 ⸴ 120⦆ ·
+    qadav_sha3_256⦅m_ptr ⸴ ml ⸴ c⦆ ·
+    int64 p_ts ↦ c ⊕ 32 ·
+    qadav_sha3_256⦅t_ptr ⸴ tl ⸴ p_ts⦆ ·
+    int64 p_n ↦ c ⊕ 64 ·
+    aad_st⦅p_n ⸴ n⦆ ·
+    int64 p_cmw ↦ c ⊕ 72 ·
+    aad_st⦅p_cmw ⸴ mw⦆ ·
+    int64 p_cmd ↦ c ⊕ 80 ·
+    aad_st⦅p_cmd ⸴ md⦆ ·
+    int64 p_ch ↦ c ⊕ 88 ·
+    aad_compute_cert_hash_native⦅c ⸴ p_ch⦆ ·
+    yield c ·
+⟧
+
+process aad_fit_native⦅int64 s_ptr ⸴ int64 c_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 neg_one ↦ zero ⊖ 1 ·
+    when s_ptr ≡ zero ⟦
+        yield neg_one ·
+    ⟧
+    when c_ptr ≡ zero ⟦
+        yield neg_one ·
+    ⟧
+    memset⦅s_ptr ⸴ 0 ⸴ 288⦆ ·
+    memcpy⦅s_ptr ⸴ c_ptr ⸴ 120⦆ ·
+    int64 p_st ↦ s_ptr ⊕ 248 ·
+    aad_st⦅p_st ⸴ zero⦆ ·
+    int64 p_ac ↦ s_ptr ⊕ 256 ·
+    int64 s_ch ↦ c_ptr ⊕ 88 ·
+    memcpy⦅p_ac ⸴ s_ch ⸴ 32⦆ ·
+    yield 0 ·
+⟧
+
+process aad_corr_native⦅int64 env_ptr ⸴ int64 offset⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 neg_one ↦ zero ⊖ 1 ·
+    when env_ptr ≡ zero ⟦
+        yield neg_one ·
+    ⟧
+    int64 off ↦ offset ·
+    when off ≺ zero ⟦
+        off ← zero ⊖ offset ·
+    ⟧
+    int64 one_two_eight ↦ 128 ·
+    int64 d ↦ off ⊘ one_two_eight ·
+    int64 m ↦ d ⊗ one_two_eight ·
+    int64 mod_off ↦ off ⊖ m ·
+    int64 target_p ↦ env_ptr ⊕ mod_off ·
+    int64 cur_b ↦ aad_gb⦅target_p⦆ ·
+    cur_b ← cur_b ⊻ 255 ·
+    aad_sb⦅target_p ⸴ cur_b⦆ ·
+    yield 0 ·
+⟧

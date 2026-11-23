@@ -1,0 +1,548 @@
+// internal/qadav_native/qemwv.ydv
+// Qadav Native Quantum-Entangled Model Weight Vault (QEMWV, Invention #10, M4.2)
+// Provides Galois Field GF(256) arithmetic, Horner evaluation, Lagrange basis, Shamir secret sharing & zeroization.
+
+declare void @qadav_sha3_256(i64, i64, i64)
+declare i32 @qadav_sha3_ct_compare(i64, i64, i64)
+declare i32 @qadav_qeeh_boundary_hash(i64, i64)
+declare void @qadav_qeeh_trigger_decoherence(i64)
+declare void @ExitProcess(i32)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare void @memcpy(i64, i64, i64)
+declare void @memset(i64, i64, i64)
+
+declare i64 @qemwv_gb(i64)
+declare void @qemwv_sb(i64, i64)
+declare i64 @qemwv_dr(i64)
+declare void @qemwv_st(i64, i64)
+declare i64 @qemwv_g32(i64)
+declare void @qemwv_s32(i64, i64)
+
+process gf256_mul⦅int64 a ⸴ int64 b⦆ → int64 ⟦
+    int64 res ↦ 0 ·
+    int64 cur_a ↦ a ·
+    int64 cur_b ↦ b ·
+    int64 i ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 c80 ↦ 128 ·
+    int64 c1b ↦ 27 ·
+    int64 half_b ↦ 0 ·
+    int64 doubled_b ↦ 0 ·
+    int64 bit ↦ 0 ·
+    int64 hi ↦ 0 ·
+    cycle i ≺ 8 ⟦
+        half_b ← cur_b ⊘ two ·
+        doubled_b ← half_b ⊗ two ·
+        bit ← cur_b ⊖ doubled_b ·
+        when bit ≡ 1 ⟦
+            res ← res ⊻ cur_a ·
+        ⟧
+        hi ← 0 ·
+        when cur_a ≽ c80 ⟦
+            hi ← 1 ·
+        ⟧
+        cur_a ← cur_a ⊗ two ·
+        when cur_a ≽ 256 ⟦
+            cur_a ← cur_a ⊖ 256 ·
+        ⟧
+        when hi ≡ 1 ⟦
+            cur_a ← cur_a ⊻ c1b ·
+        ⟧
+        cur_b ← half_b ·
+        i ← i ⊕ one ·
+    ⟧
+    yield res ·
+⟧
+
+process gf256_inv⦅int64 a⦆ → int64 ⟦
+    when a ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 res ↦ 1 ·
+    int64 base ↦ a ·
+    int64 exp ↦ 254 ·
+    int64 two ↦ 2 ·
+    int64 half_exp ↦ 0 ·
+    int64 doubled_exp ↦ 0 ·
+    int64 bit ↦ 0 ·
+    cycle exp ≻ 0 ⟦
+        half_exp ← exp ⊘ two ·
+        doubled_exp ← half_exp ⊗ two ·
+        bit ← exp ⊖ doubled_exp ·
+        when bit ≡ 1 ⟦
+            res ← gf256_mul⦅res ⸴ base⦆ ·
+        ⟧
+        base ← gf256_mul⦅base ⸴ base⦆ ·
+        exp ← half_exp ·
+    ⟧
+    yield res ·
+⟧
+
+process gf256_eval_poly⦅int64 coeffs_ptr ⸴ int64 deg ⸴ int64 x⦆ → int64 ⟦
+    int64 res ↦ 0 ·
+    int64 i ↦ deg ·
+    int64 one ↦ 1 ·
+    int64 done ↦ 0 ·
+    int64 c_ptr ↦ 0 ·
+    int64 c_val ↦ 0 ·
+    int64 prod ↦ 0 ·
+    cycle done ≡ 0 ⟦
+        c_ptr ← coeffs_ptr ⊕ i ·
+        c_val ← qemwv_gb⦅c_ptr⦆ ·
+        prod ← gf256_mul⦅res ⸴ x⦆ ·
+        res ← prod ⊻ c_val ·
+        when i ≡ 0 ⟦
+            done ← 1 ·
+        ⟧
+        when i ≻ 0 ⟦
+            i ← i ⊖ one ·
+        ⟧
+    ⟧
+    yield res ·
+⟧
+
+process qemwv_compute_lagrange_basis⦅int64 k ⸴ int64 basis_out_ptr⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    int64 xi ↦ 0 ·
+    int64 num ↦ 1 ·
+    int64 den ↦ 1 ·
+    int64 j ↦ 0 ·
+    int64 xj ↦ 0 ·
+    int64 diff ↦ 0 ·
+    int64 inv_den ↦ 0 ·
+    int64 basis_i ↦ 0 ·
+    int64 out_p ↦ 0 ·
+    cycle i ≺ k ⟦
+        xi ← i ⊕ one ·
+        num ← 1 ·
+        den ← 1 ·
+        j ← 0 ·
+        cycle j ≺ k ⟦
+            when i ≺ j ⟦
+                xj ← j ⊕ one ·
+                num ← gf256_mul⦅num ⸴ xj⦆ ·
+                diff ← xj ⊻ xi ·
+                den ← gf256_mul⦅den ⸴ diff⦆ ·
+            ⟧
+            when i ≻ j ⟦
+                xj ← j ⊕ one ·
+                num ← gf256_mul⦅num ⸴ xj⦆ ·
+                diff ← xj ⊻ xi ·
+                den ← gf256_mul⦅den ⸴ diff⦆ ·
+            ⟧
+            j ← j ⊕ one ·
+        ⟧
+        inv_den ← gf256_inv⦅den⦆ ·
+        basis_i ← gf256_mul⦅num ⸴ inv_den⦆ ·
+        out_p ← basis_out_ptr ⊕ i ·
+        qemwv_sb⦅out_p ⸴ basis_i⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    yield 1 ·
+⟧
+
+process qemwv_rand_byte⦅int64 seed_val⦆ → int64 ⟦
+    int64 s ↦ seed_val ·
+    int64 s1 ↦ s ⊗ 8192 ·
+    s ← s ⊻ s1 ·
+    int64 s2 ↦ s ⊘ 128 ·
+    s ← s ⊻ s2 ·
+    int64 s3 ↦ s ⊗ 131072 ·
+    s ← s ⊻ s3 ·
+    int64 two_five_six ↦ 256 ·
+    int64 s_div ↦ s ⊘ two_five_six ·
+    int64 s_mul ↦ s_div ⊗ two_five_six ·
+    int64 b ↦ s ⊖ s_mul ·
+    when b ≺ 0 ⟦
+        b ← b ⊕ two_five_six ·
+    ⟧
+    yield b ·
+⟧
+
+process qemwv_create_native⦅int64 n_shares ⸴ int64 threshold ⸴ int64 boundary_ptr⦆ → int64 ⟦
+    int64 real_n ↦ n_shares ·
+    when real_n ≼ 0 ⟦
+        real_n ← 5 ·
+    ⟧
+    when real_n ≻ 5 ⟦
+        real_n ← 5 ·
+    ⟧
+    int64 real_t ↦ threshold ·
+    when real_t ≼ 0 ⟦
+        real_t ← 3 ·
+    ⟧
+    when real_t ≻ real_n ⟦
+        real_t ← real_n ·
+    ⟧
+    int64 sz ↦ 320 ·
+    int64 v ↦ qadav_alloc⦅sz⦆ ·
+    when v ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    memset⦅v ⸴ 0 ⸴ sz⦆ ·
+    qemwv_s32⦅v ⸴ real_n⦆ ·
+    int64 t_loc ↦ v ⊕ 4 ·
+    qemwv_s32⦅t_loc ⸴ real_t⦆ ·
+    when boundary_ptr ≻ 0 ⟦
+        int64 auth_bid ↦ v ⊕ 288 ·
+        qadav_qeeh_boundary_hash⦅boundary_ptr ⸴ auth_bid⦆ ·
+    ⟧
+    yield v ·
+⟧
+
+process qemwv_seal_native⦅int64 v ⸴ int64 weights_ptr ⸴ int64 num_weights ⸴ int64 seed⦆ → int64 ⟦
+    when v ≡ 0 ⟦
+        yield -1 ·
+    ⟧
+    int64 st_loc ↦ v ⊕ 248 ·
+    int64 cur_state ↦ qemwv_g32⦅st_loc⦆ ·
+    when cur_state ≡ 1 ⟦
+        yield -2 ·
+    ⟧
+    int64 total_bytes ↦ 0 ·
+    int64 sum ↦ 0 ·
+    int64 wi ↦ 0 ·
+    int64 w_arr_off ↦ 0 ·
+    int64 w_ptr_loc ↦ 0 ·
+    int64 t_ptr ↦ 0 ·
+    int64 ts_ptr ↦ 0 ·
+    int64 ts ↦ 0 ·
+    int64 es_ptr ↦ 0 ·
+    int64 es ↦ 0 ·
+    int64 sz ↦ 0 ·
+    int64 flat ↦ 0 ·
+    int64 off ↦ 0 ·
+    int64 wi2 ↦ 0 ·
+    int64 w_arr_off2 ↦ 0 ·
+    int64 w_ptr_loc2 ↦ 0 ·
+    int64 t_ptr2 ↦ 0 ·
+    int64 ts_ptr2 ↦ 0 ·
+    int64 ts2 ↦ 0 ·
+    int64 es_ptr2 ↦ 0 ·
+    int64 es2 ↦ 0 ·
+    int64 sz2 ↦ 0 ·
+    int64 d_ptr2 ↦ 0 ·
+    int64 flat_dst ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 p_aa ↦ 0 ·
+    int64 si ↦ 0 ·
+    int64 sh_off ↦ 0 ·
+    int64 sh_ptr ↦ 0 ·
+    int64 cur_sh ↦ 0 ·
+    int64 sh_buf ↦ 0 ·
+    int64 sz_loc ↦ 0 ·
+    int64 coeffs ↦ 0 ·
+    int64 b_idx ↦ 0 ·
+    int64 cur_seed ↦ seed ·
+    int64 flat_p ↦ 0 ·
+    int64 sec_b ↦ 0 ·
+    int64 ti ↦ 1 ·
+    int64 c_ti_ptr ↦ 0 ·
+    int64 rand_b ↦ 0 ·
+    int64 deg ↦ 0 ·
+    int64 si2 ↦ 0 ·
+    int64 x ↦ 0 ·
+    int64 y ↦ 0 ·
+    int64 sh_off2 ↦ 0 ·
+    int64 sh_ptr2 ↦ 0 ·
+    int64 cur_sh2 ↦ 0 ·
+    int64 buf2 ↦ 0 ·
+    int64 dst_b ↦ 0 ·
+    int64 si3 ↦ 0 ·
+    int64 sh_off3 ↦ 0 ·
+    int64 sh_ptr3 ↦ 0 ·
+    int64 cur_sh3 ↦ 0 ·
+    int64 buf3 ↦ 0 ·
+    int64 comm_dst ↦ 0 ·
+
+    when num_weights ≻ 0 ⟦
+        when weights_ptr ≻ 0 ⟦
+            cycle wi ≺ num_weights ⟦
+                w_arr_off ← wi ⊗ 8 ·
+                w_ptr_loc ← weights_ptr ⊕ w_arr_off ·
+                t_ptr ← qemwv_dr⦅w_ptr_loc⦆ ·
+                when t_ptr ≻ 0 ⟦
+                    ts_ptr ← t_ptr ⊕ 8 ·
+                    ts ← qemwv_dr⦅ts_ptr⦆ ·
+                    es_ptr ← t_ptr ⊕ 16 ·
+                    es ← qemwv_g32⦅es_ptr⦆ ·
+                    sz ← ts ⊗ es ·
+                    sum ← sum ⊕ sz ·
+                ⟧
+                wi ← wi ⊕ one ·
+            ⟧
+            total_bytes ← sum ·
+        ⟧
+    ⟧
+
+    when total_bytes ≡ 0 ⟦
+        total_bytes ← 64 ·
+        flat ← qadav_alloc⦅total_bytes⦆ ·
+        memset⦅flat ⸴ 0 ⸴ total_bytes⦆ ·
+        cycle off ≺ total_bytes ⟦
+            p_aa ← flat ⊕ off ·
+            qemwv_sb⦅p_aa ⸴ 170⦆ ·
+            off ← off ⊕ one ·
+        ⟧
+    ⟧
+    when total_bytes ≻ 64 ⟦
+        flat ← qadav_alloc⦅total_bytes⦆ ·
+        off ← 0 ·
+        cycle wi2 ≺ num_weights ⟦
+            w_arr_off2 ← wi2 ⊗ 8 ·
+            w_ptr_loc2 ← weights_ptr ⊕ w_arr_off2 ·
+            t_ptr2 ← qemwv_dr⦅w_ptr_loc2⦆ ·
+            when t_ptr2 ≻ 0 ⟦
+                ts_ptr2 ← t_ptr2 ⊕ 8 ·
+                ts2 ← qemwv_dr⦅ts_ptr2⦆ ·
+                es_ptr2 ← t_ptr2 ⊕ 16 ·
+                es2 ← qemwv_g32⦅es_ptr2⦆ ·
+                sz2 ← ts2 ⊗ es2 ·
+                d_ptr2 ← qemwv_dr⦅t_ptr2⦆ ·
+                when d_ptr2 ≻ 0 ⟦
+                    flat_dst ← flat ⊕ off ·
+                    memcpy⦅flat_dst ⸴ d_ptr2 ⸴ sz2⦆ ·
+                ⟧
+                off ← off ⊕ sz2 ·
+            ⟧
+            wi2 ← wi2 ⊕ one ·
+        ⟧
+    ⟧
+
+    int64 n_shares ↦ qemwv_g32⦅v⦆ ·
+    int64 t_loc2 ↦ v ⊕ 4 ·
+    int64 threshold ↦ qemwv_g32⦅t_loc2⦆ ·
+
+    cycle si ≺ n_shares ⟦
+        sh_off ← si ⊗ 48 ·
+        sh_ptr ← v ⊕ 8 ·
+        cur_sh ← sh_ptr ⊕ sh_off ·
+        sh_buf ← qadav_alloc⦅total_bytes⦆ ·
+        qemwv_st⦅cur_sh ⸴ sh_buf⦆ ·
+        sz_loc ← cur_sh ⊕ 8 ·
+        qemwv_st⦅sz_loc ⸴ total_bytes⦆ ·
+        si ← si ⊕ one ·
+    ⟧
+
+    coeffs ← qadav_alloc⦅threshold⦆ ·
+    cycle b_idx ≺ total_bytes ⟦
+        flat_p ← flat ⊕ b_idx ·
+        sec_b ← qemwv_gb⦅flat_p⦆ ·
+        qemwv_sb⦅coeffs ⸴ sec_b⦆ ·
+        ti ← 1 ·
+        cycle ti ≺ threshold ⟦
+            cur_seed ← cur_seed ⊕ 31337 ·
+            rand_b ← qemwv_rand_byte⦅cur_seed⦆ ·
+            c_ti_ptr ← coeffs ⊕ ti ·
+            qemwv_sb⦅c_ti_ptr ⸴ rand_b⦆ ·
+            ti ← ti ⊕ one ·
+        ⟧
+        deg ← threshold ⊖ one ·
+        si2 ← 0 ·
+        cycle si2 ≺ n_shares ⟦
+            x ← si2 ⊕ one ·
+            y ← gf256_eval_poly⦅coeffs ⸴ deg ⸴ x⦆ ·
+            sh_off2 ← si2 ⊗ 48 ·
+            sh_ptr2 ← v ⊕ 8 ·
+            cur_sh2 ← sh_ptr2 ⊕ sh_off2 ·
+            buf2 ← qemwv_dr⦅cur_sh2⦆ ·
+            dst_b ← buf2 ⊕ b_idx ·
+            qemwv_sb⦅dst_b ⸴ y⦆ ·
+            si2 ← si2 ⊕ one ·
+        ⟧
+        b_idx ← b_idx ⊕ one ·
+    ⟧
+    qadav_free⦅coeffs⦆ ·
+
+    cycle si3 ≺ n_shares ⟦
+        sh_off3 ← si3 ⊗ 48 ·
+        sh_ptr3 ← v ⊕ 8 ·
+        cur_sh3 ← sh_ptr3 ⊕ sh_off3 ·
+        buf3 ← qemwv_dr⦅cur_sh3⦆ ·
+        comm_dst ← cur_sh3 ⊕ 16 ·
+        qadav_sha3_256⦅buf3 ⸴ total_bytes ⸴ comm_dst⦆ ·
+        si3 ← si3 ⊕ one ·
+    ⟧
+
+    qadav_free⦅flat⦆ ·
+
+    int64 wb_loc ↦ v ⊕ 256 ·
+    qemwv_st⦅wb_loc ⸴ weights_ptr⦆ ·
+    int64 nw_loc ↦ v ⊕ 264 ·
+    qemwv_s32⦅nw_loc ⸴ num_weights⦆ ·
+    int64 tb_loc ↦ v ⊕ 272 ·
+    qemwv_st⦅tb_loc ⸴ total_bytes⦆ ·
+    qemwv_s32⦅st_loc ⸴ 1⦆ ·
+
+    yield 0 ·
+⟧
+
+process qemwv_unseal_native⦅int64 v ⸴ int64 boundary_ptr⦆ → int64 ⟦
+    when v ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 st_loc ↦ v ⊕ 248 ·
+    int64 cur_state ↦ qemwv_g32⦅st_loc⦆ ·
+    when cur_state ≺ 1 ⟦
+        yield 0 ·
+    ⟧
+    when cur_state ≻ 1 ⟦
+        yield 0 ·
+    ⟧
+    when boundary_ptr ≡ 0 ⟦
+        qadav_qeeh_trigger_decoherence⦅0⦆ ·
+        ExitProcess⦅3735928559⦆ ·
+        yield 0 ·
+    ⟧
+    int64 cur_b_hash ↦ qadav_alloc⦅32⦆ ·
+    qadav_qeeh_boundary_hash⦅boundary_ptr ⸴ cur_b_hash⦆ ·
+    int64 auth_bid_ptr ↦ v ⊕ 288 ·
+    int64 cmp ↦ qadav_sha3_ct_compare⦅cur_b_hash ⸴ auth_bid_ptr ⸴ 32⦆ ·
+    qadav_free⦅cur_b_hash⦆ ·
+    when cmp ≻ 0 ⟦
+        qadav_qeeh_trigger_decoherence⦅0⦆ ·
+        ExitProcess⦅3735928559⦆ ·
+        yield 0 ·
+    ⟧
+    when cmp ≺ 0 ⟦
+        qadav_qeeh_trigger_decoherence⦅0⦆ ·
+        ExitProcess⦅3735928559⦆ ·
+        yield 0 ·
+    ⟧
+
+    int64 t_loc ↦ v ⊕ 4 ·
+    int64 threshold ↦ qemwv_g32⦅t_loc⦆ ·
+    int64 k ↦ threshold ·
+    int64 tb_loc ↦ v ⊕ 272 ·
+    int64 n_bytes ↦ qemwv_dr⦅tb_loc⦆ ·
+
+    int64 basis ↦ qadav_alloc⦅k⦆ ·
+    qemwv_compute_lagrange_basis⦅k ⸴ basis⦆ ·
+
+    int64 reconstructed ↦ qadav_alloc⦅n_bytes⦆ ·
+    int64 one ↦ 1 ·
+    int64 b ↦ 0 ·
+    int64 sec_b ↦ 0 ·
+    int64 i ↦ 0 ·
+    int64 sh_off ↦ 0 ·
+    int64 sh_ptr ↦ 0 ·
+    int64 cur_sh ↦ 0 ·
+    int64 buf ↦ 0 ·
+    int64 src_p ↦ 0 ·
+    int64 y ↦ 0 ·
+    int64 bas_p ↦ 0 ·
+    int64 l_i ↦ 0 ·
+    int64 term ↦ 0 ·
+    int64 dst_b ↦ 0 ·
+    int64 weights ↦ 0 ·
+    int64 n_weights ↦ 0 ·
+    int64 off ↦ 0 ·
+    int64 wi ↦ 0 ·
+    int64 w_arr_off ↦ 0 ·
+    int64 w_ptr_loc ↦ 0 ·
+    int64 t_ptr2 ↦ 0 ·
+    int64 ts_ptr ↦ 0 ·
+    int64 ts ↦ 0 ·
+    int64 es_ptr ↦ 0 ·
+    int64 es ↦ 0 ·
+    int64 sz ↦ 0 ·
+    int64 d_ptr ↦ 0 ·
+    int64 rec_src ↦ 0 ·
+
+    cycle b ≺ n_bytes ⟦
+        sec_b ← 0 ·
+        i ← 0 ·
+        cycle i ≺ k ⟦
+            sh_off ← i ⊗ 48 ·
+            sh_ptr ← v ⊕ 8 ·
+            cur_sh ← sh_ptr ⊕ sh_off ·
+            buf ← qemwv_dr⦅cur_sh⦆ ·
+            src_p ← buf ⊕ b ·
+            y ← qemwv_gb⦅src_p⦆ ·
+            bas_p ← basis ⊕ i ·
+            l_i ← qemwv_gb⦅bas_p⦆ ·
+            term ← gf256_mul⦅y ⸴ l_i⦆ ·
+            sec_b ← sec_b ⊻ term ·
+            i ← i ⊕ one ·
+        ⟧
+        dst_b ← reconstructed ⊕ b ·
+        qemwv_sb⦅dst_b ⸴ sec_b⦆ ·
+        b ← b ⊕ one ·
+    ⟧
+    qadav_free⦅basis⦆ ·
+
+    int64 wb_loc ↦ v ⊕ 256 ·
+    weights ← qemwv_dr⦅wb_loc⦆ ·
+    int64 nw_loc ↦ v ⊕ 264 ·
+    n_weights ← qemwv_g32⦅nw_loc⦆ ·
+
+    when weights ≻ 0 ⟦
+        when n_weights ≻ 0 ⟦
+            off ← 0 ·
+            wi ← 0 ·
+            cycle wi ≺ n_weights ⟦
+                w_arr_off ← wi ⊗ 8 ·
+                w_ptr_loc ← weights ⊕ w_arr_off ·
+                t_ptr2 ← qemwv_dr⦅w_ptr_loc⦆ ·
+                when t_ptr2 ≻ 0 ⟦
+                    ts_ptr ← t_ptr2 ⊕ 8 ·
+                    ts ← qemwv_dr⦅ts_ptr⦆ ·
+                    es_ptr ← t_ptr2 ⊕ 16 ·
+                    es ← qemwv_g32⦅es_ptr⦆ ·
+                    sz ← ts ⊗ es ·
+                    d_ptr ← qemwv_dr⦅t_ptr2⦆ ·
+                    when d_ptr ≻ 0 ⟦
+                        rec_src ← reconstructed ⊕ off ·
+                        memcpy⦅d_ptr ⸴ rec_src ⸴ sz⦆ ·
+                    ⟧
+                    off ← off ⊕ sz ·
+                ⟧
+                wi ← wi ⊕ one ·
+            ⟧
+        ⟧
+    ⟧
+
+    yield reconstructed ·
+⟧
+
+process qemwv_wipe_native⦅int64 v⦆ → int64 ⟦
+    when v ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 n_shares ↦ qemwv_g32⦅v⦆ ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    int64 sh_off ↦ 0 ·
+    int64 sh_ptr ↦ 0 ·
+    int64 cur_sh ↦ 0 ·
+    int64 buf ↦ 0 ·
+    int64 sz_loc ↦ 0 ·
+    int64 sz ↦ 0 ·
+    int64 comm_loc ↦ 0 ·
+
+    cycle i ≺ n_shares ⟦
+        sh_off ← i ⊗ 48 ·
+        sh_ptr ← v ⊕ 8 ·
+        cur_sh ← sh_ptr ⊕ sh_off ·
+        buf ← qemwv_dr⦅cur_sh⦆ ·
+        sz_loc ← cur_sh ⊕ 8 ·
+        sz ← qemwv_dr⦅sz_loc⦆ ·
+        when buf ≻ 0 ⟦
+            when sz ≻ 0 ⟦
+                memset⦅buf ⸴ 0 ⸴ sz⦆ ·
+            ⟧
+            qadav_free⦅buf⦆ ·
+            qemwv_st⦅cur_sh ⸴ 0⦆ ·
+        ⟧
+        qemwv_st⦅sz_loc ⸴ 0⦆ ·
+        comm_loc ← cur_sh ⊕ 16 ·
+        memset⦅comm_loc ⸴ 0 ⸴ 32⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    int64 st_loc ↦ v ⊕ 248 ·
+    qemwv_s32⦅st_loc ⸴ 2⦆ ·
+    yield 0 ·
+⟧

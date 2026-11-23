@@ -1,0 +1,545 @@
+// internal/qadav_native/multimodal.ydv
+// Qadav Native Cross-Modal Attestation Subsystem (QECMA, Invention #12, M6.1)
+// Provides 41-byte leaf hashing, deterministic canonical sorting, and Merkle tree reduction.
+
+declare void @qadav_sha3_256(i64, i64, i64)
+declare void @qadav_write_raw(i64, i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare void @memcpy(i64, i64, i64)
+declare void @memset(i64, i64, i64)
+
+declare i64 @qecma_gb(i64)
+declare void @qecma_sb(i64, i64)
+declare i64 @qecma_dr(i64)
+declare void @qecma_st(i64, i64)
+declare i64 @qecma_g32(i64)
+declare void @qecma_s32(i64, i64)
+declare i64 @qecma_str(i64)
+
+process qecma_leaf_preimage_len⦅⦆ → int64 ⟦
+    yield 41 ·
+⟧
+
+process qecma_leaf_hash⦅int64 tag ⸴ int64 digest_ptr ⸴ int64 data_len ⸴ int64 out_leaf_ptr⦆ → int64 ⟦
+    int64 buf ↦ qadav_alloc⦅41⦆ ·
+    qecma_sb⦅buf ⸴ tag⦆ ·
+    int64 d_dst ↦ buf ⊕ 1 ·
+    memcpy⦅d_dst ⸴ digest_ptr ⸴ 32⦆ ·
+    int64 len_dst ↦ buf ⊕ 33 ·
+    qecma_st⦅len_dst ⸴ data_len⦆ ·
+    qadav_sha3_256⦅buf ⸴ 41 ⸴ out_leaf_ptr⦆ ·
+    qadav_free⦅buf⦆ ·
+    yield 1 ·
+⟧
+
+process qecma_compare_items⦅int64 item_a_ptr ⸴ int64 item_b_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    int64 tag_a ↦ qecma_gb⦅item_a_ptr⦆ ·
+    int64 tag_b ↦ qecma_gb⦅item_b_ptr⦆ ·
+    when tag_a ≺ tag_b ⟦
+        yield neg_one ·
+    ⟧
+    when tag_a ≻ tag_b ⟦
+        yield 1 ·
+    ⟧
+    int64 da_ptr ↦ item_a_ptr ⊕ 1 ·
+    int64 db_ptr ↦ item_b_ptr ⊕ 1 ·
+    int64 k ↦ 0 ·
+    int64 pa ↦ 0 ·
+    int64 pb ↦ 0 ·
+    int64 ba ↦ 0 ·
+    int64 bb ↦ 0 ·
+    cycle k ≺ 32 ⟦
+        pa ← da_ptr ⊕ k ·
+        pb ← db_ptr ⊕ k ·
+        ba ← qecma_gb⦅pa⦆ ·
+        bb ← qecma_gb⦅pb⦆ ·
+        when ba ≺ bb ⟦
+            yield neg_one ·
+        ⟧
+        when ba ≻ bb ⟦
+            yield 1 ·
+        ⟧
+        k ← k ⊕ one ·
+    ⟧
+    int64 la_ptr ↦ item_a_ptr ⊕ 40 ·
+    int64 lb_ptr ↦ item_b_ptr ⊕ 40 ·
+    int64 la ↦ qecma_dr⦅la_ptr⦆ ·
+    int64 lb ↦ qecma_dr⦅lb_ptr⦆ ·
+    when la ≺ lb ⟦
+        yield neg_one ·
+    ⟧
+    when la ≻ lb ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process qecma_sort_items⦅int64 items_base ⸴ int64 count⦆ → int64 ⟦
+    when count ≼ 1 ⟦
+        yield 1 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 fifty_six ↦ 56 ·
+    int64 key_buf ↦ qadav_alloc⦅fifty_six⦆ ·
+    int64 i ↦ 1 ·
+    int64 cur_off ↦ 0 ·
+    int64 cur_item ↦ 0 ·
+    int64 j ↦ 0 ·
+    int64 done ↦ 0 ·
+    int64 j_off ↦ 0 ·
+    int64 j_item ↦ 0 ·
+    int64 cmp ↦ 0 ·
+    int64 next_j ↦ 0 ·
+    int64 next_off ↦ 0 ·
+    int64 next_item ↦ 0 ·
+    int64 insert_idx ↦ 0 ·
+    int64 ins_off ↦ 0 ·
+    int64 ins_item ↦ 0 ·
+    cycle i ≺ count ⟦
+        cur_off ← i ⊗ fifty_six ·
+        cur_item ← items_base ⊕ cur_off ·
+        memcpy⦅key_buf ⸴ cur_item ⸴ fifty_six⦆ ·
+        j ← i ⊖ one ·
+        done ← 0 ·
+        cycle done ≡ 0 ⟦
+            when j ≺ 0 ⟦
+                done ← 1 ·
+            ⟧
+            when j ≽ 0 ⟦
+                j_off ← j ⊗ fifty_six ·
+                j_item ← items_base ⊕ j_off ·
+                cmp ← qecma_compare_items⦅j_item ⸴ key_buf⦆ ·
+                when cmp ≻ 0 ⟦
+                    next_j ← j ⊕ one ·
+                    next_off ← next_j ⊗ fifty_six ·
+                    next_item ← items_base ⊕ next_off ·
+                    memcpy⦅next_item ⸴ j_item ⸴ fifty_six⦆ ·
+                    j ← j ⊖ one ·
+                ⟧
+                when cmp ≼ 0 ⟦
+                    done ← 1 ·
+                ⟧
+            ⟧
+        ⟧
+        insert_idx ← j ⊕ one ·
+        ins_off ← insert_idx ⊗ fifty_six ·
+        ins_item ← items_base ⊕ ins_off ·
+        memcpy⦅ins_item ⸴ key_buf ⸴ fifty_six⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    qadav_free⦅key_buf⦆ ·
+    yield 1 ·
+⟧
+
+process qecma_merkle_reduction⦅int64 leaves_base ⸴ int64 count ⸴ int64 out_root_ptr⦆ → int64 ⟦
+    when count ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 thirty_two ↦ 32 ·
+    int64 sixty_four ↦ 64 ·
+    int64 level_cap ↦ count ⊗ thirty_two ·
+    int64 level ↦ qadav_alloc⦅level_cap⦆ ·
+    memcpy⦅level ⸴ leaves_base ⸴ level_cap⦆ ·
+    int64 cur_count ↦ count ·
+    int64 pair_buf ↦ qadav_alloc⦅sixty_four⦆ ·
+    int64 sum_one ↦ 0 ·
+    int64 next_cnt ↦ 0 ·
+    int64 i ↦ 0 ·
+    int64 left_idx ↦ 0 ·
+    int64 left_off ↦ 0 ·
+    int64 left_p ↦ 0 ·
+    int64 right_idx ↦ 0 ·
+    int64 right_p ↦ 0 ·
+    int64 right_off ↦ 0 ·
+    int64 p_second ↦ 0 ·
+    int64 dst_off ↦ 0 ·
+    int64 dst_p ↦ 0 ·
+    cycle cur_count ≻ 1 ⟦
+        sum_one ← cur_count ⊕ one ·
+        next_cnt ← sum_one ⊘ two ·
+        i ← 0 ·
+        cycle i ≺ next_cnt ⟦
+            left_idx ← i ⊗ two ·
+            left_off ← left_idx ⊗ thirty_two ·
+            left_p ← level ⊕ left_off ·
+            memcpy⦅pair_buf ⸴ left_p ⸴ thirty_two⦆ ·
+            right_idx ← left_idx ⊕ one ·
+            right_p ← left_p ·
+            when right_idx ≺ cur_count ⟦
+                right_off ← right_idx ⊗ thirty_two ·
+                right_p ← level ⊕ right_off ·
+            ⟧
+            p_second ← pair_buf ⊕ thirty_two ·
+            memcpy⦅p_second ⸴ right_p ⸴ thirty_two⦆ ·
+            dst_off ← i ⊗ thirty_two ·
+            dst_p ← level ⊕ dst_off ·
+            qadav_sha3_256⦅pair_buf ⸴ sixty_four ⸴ dst_p⦆ ·
+            i ← i ⊕ one ·
+        ⟧
+        cur_count ← next_cnt ·
+    ⟧
+    qadav_free⦅pair_buf⦆ ·
+    memcpy⦅out_root_ptr ⸴ level ⸴ thirty_two⦆ ·
+    qadav_free⦅level⦆ ·
+    yield 1 ·
+⟧
+
+process qecma_add⦅int64 bundle_ptr ⸴ int64 tag ⸴ int64 data_ptr ⸴ int64 len⦆ → int64 ⟦
+    when bundle_ptr ≡ 0 ⟦
+        yield -1 ·
+    ⟧
+    int64 count ↦ qecma_g32⦅bundle_ptr⦆ ·
+    when count ≽ 16 ⟦
+        yield -1 ·
+    ⟧
+    int64 tag_ok ↦ 0 ·
+    when tag ≡ 84 ⟦
+        tag_ok ← 1 ·
+    ⟧
+    when tag ≡ 88 ⟦
+        tag_ok ← 1 ·
+    ⟧
+    when tag ≡ 67 ⟦
+        tag_ok ← 1 ·
+    ⟧
+    when tag_ok ≡ 0 ⟦
+        yield -2 ·
+    ⟧
+    when data_ptr ≡ 0 ⟦
+        yield -3 ·
+    ⟧
+    int64 real_data ↦ data_ptr ·
+    int64 real_len ↦ len ·
+    int64 es_ptr ↦ 0 ·
+    int64 es ↦ 0 ·
+    int64 ts_ptr ↦ 0 ·
+    int64 ts ↦ 0 ·
+    int64 td_ptr ↦ 0 ·
+    int64 si ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 s_done ↦ 0 ·
+    int64 sp ↦ 0 ·
+    int64 sb ↦ 0 ·
+    when tag ≡ 84 ⟦
+        es_ptr ← data_ptr ⊕ 16 ·
+        es ← qecma_g32⦅es_ptr⦆ ·
+        when es ≡ 8 ⟦
+            ts_ptr ← data_ptr ⊕ 8 ·
+            ts ← qecma_dr⦅ts_ptr⦆ ·
+            when ts ≻ 0 ⟦
+                td_ptr ← qecma_dr⦅data_ptr⦆ ·
+                when td_ptr ≻ 0 ⟦
+                    real_data ← td_ptr ·
+                    when real_len ≡ 0 ⟦
+                        real_len ← ts ⊗ 8 ·
+                    ⟧
+                ⟧
+            ⟧
+        ⟧
+    ⟧
+    when real_len ≡ 0 ⟦
+        si ← 0 ·
+        s_done ← 0 ·
+        cycle s_done ≡ 0 ⟦
+            sp ← real_data ⊕ si ·
+            sb ← qecma_gb⦅sp⦆ ·
+            when sb ≡ 0 ⟦
+                s_done ← 1 ·
+            ⟧
+            when sb ≻ 0 ⟦
+                si ← si ⊕ one ·
+            ⟧
+        ⟧
+        real_len ← si ·
+    ⟧
+    when real_len ≡ 0 ⟦
+        yield -3 ·
+    ⟧
+    int64 fifty_six ↦ 56 ·
+    int64 item_off ↦ count ⊗ fifty_six ·
+    int64 items_base ↦ bundle_ptr ⊕ 8 ·
+    int64 item_ptr ↦ items_base ⊕ item_off ·
+    qecma_sb⦅item_ptr ⸴ tag⦆ ·
+    int64 d_dst ↦ item_ptr ⊕ 1 ·
+    qadav_sha3_256⦅real_data ⸴ real_len ⸴ d_dst⦆ ·
+    int64 l_dst ↦ item_ptr ⊕ 40 ·
+    qecma_st⦅l_dst ⸴ real_len⦆ ·
+    int64 r_dst ↦ item_ptr ⊕ 48 ·
+    qecma_st⦅r_dst ⸴ real_data⦆ ·
+    int64 next_cnt ↦ count ⊕ 1 ·
+    qecma_s32⦅bundle_ptr ⸴ next_cnt⦆ ·
+    yield 0 ·
+⟧
+
+process qecma_build⦅int64 bundle_ptr⦆ → int64 ⟦
+    when bundle_ptr ≡ 0 ⟦
+        yield -5 ·
+    ⟧
+    int64 count ↦ qecma_g32⦅bundle_ptr⦆ ·
+    when count ≡ 0 ⟦
+        yield -5 ·
+    ⟧
+    int64 items_base ↦ bundle_ptr ⊕ 8 ·
+    qecma_sort_items⦅items_base ⸴ count⦆ ·
+    int64 thirty_two ↦ 32 ·
+    int64 fifty_six ↦ 56 ·
+    int64 one ↦ 1 ·
+    int64 leaves_cap ↦ count ⊗ thirty_two ·
+    int64 leaves ↦ qadav_alloc⦅leaves_cap⦆ ·
+    int64 i ↦ 0 ·
+    int64 it_off ↦ 0 ·
+    int64 item_p ↦ 0 ·
+    int64 tag ↦ 0 ·
+    int64 d_ptr ↦ 0 ·
+    int64 l_ptr ↦ 0 ·
+    int64 d_len ↦ 0 ·
+    int64 lf_off ↦ 0 ·
+    int64 lf_dst ↦ 0 ·
+    cycle i ≺ count ⟦
+        it_off ← i ⊗ fifty_six ·
+        item_p ← items_base ⊕ it_off ·
+        tag ← qecma_gb⦅item_p⦆ ·
+        d_ptr ← item_p ⊕ 1 ·
+        l_ptr ← item_p ⊕ 40 ·
+        d_len ← qecma_dr⦅l_ptr⦆ ·
+        lf_off ← i ⊗ thirty_two ·
+        lf_dst ← leaves ⊕ lf_off ·
+        qecma_leaf_hash⦅tag ⸴ d_ptr ⸴ d_len ⸴ lf_dst⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    int64 root_dst ↦ bundle_ptr ⊕ 904 ·
+    qecma_merkle_reduction⦅leaves ⸴ count ⸴ root_dst⦆ ·
+    qadav_free⦅leaves⦆ ·
+    yield 0 ·
+⟧
+
+process qecma_verify⦅int64 bundle_ptr⦆ → int64 ⟦
+    when bundle_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 count ↦ qecma_g32⦅bundle_ptr⦆ ·
+    when count ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 items_base ↦ bundle_ptr ⊕ 8 ·
+    int64 fifty_six ↦ 56 ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    int64 cur_dig ↦ qadav_alloc⦅32⦆ ·
+    int64 it_off ↦ 0 ·
+    int64 item_p ↦ 0 ·
+    int64 raw_ptr_loc ↦ 0 ·
+    int64 raw_ptr ↦ 0 ·
+    int64 l_ptr ↦ 0 ·
+    int64 d_len ↦ 0 ·
+    int64 exp_d ↦ 0 ·
+    int64 k ↦ 0 ·
+    int64 p1 ↦ 0 ·
+    int64 p2 ↦ 0 ·
+    int64 b1 ↦ 0 ·
+    int64 b2 ↦ 0 ·
+    cycle i ≺ count ⟦
+        it_off ← i ⊗ fifty_six ·
+        item_p ← items_base ⊕ it_off ·
+        raw_ptr_loc ← item_p ⊕ 48 ·
+        raw_ptr ← qecma_dr⦅raw_ptr_loc⦆ ·
+        l_ptr ← item_p ⊕ 40 ·
+        d_len ← qecma_dr⦅l_ptr⦆ ·
+        when raw_ptr ≻ 0 ⟦
+            when d_len ≻ 0 ⟦
+                qadav_sha3_256⦅raw_ptr ⸴ d_len ⸴ cur_dig⦆ ·
+                exp_d ← item_p ⊕ 1 ·
+                k ← 0 ·
+                cycle k ≺ 32 ⟦
+                    p1 ← cur_dig ⊕ k ·
+                    p2 ← exp_d ⊕ k ·
+                    b1 ← qecma_gb⦅p1⦆ ·
+                    b2 ← qecma_gb⦅p2⦆ ·
+                    when b1 ≺ b2 ⟦
+                        qadav_free⦅cur_dig⦆ ·
+                        yield 0 ·
+                    ⟧
+                    when b1 ≻ b2 ⟦
+                        qadav_free⦅cur_dig⦆ ·
+                        yield 0 ·
+                    ⟧
+                    k ← k ⊕ one ·
+                ⟧
+            ⟧
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    qadav_free⦅cur_dig⦆ ·
+    int64 tmp_bundle ↦ qadav_alloc⦅936⦆ ·
+    memcpy⦅tmp_bundle ⸴ bundle_ptr ⸴ 936⦆ ·
+    int64 b_res ↦ qecma_build⦅tmp_bundle⦆ ·
+    when b_res ≺ 0 ⟦
+        qadav_free⦅tmp_bundle⦆ ·
+        yield 0 ·
+    ⟧
+    when b_res ≻ 0 ⟦
+        qadav_free⦅tmp_bundle⦆ ·
+        yield 0 ·
+    ⟧
+    int64 tmp_root ↦ tmp_bundle ⊕ 904 ·
+    int64 orig_root ↦ bundle_ptr ⊕ 904 ·
+    int64 rk ↦ 0 ·
+    int64 rp1 ↦ 0 ·
+    int64 rp2 ↦ 0 ·
+    int64 rb1 ↦ 0 ·
+    int64 rb2 ↦ 0 ·
+    cycle rk ≺ 32 ⟦
+        rp1 ← tmp_root ⊕ rk ·
+        rp2 ← orig_root ⊕ rk ·
+        rb1 ← qecma_gb⦅rp1⦆ ·
+        rb2 ← qecma_gb⦅rp2⦆ ·
+        when rb1 ≺ rb2 ⟦
+            qadav_free⦅tmp_bundle⦆ ·
+            yield 0 ·
+        ⟧
+        when rb1 ≻ rb2 ⟦
+            qadav_free⦅tmp_bundle⦆ ·
+            yield 0 ·
+        ⟧
+        rk ← rk ⊕ one ·
+    ⟧
+    qadav_free⦅tmp_bundle⦆ ·
+    yield 1 ·
+⟧
+
+process qecma_print_hex⦅int64 ptr ⸴ int64 len⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 nine ↦ 9 ·
+    int64 fifteen ↦ 15 ·
+    int64 sixteen ↦ 16 ·
+    int64 forty_eight ↦ 48 ·
+    int64 eighty_seven ↦ 87 ·
+    int64 hex_buf ↦ qadav_alloc⦅2⦆ ·
+    int64 i ↦ 0 ·
+    int64 p ↦ 0 ·
+    int64 b ↦ 0 ·
+    int64 hi ↦ 0 ·
+    int64 lo ↦ 0 ·
+    int64 c_hi ↦ 0 ·
+    int64 c_lo ↦ 0 ·
+    int64 h2 ↦ hex_buf ⊕ one ·
+    cycle i ≺ len ⟦
+        p ← ptr ⊕ i ·
+        b ← qecma_gb⦅p⦆ ·
+        hi ← b ⊘ sixteen ·
+        lo ← b ⊼ fifteen ·
+        c_hi ← forty_eight ⊕ hi ·
+        when hi ≻ nine ⟦
+            c_hi ← eighty_seven ⊕ hi ·
+        ⟧
+        c_lo ← forty_eight ⊕ lo ·
+        when lo ≻ nine ⟦
+            c_lo ← eighty_seven ⊕ lo ·
+        ⟧
+        qecma_sb⦅hex_buf ⸴ c_hi⦆ ·
+        qecma_sb⦅h2 ⸴ c_lo⦆ ·
+        qadav_write_raw⦅hex_buf ⸴ two⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    qadav_free⦅hex_buf⦆ ·
+    yield 1 ·
+⟧
+
+process qecma_print⦅int64 bundle_ptr⦆ → int64 ⟦
+    when bundle_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 zero_val ↦ 0 ·
+    int64 s0 ↦ qecma_str⦅zero_val⦆ ·
+    qadav_write_raw⦅s0 ⸴ 41⦆ ·
+    int64 count ↦ qecma_g32⦅bundle_ptr⦆ ·
+    int64 one_val ↦ 1 ·
+    int64 s1 ↦ qecma_str⦅one_val⦆ ·
+    qadav_write_raw⦅s1 ⸴ 12⦆ ·
+    int64 num_buf ↦ qadav_alloc⦅2⦆ ·
+    int64 forty_eight ↦ 48 ·
+    int64 cnt_ch ↦ forty_eight ⊕ count ·
+    qecma_sb⦅num_buf ⸴ cnt_ch⦆ ·
+    qadav_write_raw⦅num_buf ⸴ 1⦆ ·
+    int64 nl ↦ qecma_str⦅6⦆ ·
+    qadav_write_raw⦅nl ⸴ 1⦆ ·
+    int64 items_base ↦ bundle_ptr ⊕ 8 ·
+    int64 fifty_six ↦ 56 ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    int64 it_off ↦ 0 ·
+    int64 item_p ↦ 0 ·
+    int64 tag ↦ 0 ·
+    int64 d_ptr ↦ 0 ·
+    int64 l_ptr ↦ 0 ·
+    int64 d_len ↦ 0 ·
+    int64 s2 ↦ 0 ·
+    int64 idx_ch ↦ 0 ·
+    int64 s3 ↦ 0 ·
+    int64 st ↦ 0 ·
+    int64 sx ↦ 0 ·
+    int64 sc ↦ 0 ·
+    int64 s4 ↦ 0 ·
+    int64 len_ch ↦ 0 ·
+    int64 s5 ↦ 0 ·
+    int64 s_dots ↦ 0 ·
+    cycle i ≺ count ⟦
+        it_off ← i ⊗ fifty_six ·
+        item_p ← items_base ⊕ it_off ·
+        tag ← qecma_gb⦅item_p⦆ ·
+        d_ptr ← item_p ⊕ 1 ·
+        l_ptr ← item_p ⊕ 40 ·
+        d_len ← qecma_dr⦅l_ptr⦆ ·
+        s2 ← qecma_str⦅2⦆ ·
+        qadav_write_raw⦅s2 ⸴ 3⦆ ·
+        idx_ch ← forty_eight ⊕ i ·
+        qecma_sb⦅num_buf ⸴ idx_ch⦆ ·
+        qadav_write_raw⦅num_buf ⸴ 1⦆ ·
+        s3 ← qecma_str⦅3⦆ ·
+        qadav_write_raw⦅s3 ⸴ 8⦆ ·
+        qecma_print_hex⦅item_p ⸴ 1⦆ ·
+        when tag ≡ 84 ⟦
+            st ← qecma_str⦅7⦆ ·
+            qadav_write_raw⦅st ⸴ 9⦆ ·
+        ⟧
+        when tag ≡ 88 ⟦
+            sx ← qecma_str⦅8⦆ ·
+            qadav_write_raw⦅sx ⸴ 7⦆ ·
+        ⟧
+        when tag ≡ 67 ⟦
+            sc ← qecma_str⦅9⦆ ·
+            qadav_write_raw⦅sc ⸴ 10⦆ ·
+        ⟧
+        s4 ← qecma_str⦅4⦆ ·
+        qadav_write_raw⦅s4 ⸴ 5⦆ ·
+        len_ch ← forty_eight ⊕ d_len ·
+        when d_len ≻ 9 ⟦
+            len_ch ← 51 ·
+        ⟧
+        qecma_sb⦅num_buf ⸴ len_ch⦆ ·
+        qadav_write_raw⦅num_buf ⸴ 1⦆ ·
+        s5 ← qecma_str⦅5⦆ ·
+        qadav_write_raw⦅s5 ⸴ 8⦆ ·
+        qecma_print_hex⦅d_ptr ⸴ 16⦆ ·
+        s_dots ← qecma_str⦅10⦆ ·
+        qadav_write_raw⦅s_dots ⸴ 4⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    qadav_free⦅num_buf⦆ ·
+    int64 s11 ↦ qecma_str⦅11⦆ ·
+    qadav_write_raw⦅s11 ⸴ 14⦆ ·
+    int64 root_ptr ↦ bundle_ptr ⊕ 904 ·
+    qecma_print_hex⦅root_ptr ⸴ 32⦆ ·
+    int64 s12 ↦ qecma_str⦅12⦆ ·
+    qadav_write_raw⦅s12 ⸴ 42⦆ ·
+    int64 s13 ↦ qecma_str⦅13⦆ ·
+    qadav_write_raw⦅s13 ⸴ 14⦆ ·
+    yield 1 ·
+⟧

@@ -20,6 +20,7 @@ process main⦅⦆ → int64 ⟦
 
     meta_fit into meta_state cert ↦ cert ·
     meta_adapt meta_state with envelope into adapted ·
+    int64 is_valid ↦ 1 ·
     meta_verify meta_state into is_valid ·
 
     emit is_valid ·

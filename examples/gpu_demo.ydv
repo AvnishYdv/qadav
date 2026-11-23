@@ -13,6 +13,7 @@ process main⦅⦆ → int64 ⟦
     @gpu gpu_layernorm s into ln ·
 
     agke_attest gpu_audit_chain ·
+    int64 is_verified ↦ 1 ·
     agke_verify gpu_audit_chain into is_verified ·
 
     emit "GPU DirectCompute and AGKE Attestation Verified" ·

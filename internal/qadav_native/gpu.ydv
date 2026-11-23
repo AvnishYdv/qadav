@@ -1,0 +1,336 @@
+// internal/qadav_native/gpu.ydv
+// Qadav Native DirectCompute GPU Subsystem (M6.1, CPU Fallback Engine)
+// Provides CPU fallback matrix multiplication, softmax, layernorm, and device UUID attestation.
+
+declare void @qadav_sha3_256(i64, i64, i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+
+declare void @gpu_fstep(i64, i64, i64)
+declare void @gpu_m(i64, i64, i64, i64, i64)
+declare i64 @gpu_dr(i64)
+declare void @gpu_sb(i64, i64)
+
+// Generate deterministic 32-byte GPU device UUID via SHA3-256 over 60-byte preimage
+process gpu_device_uuid_synthetic⦅int64 is_d3d ⸴ int64 out_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 buf_sz ↦ 64 ·
+    int64 buf ↦ qadav_alloc⦅buf_sz⦆ ·
+    when buf ≡ zero ⟦
+        yield 0 ·
+    ⟧
+
+    // Zero entire buffer
+    int64 idx ↦ 0 ·
+    cycle idx ≺ buf_sz ⟦
+        int64 p ↦ buf ⊕ idx ·
+        gpu_sb⦅p ⸴ zero⦆ ·
+        idx ← idx ⊕ 1 ·
+    ⟧
+
+    // Tag bytes: if is_d3d == 0: "QADAV_CPU_FALLBACK_COMPUTE_DEVICE" (33 chars)
+    // At offset 0..32
+    int64 p0 ↦ buf ·
+    gpu_sb⦅p0 ⸴ 81⦆ ·
+    int64 p1 ↦ buf ⊕ 1 ·
+    gpu_sb⦅p1 ⸴ 65⦆ ·
+    int64 p2 ↦ buf ⊕ 2 ·
+    gpu_sb⦅p2 ⸴ 68⦆ ·
+    int64 p3 ↦ buf ⊕ 3 ·
+    gpu_sb⦅p3 ⸴ 65⦆ ·
+    int64 p4 ↦ buf ⊕ 4 ·
+    gpu_sb⦅p4 ⸴ 86⦆ ·
+    int64 p5 ↦ buf ⊕ 5 ·
+    gpu_sb⦅p5 ⸴ 95⦆ ·
+    int64 p6 ↦ buf ⊕ 6 ·
+    gpu_sb⦅p6 ⸴ 67⦆ ·
+    int64 p7 ↦ buf ⊕ 7 ·
+    gpu_sb⦅p7 ⸴ 80⦆ ·
+    int64 p8 ↦ buf ⊕ 8 ·
+    gpu_sb⦅p8 ⸴ 85⦆ ·
+    int64 p9 ↦ buf ⊕ 9 ·
+    gpu_sb⦅p9 ⸴ 95⦆ ·
+    int64 p10 ↦ buf ⊕ 10 ·
+    gpu_sb⦅p10 ⸴ 70⦆ ·
+    int64 p11 ↦ buf ⊕ 11 ·
+    gpu_sb⦅p11 ⸴ 65⦆ ·
+    int64 p12 ↦ buf ⊕ 12 ·
+    gpu_sb⦅p12 ⸴ 76⦆ ·
+    int64 p13 ↦ buf ⊕ 13 ·
+    gpu_sb⦅p13 ⸴ 76⦆ ·
+    int64 p14 ↦ buf ⊕ 14 ·
+    gpu_sb⦅p14 ⸴ 66⦆ ·
+    int64 p15 ↦ buf ⊕ 15 ·
+    gpu_sb⦅p15 ⸴ 65⦆ ·
+    int64 p16 ↦ buf ⊕ 16 ·
+    gpu_sb⦅p16 ⸴ 67⦆ ·
+    int64 p17 ↦ buf ⊕ 17 ·
+    gpu_sb⦅p17 ⸴ 75⦆ ·
+    int64 p18 ↦ buf ⊕ 18 ·
+    gpu_sb⦅p18 ⸴ 95⦆ ·
+    int64 p19 ↦ buf ⊕ 19 ·
+    gpu_sb⦅p19 ⸴ 67⦆ ·
+    int64 p20 ↦ buf ⊕ 20 ·
+    gpu_sb⦅p20 ⸴ 79⦆ ·
+    int64 p21 ↦ buf ⊕ 21 ·
+    gpu_sb⦅p21 ⸴ 77⦆ ·
+    int64 p22 ↦ buf ⊕ 22 ·
+    gpu_sb⦅p22 ⸴ 80⦆ ·
+    int64 p23 ↦ buf ⊕ 23 ·
+    gpu_sb⦅p23 ⸴ 85⦆ ·
+    int64 p24 ↦ buf ⊕ 24 ·
+    gpu_sb⦅p24 ⸴ 84⦆ ·
+    int64 p25 ↦ buf ⊕ 25 ·
+    gpu_sb⦅p25 ⸴ 69⦆ ·
+    int64 p26 ↦ buf ⊕ 26 ·
+    gpu_sb⦅p26 ⸴ 95⦆ ·
+    int64 p27 ↦ buf ⊕ 27 ·
+    gpu_sb⦅p27 ⸴ 68⦆ ·
+    int64 p28 ↦ buf ⊕ 28 ·
+    gpu_sb⦅p28 ⸴ 69⦆ ·
+    int64 p29 ↦ buf ⊕ 29 ·
+    gpu_sb⦅p29 ⸴ 86⦆ ·
+    int64 p30 ↦ buf ⊕ 30 ·
+    gpu_sb⦅p30 ⸴ 73⦆ ·
+    int64 p31 ↦ buf ⊕ 31 ·
+    gpu_sb⦅p31 ⸴ 67⦆ ·
+    int64 p32 ↦ buf ⊕ 32 ·
+    gpu_sb⦅p32 ⸴ 69⦆ ·
+
+    // Seed bytes: 'QADAVGPU' in little-endian at offset 48..55
+    // 0x5141444156475055 -> 0x55, 0x50, 0x47, 0x56, 0x41, 0x44, 0x41, 0x51
+    int64 s0 ↦ buf ⊕ 48 ·
+    gpu_sb⦅s0 ⸴ 85⦆ ·
+    int64 s1 ↦ buf ⊕ 49 ·
+    gpu_sb⦅s1 ⸴ 80⦆ ·
+    int64 s2 ↦ buf ⊕ 50 ·
+    gpu_sb⦅s2 ⸴ 71⦆ ·
+    int64 s3 ↦ buf ⊕ 51 ·
+    gpu_sb⦅s3 ⸴ 86⦆ ·
+    int64 s4 ↦ buf ⊕ 52 ·
+    gpu_sb⦅s4 ⸴ 65⦆ ·
+    int64 s5 ↦ buf ⊕ 53 ·
+    gpu_sb⦅s5 ⸴ 68⦆ ·
+    int64 s6 ↦ buf ⊕ 54 ·
+    gpu_sb⦅s6 ⸴ 65⦆ ·
+    int64 s7 ↦ buf ⊕ 55 ·
+    gpu_sb⦅s7 ⸴ 81⦆ ·
+
+    // Feature level at offset 56: 0 for CPU
+    int64 fl0 ↦ buf ⊕ 56 ·
+    gpu_sb⦅fl0 ⸴ zero⦆ ·
+    int64 fl1 ↦ buf ⊕ 57 ·
+    gpu_sb⦅fl1 ⸴ zero⦆ ·
+    int64 fl2 ↦ buf ⊕ 58 ·
+    gpu_sb⦅fl2 ⸴ zero⦆ ·
+    int64 fl3 ↦ buf ⊕ 59 ·
+    gpu_sb⦅fl3 ⸴ zero⦆ ·
+
+    // SHA3-256 over 60 bytes
+    int64 preimage_len ↦ 60 ·
+    qadav_sha3_256⦅buf ⸴ preimage_len ⸴ out_ptr⦆ ·
+    qadav_free⦅buf⦆ ·
+    yield 1 ·
+⟧
+
+// CPU Fallback Matrix Multiplication: C = A * B
+// Dimensions: M (rows A, C), K (cols A, rows B), N (cols B, C)
+process gpu_fallback_matmul⦅int64 a_ptr ⸴ int64 b_ptr ⸴ int64 c_ptr ⸴ int64 cfg_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when a_ptr ≡ zero ∨ b_ptr ≡ zero ∨ c_ptr ≡ zero ∨ cfg_ptr ≡ zero ⟦
+        yield 0 ·
+    ⟧
+
+    int64 m ↦ gpu_dr⦅cfg_ptr⦆ ·
+    int64 kp ↦ cfg_ptr ⊕ 8 ·
+    int64 k_dim ↦ gpu_dr⦅kp⦆ ·
+    int64 np ↦ cfg_ptr ⊕ 16 ·
+    int64 n_dim ↦ gpu_dr⦅np⦆ ·
+
+    int64 eight ↦ 8 ·
+    int64 i ↦ 0 ·
+    int64 j ↦ 0 ·
+    int64 k ↦ 0 ·
+    int64 out_idx ↦ 0 ·
+    int64 out_off ↦ 0 ·
+    int64 out_elem ↦ 0 ·
+    int64 a_idx ↦ 0 ·
+    int64 a_off ↦ 0 ·
+    int64 a_elem ↦ 0 ·
+    int64 b_idx ↦ 0 ·
+    int64 b_off ↦ 0 ·
+    int64 b_elem ↦ 0 ·
+    int64 ik ↦ 0 ·
+    int64 kn ↦ 0 ·
+    int64 in_val ↦ 0 ·
+
+    cycle i ≺ m ⟦
+        j ← 0 ·
+        in_val ← i ⊗ n_dim ·
+        ik ← i ⊗ k_dim ·
+        cycle j ≺ n_dim ⟦
+            out_idx ← in_val ⊕ j ·
+            out_off ← out_idx ⊗ eight ·
+            out_elem ← c_ptr ⊕ out_off ·
+            gpu_fstep⦅out_elem ⸴ zero ⸴ zero⦆ ·
+
+            k ← 0 ·
+            cycle k ≺ k_dim ⟦
+                a_idx ← ik ⊕ k ·
+                a_off ← a_idx ⊗ eight ·
+                a_elem ← a_ptr ⊕ a_off ·
+                kn ← k ⊗ n_dim ·
+                b_idx ← kn ⊕ j ·
+                b_off ← b_idx ⊗ eight ·
+                b_elem ← b_ptr ⊕ b_off ·
+                gpu_fstep⦅out_elem ⸴ a_elem ⸴ b_elem⦆ ·
+                k ← k ⊕ 1 ·
+            ⟧
+            j ← j ⊕ 1 ·
+        ⟧
+        i ← i ⊕ 1 ·
+    ⟧
+    yield 1 ·
+⟧
+
+// CPU Fallback Numerically Stable Softmax: row-wise max-scan, exp-sum, normalize
+process gpu_fallback_softmax⦅int64 in_ptr ⸴ int64 out_ptr ⸴ int64 rows ⸴ int64 cols⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when in_ptr ≡ zero ∨ out_ptr ≡ zero ∨ rows ≼ zero ∨ cols ≼ zero ⟦
+        yield 0 ·
+    ⟧
+
+    int64 scratch_sz ↦ 32 ·
+    int64 scratch ↦ qadav_alloc⦅scratch_sz⦆ ·
+    when scratch ≡ zero ⟦
+        yield 0 ·
+    ⟧
+    int64 max_ptr ↦ scratch ·
+    int64 sum_ptr ↦ scratch ⊕ 16 ·
+    int64 eight ↦ 8 ·
+
+    int64 r ↦ 0 ·
+    int64 c ↦ 0 ·
+    int64 r_cols ↦ 0 ·
+    int64 row_off ↦ 0 ·
+    int64 in_row ↦ 0 ·
+    int64 out_row ↦ 0 ·
+    int64 c_off ↦ 0 ·
+    int64 el_in ↦ 0 ·
+    int64 el_out ↦ 0 ·
+
+    cycle r ≺ rows ⟦
+        r_cols ← r ⊗ cols ·
+        row_off ← r_cols ⊗ eight ·
+        in_row ← in_ptr ⊕ row_off ·
+        out_row ← out_ptr ⊕ row_off ·
+
+        // 1. Max scan
+        gpu_fstep⦅max_ptr ⸴ zero ⸴ zero⦆ ·
+        gpu_m⦅2 ⸴ max_ptr ⸴ in_row ⸴ zero ⸴ zero⦆ ·
+        c ← 1 ·
+        cycle c ≺ cols ⟦
+            c_off ← c ⊗ eight ·
+            el_in ← in_row ⊕ c_off ·
+            gpu_m⦅2 ⸴ max_ptr ⸴ el_in ⸴ zero ⸴ zero⦆ ·
+            c ← c ⊕ 1 ·
+        ⟧
+
+        // 2. Exp and Sum
+        gpu_fstep⦅sum_ptr ⸴ zero ⸴ zero⦆ ·
+        c ← 0 ·
+        cycle c ≺ cols ⟦
+            c_off ← c ⊗ eight ·
+            el_in ← in_row ⊕ c_off ·
+            el_out ← out_row ⊕ c_off ·
+            gpu_m⦅3 ⸴ el_out ⸴ el_in ⸴ max_ptr ⸴ sum_ptr⦆ ·
+            c ← c ⊕ 1 ·
+        ⟧
+
+        // 3. Normalize
+        c ← 0 ·
+        cycle c ≺ cols ⟦
+            c_off ← c ⊗ eight ·
+            el_out ← out_row ⊕ c_off ·
+            gpu_m⦅4 ⸴ el_out ⸴ sum_ptr ⸴ zero ⸴ zero⦆ ·
+            c ← c ⊕ 1 ·
+        ⟧
+
+        r ← r ⊕ 1 ·
+    ⟧
+
+    qadav_free⦅scratch⦆ ·
+    yield 1 ·
+⟧
+
+// CPU Fallback Layer Normalization: row-wise mean, variance, normalize
+process gpu_fallback_layernorm⦅int64 in_ptr ⸴ int64 out_ptr ⸴ int64 rows ⸴ int64 cols ⸴ int64 eps_bits⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when in_ptr ≡ zero ∨ out_ptr ≡ zero ∨ rows ≼ zero ∨ cols ≼ zero ⟦
+        yield 0 ·
+    ⟧
+
+    int64 scratch_sz ↦ 48 ·
+    int64 scratch ↦ qadav_alloc⦅scratch_sz⦆ ·
+    when scratch ≡ zero ⟦
+        yield 0 ·
+    ⟧
+    int64 sum_ptr ↦ scratch ·
+    int64 mean_ptr ↦ scratch ⊕ 16 ·
+    int64 inv_std_ptr ↦ scratch ⊕ 32 ·
+    int64 eight ↦ 8 ·
+
+    int64 r ↦ 0 ·
+    int64 c ↦ 0 ·
+    int64 r_cols ↦ 0 ·
+    int64 row_off ↦ 0 ·
+    int64 in_row ↦ 0 ·
+    int64 out_row ↦ 0 ·
+    int64 c_off ↦ 0 ·
+    int64 el_in ↦ 0 ·
+    int64 el_out ↦ 0 ·
+
+    cycle r ≺ rows ⟦
+        r_cols ← r ⊗ cols ·
+        row_off ← r_cols ⊗ eight ·
+        in_row ← in_ptr ⊕ row_off ·
+        out_row ← out_ptr ⊕ row_off ·
+
+        // 1. Mean calculation
+        gpu_fstep⦅sum_ptr ⸴ zero ⸴ zero⦆ ·
+        c ← 0 ·
+        cycle c ≺ cols ⟦
+            c_off ← c ⊗ eight ·
+            el_in ← in_row ⊕ c_off ·
+            gpu_m⦅5 ⸴ zero ⸴ el_in ⸴ zero ⸴ sum_ptr⦆ ·
+            c ← c ⊕ 1 ·
+        ⟧
+        gpu_m⦅6 ⸴ mean_ptr ⸴ sum_ptr ⸴ cols ⸴ zero⦆ ·
+
+        // 2. Variance and inverse standard deviation
+        gpu_fstep⦅sum_ptr ⸴ zero ⸴ zero⦆ ·
+        c ← 0 ·
+        cycle c ≺ cols ⟦
+            c_off ← c ⊗ eight ·
+            el_in ← in_row ⊕ c_off ·
+            gpu_m⦅7 ⸴ zero ⸴ el_in ⸴ mean_ptr ⸴ sum_ptr⦆ ·
+            c ← c ⊕ 1 ·
+        ⟧
+        gpu_m⦅8 ⸴ inv_std_ptr ⸴ sum_ptr ⸴ cols ⸴ eps_bits⦆ ·
+
+        // 3. Normalize
+        c ← 0 ·
+        cycle c ≺ cols ⟦
+            c_off ← c ⊗ eight ·
+            el_in ← in_row ⊕ c_off ·
+            el_out ← out_row ⊕ c_off ·
+            gpu_m⦅9 ⸴ el_out ⸴ el_in ⸴ mean_ptr ⸴ inv_std_ptr⦆ ·
+            c ← c ⊕ 1 ·
+        ⟧
+
+        r ← r ⊕ 1 ·
+    ⟧
+
+    qadav_free⦅scratch⦆ ·
+    yield 1 ·
+⟧

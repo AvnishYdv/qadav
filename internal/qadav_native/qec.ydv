@@ -1,0 +1,436 @@
+// internal/qadav_native/qec.ydv
+// Qadav Native Quantum Error Correction Memory Subsystem (QEC, Invention #13, M7.1)
+// Provides syndrome commitment preimages, rolling root accumulation, all-zeros checking, and distance validation.
+
+declare void @qadav_sha3_256(i64, i64, i64)
+declare i64 @qec_cmp(i64, i64, i64)
+declare i32 @qadav_qeeh_boundary_hash(i64, i64)
+declare void @qadav_qeeh_trigger_decoherence(i64)
+declare void @ExitProcess(i32)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare void @memcpy(i64, i64, i64)
+declare void @memset(i64, i64, i64)
+
+declare i64 @qec_gb(i64)
+declare void @qec_sb(i64, i64)
+declare i64 @qec_dr(i64)
+declare void @qec_st(i64, i64)
+declare i64 @qec_g32(i64)
+declare void @qec_s32(i64, i64)
+
+process qec_syndrome_commit_preimage_len⦅int64 raw_len⦆ → int64 ⟦
+    int64 forty_eight ↦ 48 ·
+    int64 total ↦ forty_eight ⊕ raw_len ·
+    yield total ·
+⟧
+
+process qec_validate_distance⦅int64 dist⦆ → int64 ⟦
+    when dist ≺ 3 ⟦
+        yield 3 ·
+    ⟧
+    when dist ≻ 11 ⟦
+        yield 3 ·
+    ⟧
+    int64 rem ↦ dist ⊼ 1 ·
+    when rem ≡ 0 ⟦
+        yield 3 ·
+    ⟧
+    yield dist ·
+⟧
+
+process qec_check_all_zeros⦅int64 raw_ptr ⸴ int64 raw_len⦆ → int64 ⟦
+    when raw_ptr ≡ 0 ⟦
+        yield 1 ·
+    ⟧
+    when raw_len ≼ 0 ⟦
+        yield 1 ·
+    ⟧
+    int64 i ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 p ↦ 0 ·
+    int64 b ↦ 0 ·
+    cycle i ≺ raw_len ⟦
+        p ← raw_ptr ⊕ i ·
+        b ← qec_gb⦅p⦆ ·
+        when b ≻ 0 ⟦
+            yield 0 ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    yield 1 ·
+⟧
+
+process qec_chain_root_accumulate⦅int64 prev_root_ptr ⸴ int64 comm_ptr ⸴ int64 out_root_ptr⦆ → int64 ⟦
+    int64 sixty_four ↦ 64 ·
+    int64 thirty_two ↦ 32 ·
+    int64 buf ↦ qadav_alloc⦅sixty_four⦆ ·
+    int64 p_sec ↦ buf ⊕ thirty_two ·
+    memcpy⦅buf ⸴ prev_root_ptr ⸴ thirty_two⦆ ·
+    memcpy⦅p_sec ⸴ comm_ptr ⸴ thirty_two⦆ ·
+    qadav_sha3_256⦅buf ⸴ sixty_four ⸴ out_root_ptr⦆ ·
+    qadav_free⦅buf⦆ ·
+    yield 1 ·
+⟧
+
+process qec_compute_syn_struct_commitment⦅int64 syn_ptr ⸴ int64 out_comm_ptr⦆ → int64 ⟦
+    int64 forty_eight ↦ 48 ·
+    int64 rlen_loc ↦ syn_ptr ⊕ 1040 ·
+    int64 raw_len ↦ qec_dr⦅rlen_loc⦆ ·
+    int64 total_len ↦ forty_eight ⊕ raw_len ·
+    int64 buf ↦ qadav_alloc⦅total_len⦆ ·
+    int64 p_ts ↦ buf ⊕ 8 ·
+    int64 p_raw ↦ buf ⊕ 16 ·
+    int64 sixteen ↦ 16 ·
+    int64 off_bh ↦ sixteen ⊕ raw_len ·
+    int64 p_bh ↦ buf ⊕ off_bh ·
+    int64 syn_id ↦ qec_dr⦅syn_ptr⦆ ·
+    int64 ts_loc ↦ syn_ptr ⊕ 8 ·
+    int64 ts ↦ qec_dr⦅ts_loc⦆ ·
+    int64 raw_ptr ↦ syn_ptr ⊕ 16 ·
+    int64 bh_ptr ↦ syn_ptr ⊕ 1080 ·
+    qec_st⦅buf ⸴ syn_id⦆ ·
+    qec_st⦅p_ts ⸴ ts⦆ ·
+    memcpy⦅p_raw ⸴ raw_ptr ⸴ raw_len⦆ ·
+    memcpy⦅p_bh ⸴ bh_ptr ⸴ 32⦆ ·
+    qadav_sha3_256⦅buf ⸴ total_len ⸴ out_comm_ptr⦆ ·
+    qadav_free⦅buf⦆ ·
+    yield 1 ·
+⟧
+
+process qec_compute_syndrome_commitment⦅int64 syn_id ⸴ int64 ts ⸴ int64 raw_ptr ⸴ int64 raw_len ⸴ int64 bh_ptr ⸴ int64 out_comm_ptr⦆ → int64 ⟦
+    int64 forty_eight ↦ 48 ·
+    int64 total_len ↦ forty_eight ⊕ raw_len ·
+    int64 buf ↦ qadav_alloc⦅total_len⦆ ·
+    int64 p_ts ↦ buf ⊕ 8 ·
+    int64 p_raw ↦ buf ⊕ 16 ·
+    int64 sixteen ↦ 16 ·
+    int64 off_bh ↦ sixteen ⊕ raw_len ·
+    int64 p_bh ↦ buf ⊕ off_bh ·
+    qec_st⦅buf ⸴ syn_id⦆ ·
+    qec_st⦅p_ts ⸴ ts⦆ ·
+    memcpy⦅p_raw ⸴ raw_ptr ⸴ raw_len⦆ ·
+    memcpy⦅p_bh ⸴ bh_ptr ⸴ 32⦆ ·
+    qadav_sha3_256⦅buf ⸴ total_len ⸴ out_comm_ptr⦆ ·
+    qadav_free⦅buf⦆ ·
+    yield 1 ·
+⟧
+
+process qec_create_native⦅int64 name_ptr ⸴ int64 code_type ⸴ int64 distance ⸴ int64 boundary_ptr⦆ → int64 ⟦
+    int64 sz ↦ 286864 ·
+    int64 mem ↦ qadav_alloc⦅sz⦆ ·
+    when mem ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    memset⦅mem ⸴ 0 ⸴ sz⦆ ·
+    when name_ptr ≻ 0 ⟦
+        memcpy⦅mem ⸴ name_ptr ⸴ 63⦆ ·
+    ⟧
+    int64 real_ct ↦ 1 ·
+    when code_type ≡ 2 ⟦
+        real_ct ← 2 ·
+    ⟧
+    int64 ct_ptr ↦ mem ⊕ 64 ·
+    qec_s32⦅ct_ptr ⸴ real_ct⦆ ·
+    int64 real_dist ↦ qec_validate_distance⦅distance⦆ ·
+    int64 d_ptr ↦ mem ⊕ 68 ·
+    qec_s32⦅d_ptr ⸴ real_dist⦆ ·
+    int64 auth_bid ↦ mem ⊕ 72 ·
+    when boundary_ptr ≻ 0 ⟦
+        qadav_qeeh_boundary_hash⦅boundary_ptr ⸴ auth_bid⦆ ·
+    ⟧
+    yield mem ·
+⟧
+
+process qec_measure_native⦅int64 mem_ptr ⸴ int64 raw_ptr ⸴ int64 raw_len ⸴ int64 out_syn_id_ptr ⸴ int64 auth_boundary_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    int64 neg_three ↦ zero ⊖ 3 ·
+    int64 neg_four ↦ zero ⊖ 4 ·
+    int64 neg_five ↦ zero ⊖ 5 ·
+    int64 cur_hash ↦ 0 ·
+    int64 exp_bid ↦ 0 ·
+    int64 cmp ↦ 0 ·
+    int64 is_zero ↦ 0 ·
+    int64 cnt_ptr ↦ 0 ·
+    int64 count ↦ 0 ·
+    int64 id ↦ 0 ·
+    int64 one_thousand_one_hundred_twenty ↦ 1120 ·
+    int64 syn_off ↦ 0 ·
+    int64 syn_base ↦ 0 ·
+    int64 cur_syn ↦ 0 ·
+    int64 ts ↦ 0 ·
+    int64 ts_loc ↦ 0 ·
+    int64 raw_dst ↦ 0 ·
+    int64 rlen_loc ↦ 0 ·
+    int64 bh_dst ↦ 0 ·
+    int64 mem_bh ↦ 0 ·
+    int64 comm_dst ↦ 0 ·
+    int64 chain_root ↦ 0 ·
+    int64 ver_loc ↦ 0 ·
+    int64 next_count ↦ 0 ·
+
+    when mem_ptr ≡ 0 ⟦
+        yield neg_one ·
+    ⟧
+    when out_syn_id_ptr ≡ 0 ⟦
+        yield neg_one ·
+    ⟧
+    when raw_ptr ≡ 0 ⟦
+        yield neg_three ·
+    ⟧
+    when raw_len ≼ 0 ⟦
+        yield neg_three ·
+    ⟧
+    when raw_len ≻ 1024 ⟦
+        yield neg_four ·
+    ⟧
+    is_zero ← qec_check_all_zeros⦅raw_ptr ⸴ raw_len⦆ ·
+    when is_zero ≡ 1 ⟦
+        yield neg_three ·
+    ⟧
+    when auth_boundary_ptr ≻ 0 ⟦
+        cur_hash ← qadav_alloc⦅32⦆ ·
+        qadav_qeeh_boundary_hash⦅auth_boundary_ptr ⸴ cur_hash⦆ ·
+        exp_bid ← mem_ptr ⊕ 72 ·
+        cmp ← qec_cmp⦅cur_hash ⸴ exp_bid ⸴ 32⦆ ·
+        qadav_free⦅cur_hash⦆ ·
+        when cmp ≻ 0 ⟦
+            qadav_qeeh_trigger_decoherence⦅0⦆ ·
+            ExitProcess⦅3735928559⦆ ·
+            yield neg_one ·
+        ⟧
+        when cmp ≺ 0 ⟦
+            qadav_qeeh_trigger_decoherence⦅0⦆ ·
+            ExitProcess⦅3735928559⦆ ·
+            yield neg_one ·
+        ⟧
+    ⟧
+    cnt_ptr ← mem_ptr ⊕ 104 ·
+    count ← qec_g32⦅cnt_ptr⦆ ·
+    when count ≽ 256 ⟦
+        yield neg_five ·
+    ⟧
+    id ← count ·
+    syn_off ← id ⊗ one_thousand_one_hundred_twenty ·
+    syn_base ← mem_ptr ⊕ 112 ·
+    cur_syn ← syn_base ⊕ syn_off ·
+    qec_st⦅cur_syn ⸴ id⦆ ·
+    ts ← id ⊕ 100 ·
+    ts_loc ← cur_syn ⊕ 8 ·
+    qec_st⦅ts_loc ⸴ ts⦆ ·
+    raw_dst ← cur_syn ⊕ 16 ·
+    memcpy⦅raw_dst ⸴ raw_ptr ⸴ raw_len⦆ ·
+    rlen_loc ← cur_syn ⊕ 1040 ·
+    qec_st⦅rlen_loc ⸴ raw_len⦆ ·
+    bh_dst ← cur_syn ⊕ 1080 ·
+    mem_bh ← mem_ptr ⊕ 72 ·
+    memcpy⦅bh_dst ⸴ mem_bh ⸴ 32⦆ ·
+    comm_dst ← cur_syn ⊕ 1048 ·
+    qec_compute_syn_struct_commitment⦅cur_syn ⸴ comm_dst⦆ ·
+    chain_root ← mem_ptr ⊕ 286832 ·
+    qec_chain_root_accumulate⦅chain_root ⸴ comm_dst ⸴ chain_root⦆ ·
+    ver_loc ← cur_syn ⊕ 1112 ·
+    qec_s32⦅ver_loc ⸴ 0⦆ ·
+    next_count ← count ⊕ 1 ·
+    qec_s32⦅cnt_ptr ⸴ next_count⦆ ·
+    qec_st⦅out_syn_id_ptr ⸴ id⦆ ·
+    yield 0 ·
+⟧
+
+process qec_verify_native⦅int64 mem_ptr ⸴ int64 syn_id ⸴ int64 auth_boundary_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    int64 neg_two ↦ zero ⊖ 2 ·
+    int64 cur_hash ↦ 0 ·
+    int64 exp_bid ↦ 0 ·
+    int64 cmp ↦ 0 ·
+    int64 cnt_ptr ↦ 0 ·
+    int64 count ↦ 0 ·
+    int64 one_thousand_one_hundred_twenty ↦ 1120 ·
+    int64 syn_off ↦ 0 ·
+    int64 syn_base ↦ 0 ·
+    int64 cur_syn ↦ 0 ·
+    int64 ts_loc ↦ 0 ·
+    int64 ts ↦ 0 ·
+    int64 raw_src ↦ 0 ·
+    int64 rlen_loc ↦ 0 ·
+    int64 raw_len ↦ 0 ·
+    int64 bh_src ↦ 0 ·
+    int64 exp_comm ↦ 0 ·
+    int64 stored_comm ↦ 0 ·
+    int64 comm_cmp ↦ 0 ·
+    int64 ver_loc ↦ 0 ·
+
+    when mem_ptr ≡ 0 ⟦
+        yield neg_one ·
+    ⟧
+    when auth_boundary_ptr ≻ 0 ⟦
+        cur_hash ← qadav_alloc⦅32⦆ ·
+        qadav_qeeh_boundary_hash⦅auth_boundary_ptr ⸴ cur_hash⦆ ·
+        exp_bid ← mem_ptr ⊕ 72 ·
+        cmp ← qec_cmp⦅cur_hash ⸴ exp_bid ⸴ 32⦆ ·
+        qadav_free⦅cur_hash⦆ ·
+        when cmp ≻ 0 ⟦
+            qadav_qeeh_trigger_decoherence⦅0⦆ ·
+            ExitProcess⦅3735928559⦆ ·
+            yield neg_one ·
+        ⟧
+        when cmp ≺ 0 ⟦
+            qadav_qeeh_trigger_decoherence⦅0⦆ ·
+            ExitProcess⦅3735928559⦆ ·
+            yield neg_one ·
+        ⟧
+    ⟧
+    cnt_ptr ← mem_ptr ⊕ 104 ·
+    count ← qec_g32⦅cnt_ptr⦆ ·
+    when syn_id ≺ 0 ⟦
+        yield neg_one ·
+    ⟧
+    when syn_id ≽ count ⟦
+        yield neg_one ·
+    ⟧
+    syn_off ← syn_id ⊗ one_thousand_one_hundred_twenty ·
+    syn_base ← mem_ptr ⊕ 112 ·
+    cur_syn ← syn_base ⊕ syn_off ·
+    ts_loc ← cur_syn ⊕ 8 ·
+    ts ← qec_dr⦅ts_loc⦆ ·
+    raw_src ← cur_syn ⊕ 16 ·
+    rlen_loc ← cur_syn ⊕ 1040 ·
+    raw_len ← qec_dr⦅rlen_loc⦆ ·
+    bh_src ← cur_syn ⊕ 1080 ·
+    exp_comm ← qadav_alloc⦅32⦆ ·
+    qec_compute_syn_struct_commitment⦅cur_syn ⸴ exp_comm⦆ ·
+    stored_comm ← cur_syn ⊕ 1048 ·
+    comm_cmp ← qec_cmp⦅exp_comm ⸴ stored_comm ⸴ 32⦆ ·
+    qadav_free⦅exp_comm⦆ ·
+    when comm_cmp ≻ 0 ⟦
+        qadav_qeeh_trigger_decoherence⦅0⦆ ·
+        ExitProcess⦅3735928559⦆ ·
+        yield neg_two ·
+    ⟧
+    when comm_cmp ≺ 0 ⟦
+        qadav_qeeh_trigger_decoherence⦅0⦆ ·
+        ExitProcess⦅3735928559⦆ ·
+        yield neg_two ·
+    ⟧
+    ver_loc ← cur_syn ⊕ 1112 ·
+    qec_s32⦅ver_loc ⸴ 1⦆ ·
+    yield 0 ·
+⟧
+
+process qec_correct_native⦅int64 mem_ptr ⸴ int64 syn_id ⸴ int64 auth_boundary_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    int64 neg_six ↦ zero ⊖ 6 ·
+    int64 cur_hash ↦ 0 ·
+    int64 exp_bid ↦ 0 ·
+    int64 cmp ↦ 0 ·
+    int64 cnt_ptr ↦ 0 ·
+    int64 count ↦ 0 ·
+    int64 one_thousand_one_hundred_twenty ↦ 1120 ·
+    int64 syn_off ↦ 0 ·
+    int64 syn_base ↦ 0 ·
+    int64 cur_syn ↦ 0 ·
+    int64 ver_loc ↦ 0 ·
+    int64 is_ver ↦ 0 ·
+    int64 chain_root ↦ 0 ·
+    int64 comm_src ↦ 0 ·
+
+    when mem_ptr ≡ 0 ⟦
+        yield neg_one ·
+    ⟧
+    when auth_boundary_ptr ≻ 0 ⟦
+        cur_hash ← qadav_alloc⦅32⦆ ·
+        qadav_qeeh_boundary_hash⦅auth_boundary_ptr ⸴ cur_hash⦆ ·
+        exp_bid ← mem_ptr ⊕ 72 ·
+        cmp ← qec_cmp⦅cur_hash ⸴ exp_bid ⸴ 32⦆ ·
+        qadav_free⦅cur_hash⦆ ·
+        when cmp ≻ 0 ⟦
+            qadav_qeeh_trigger_decoherence⦅0⦆ ·
+            ExitProcess⦅3735928559⦆ ·
+            yield neg_one ·
+        ⟧
+        when cmp ≺ 0 ⟦
+            qadav_qeeh_trigger_decoherence⦅0⦆ ·
+            ExitProcess⦅3735928559⦆ ·
+            yield neg_one ·
+        ⟧
+    ⟧
+    cnt_ptr ← mem_ptr ⊕ 104 ·
+    count ← qec_g32⦅cnt_ptr⦆ ·
+    when syn_id ≺ 0 ⟦
+        yield neg_one ·
+    ⟧
+    when syn_id ≽ count ⟦
+        yield neg_one ·
+    ⟧
+    syn_off ← syn_id ⊗ one_thousand_one_hundred_twenty ·
+    syn_base ← mem_ptr ⊕ 112 ·
+    cur_syn ← syn_base ⊕ syn_off ·
+    ver_loc ← cur_syn ⊕ 1112 ·
+    is_ver ← qec_g32⦅ver_loc⦆ ·
+    when is_ver ≡ 0 ⟦
+        yield neg_six ·
+    ⟧
+    chain_root ← mem_ptr ⊕ 286832 ·
+    comm_src ← cur_syn ⊕ 1048 ·
+    qec_chain_root_accumulate⦅chain_root ⸴ comm_src ⸴ chain_root⦆ ·
+    yield 0 ·
+⟧
+
+process qec_corrupt_native⦅int64 mem_ptr ⸴ int64 syn_id ⸴ int64 offset⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    int64 neg_two ↦ zero ⊖ 2 ·
+    int64 cnt_ptr ↦ 0 ·
+    int64 count ↦ 0 ·
+    int64 one_thousand_one_hundred_twenty ↦ 1120 ·
+    int64 syn_off ↦ 0 ·
+    int64 syn_base ↦ 0 ·
+    int64 cur_syn ↦ 0 ·
+    int64 rlen_loc ↦ 0 ·
+    int64 raw_len ↦ 0 ·
+    int64 real_off ↦ offset ·
+    int64 raw_src ↦ 0 ·
+    int64 target_p ↦ 0 ·
+    int64 old_b ↦ 0 ·
+    int64 c255 ↦ 255 ·
+    int64 new_b ↦ 0 ·
+
+    when mem_ptr ≡ 0 ⟦
+        yield neg_one ·
+    ⟧
+    cnt_ptr ← mem_ptr ⊕ 104 ·
+    count ← qec_g32⦅cnt_ptr⦆ ·
+    when syn_id ≺ 0 ⟦
+        yield neg_one ·
+    ⟧
+    when syn_id ≽ count ⟦
+        yield neg_one ·
+    ⟧
+    syn_off ← syn_id ⊗ one_thousand_one_hundred_twenty ·
+    syn_base ← mem_ptr ⊕ 112 ·
+    cur_syn ← syn_base ⊕ syn_off ·
+    rlen_loc ← cur_syn ⊕ 1040 ·
+    raw_len ← qec_dr⦅rlen_loc⦆ ·
+    when raw_len ≼ 0 ⟦
+        yield neg_two ·
+    ⟧
+    when real_off ≺ 0 ⟦
+        real_off ← 0 ·
+    ⟧
+    when real_off ≽ raw_len ⟦
+        real_off ← 0 ·
+    ⟧
+    raw_src ← cur_syn ⊕ 16 ·
+    target_p ← raw_src ⊕ real_off ·
+    old_b ← qec_gb⦅target_p⦆ ·
+    new_b ← c255 ⊖ old_b ·
+    qec_sb⦅target_p ⸴ new_b⦆ ·
+    yield 0 ·
+⟧

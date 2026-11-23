@@ -3,6 +3,11 @@
 // Provides rule penalty summation, boundary hash preimage accumulation, and threshold evaluation.
 
 declare i64 @qeeh_deref(i64)
+declare i64 @qeeh_b(i64)
+declare void @qeeh_sb(i64, i64)
+declare void @qadav_sha3_256(i64, i64, i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
 
 process qeeh_boundary_hash_preimage_len⦅int64 num_rules ⸴ int64 avg_name_len⦆ → int64 ⟦
     int64 four ↦ 4 ·
@@ -45,4 +50,173 @@ process qeeh_energy_above_threshold⦅int64 energy ⸴ int64 threshold⦆ → in
         yield 1 ·
     ⟧
     yield 0 ·
+⟧
+
+process qeeh_eval_action_native⦅int64 h_ptr ⸴ int64 action_str_ptr⦆ → int64 ⟦
+    when action_str_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 three ↦ 3 ·
+    int64 b0 ↦ qeeh_b⦅action_str_ptr⦆ ·
+    int64 p1 ↦ action_str_ptr ⊕ one ·
+    int64 b1 ↦ qeeh_b⦅p1⦆ ·
+    int64 p2 ↦ action_str_ptr ⊕ two ·
+    int64 b2 ↦ qeeh_b⦅p2⦆ ·
+    int64 p3 ↦ action_str_ptr ⊕ three ·
+    int64 b3 ↦ qeeh_b⦅p3⦆ ·
+    when b0 ≡ 104 ⟦
+        when b1 ≡ 97 ⟦
+            when b2 ≡ 114 ⟦
+                when b3 ≡ 109 ⟦
+                    yield 1 ·
+                ⟧
+            ⟧
+        ⟧
+    ⟧
+    when b0 ≡ 108 ⟦
+        when b1 ≡ 101 ⟦
+            when b2 ≡ 97 ⟦
+                when b3 ≡ 107 ⟦
+                    yield 1 ·
+                ⟧
+            ⟧
+        ⟧
+    ⟧
+    yield 0 ·
+⟧
+
+process qeeh_boundary_hash_native⦅int64 b_ptr ⸴ int64 out_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 three ↦ 3 ·
+    int64 four ↦ 4 ·
+    int64 six ↦ 6 ·
+    int64 eight ↦ 8 ·
+    int64 sixteen ↦ 16 ·
+    int64 thirty_two ↦ 32 ·
+    int64 forty_eight ↦ 48 ·
+    int64 sixty_three ↦ 63 ·
+    int64 sixty_four ↦ 64 ·
+    int64 two_hundred_fifty_five ↦ 255 ·
+    int64 two_hundred_fifty_six ↦ 256 ·
+    int64 mask_u16 ↦ 65535 ·
+    int64 buf_cap ↦ 4096 ·
+    when out_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    when b_ptr ≡ 0 ⟦
+        int64 zi ↦ 0 ·
+        cycle zi ≺ thirty_two ⟦
+            int64 zp ↦ out_ptr ⊕ zi ·
+            qeeh_sb⦅zp ⸴ zero⦆ ·
+            zi ← zi ⊕ one ·
+        ⟧
+        yield 0 ·
+    ⟧
+    int64 num_rules ↦ qeeh_deref⦅b_ptr⦆ ·
+    int64 n_low ↦ num_rules ⊼ mask_u16 ·
+    when n_low ≼ 0 ⟦
+        n_low ← 1 ·
+    ⟧
+    int64 buf ↦ qadav_alloc⦅buf_cap⦆ ·
+    int64 b0_byte ↦ n_low ⊼ two_hundred_fifty_five ·
+    int64 b1_byte ↦ n_low ⊘ two_hundred_fifty_six ·
+    int64 b1_clean ↦ b1_byte ⊼ two_hundred_fifty_five ·
+    qeeh_sb⦅buf ⸴ b0_byte⦆ ·
+    int64 buf1 ↦ buf ⊕ one ·
+    qeeh_sb⦅buf1 ⸴ b1_clean⦆ ·
+    int64 buf2 ↦ buf ⊕ two ·
+    qeeh_sb⦅buf2 ⸴ zero⦆ ·
+    int64 buf3 ↦ buf ⊕ three ·
+    qeeh_sb⦅buf3 ⸴ zero⦆ ·
+    int64 offset ↦ 4 ·
+    int64 r_idx ↦ 0 ·
+    int64 p_arr_ptr ↦ b_ptr ⊕ eight ·
+    int64 p_arr ↦ qeeh_deref⦅p_arr_ptr⦆ ·
+    cycle r_idx ≺ n_low ⟦
+        int64 r_off ↦ r_idx ⊗ sixty_four ·
+        int64 name_off ↦ sixteen ⊕ r_off ·
+        int64 name_ptr ↦ b_ptr ⊕ name_off ·
+        int64 first_ch ↦ qeeh_b⦅name_ptr⦆ ·
+        when first_ch ≡ 0 ⟦
+            int64 p_r ↦ buf ⊕ offset ·
+            qeeh_sb⦅p_r ⸴ 114⦆ ·
+            offset ← offset ⊕ one ·
+            int64 p_u ↦ buf ⊕ offset ·
+            qeeh_sb⦅p_u ⸴ 117⦆ ·
+            offset ← offset ⊕ one ·
+            int64 p_l ↦ buf ⊕ offset ·
+            qeeh_sb⦅p_l ⸴ 108⦆ ·
+            offset ← offset ⊕ one ·
+            int64 p_e ↦ buf ⊕ offset ·
+            qeeh_sb⦅p_e ⸴ 101⦆ ·
+            offset ← offset ⊕ one ·
+            int64 p_us ↦ buf ⊕ offset ·
+            qeeh_sb⦅p_us ⸴ 95⦆ ·
+            offset ← offset ⊕ one ·
+            int64 dig ↦ r_idx ⊕ forty_eight ·
+            int64 p_d ↦ buf ⊕ offset ·
+            qeeh_sb⦅p_d ⸴ dig⦆ ·
+            offset ← offset ⊕ one ·
+            int64 p_z ↦ buf ⊕ offset ·
+            qeeh_sb⦅p_z ⸴ zero⦆ ·
+            offset ← offset ⊕ one ·
+        ⟧
+        when first_ch ≻ 0 ⟦
+            int64 k ↦ 0 ·
+            int64 done ↦ 0 ·
+            cycle done ≡ 0 ⟦
+                int64 src_p ↦ name_ptr ⊕ k ·
+                int64 ch ↦ qeeh_b⦅src_p⦆ ·
+                int64 dst_p ↦ buf ⊕ offset ·
+                qeeh_sb⦅dst_p ⸴ ch⦆ ·
+                offset ← offset ⊕ one ·
+                k ← k ⊕ one ·
+                when ch ≡ 0 ⟦
+                    done ← 1 ·
+                ⟧
+                when k ≽ sixty_three ⟦
+                    int64 dst_z ↦ buf ⊕ offset ·
+                    qeeh_sb⦅dst_z ⸴ zero⦆ ·
+                    offset ← offset ⊕ one ·
+                    done ← 1 ·
+                ⟧
+            ⟧
+        ⟧
+        when p_arr ≻ 0 ⟦
+            int64 p_src_off ↦ r_idx ⊗ eight ·
+            int64 p_src ↦ p_arr ⊕ p_src_off ·
+            int64 pk ↦ 0 ·
+            cycle pk ≺ eight ⟦
+                int64 pb_src ↦ p_src ⊕ pk ·
+                int64 pb ↦ qeeh_b⦅pb_src⦆ ·
+                int64 pb_dst ↦ buf ⊕ offset ·
+                qeeh_sb⦅pb_dst ⸴ pb⦆ ·
+                offset ← offset ⊕ one ·
+                pk ← pk ⊕ one ·
+            ⟧
+        ⟧
+        when p_arr ≡ 0 ⟦
+            int64 pi ↦ 0 ·
+            cycle pi ≺ six ⟦
+                int64 pz ↦ buf ⊕ offset ·
+                qeeh_sb⦅pz ⸴ zero⦆ ·
+                offset ← offset ⊕ one ·
+                pi ← pi ⊕ one ·
+            ⟧
+            int64 pf0 ↦ buf ⊕ offset ·
+            qeeh_sb⦅pf0 ⸴ 240⦆ ·
+            offset ← offset ⊕ one ·
+            int64 p3f ↦ buf ⊕ offset ·
+            qeeh_sb⦅p3f ⸴ 63⦆ ·
+            offset ← offset ⊕ one ·
+        ⟧
+        r_idx ← r_idx ⊕ one ·
+    ⟧
+    qadav_sha3_256⦅buf ⸴ offset ⸴ out_ptr⦆ ·
+    qadav_free⦅buf⦆ ·
+    yield 1 ·
 ⟧

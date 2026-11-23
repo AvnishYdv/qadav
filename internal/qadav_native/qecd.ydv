@@ -1,0 +1,428 @@
+// internal/qadav_native/qecd.ydv
+// Qadav Native Quantum Error Correction Decoder Subsystem (QECD, Invention #13, M7.1)
+// Provides greedy min-weight decoding, Pauli combination/cancellation, attestation, and correction application.
+
+declare void @qadav_sha3_256(i64, i64, i64)
+declare i32 @qadav_sha3_ct_compare(i64, i64, i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare void @memcpy(i64, i64, i64)
+declare void @memset(i64, i64, i64)
+
+declare i64 @qecd_gb(i64)
+declare void @qecd_sb(i64, i64)
+declare i64 @qecd_g32(i64)
+declare void @qecd_s32(i64, i64)
+
+process qecd_pack_u32_native⦅int64 buf_ptr ⸴ int64 val⦆ → int64 ⟦
+    int64 two_five_six ↦ 256 ·
+    int64 b0 ↦ 0 ·
+    int64 v1 ↦ val ⊘ two_five_six ·
+    int64 m0 ↦ v1 ⊗ two_five_six ·
+    b0 ← val ⊖ m0 ·
+    qecd_sb⦅buf_ptr ⸴ b0⦆ ·
+
+    int64 b1 ↦ 0 ·
+    int64 v2 ↦ v1 ⊘ two_five_six ·
+    int64 m1 ↦ v2 ⊗ two_five_six ·
+    b1 ← v1 ⊖ m1 ·
+    int64 p1 ↦ buf_ptr ⊕ 1 ·
+    qecd_sb⦅p1 ⸴ b1⦆ ·
+
+    int64 b2 ↦ 0 ·
+    int64 v3 ↦ v2 ⊘ two_five_six ·
+    int64 m2 ↦ v3 ⊗ two_five_six ·
+    b2 ← v2 ⊖ m2 ·
+    int64 p2 ↦ buf_ptr ⊕ 2 ·
+    qecd_sb⦅p2 ⸴ b2⦆ ·
+
+    int64 b3 ↦ 0 ·
+    int64 v4 ↦ v3 ⊘ two_five_six ·
+    int64 m3 ↦ v4 ⊗ two_five_six ·
+    b3 ← v3 ⊖ m3 ·
+    int64 p3 ↦ buf_ptr ⊕ 3 ·
+    qecd_sb⦅p3 ⸴ b3⦆ ·
+
+    yield 1 ·
+⟧
+
+process qecd_compute_attestation_native⦅int64 res_ptr ⸴ int64 out_att_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when res_ptr ≡ zero ⟦
+        yield 0 ·
+    ⟧
+    int64 dist ↦ qecd_g32⦅res_ptr⦆ ·
+    int64 n_q_ptr ↦ res_ptr ⊕ 4 ·
+    int64 n_qubits ↦ qecd_g32⦅n_q_ptr⦆ ·
+    int64 n_s_ptr ↦ res_ptr ⊕ 8 ·
+    int64 n_syn ↦ qecd_g32⦅n_s_ptr⦆ ·
+    int64 n_c_ptr ↦ res_ptr ⊕ 524 ·
+    int64 n_corr ↦ qecd_g32⦅n_c_ptr⦆ ·
+
+    int64 corr_bytes ↦ n_corr ⊗ 5 ·
+    int64 fixed_hdr ↦ 16 ·
+    int64 hdr_syn ↦ fixed_hdr ⊕ n_syn ·
+    int64 total_preimage_len ↦ hdr_syn ⊕ corr_bytes ·
+    int64 pre ↦ qadav_alloc⦅total_preimage_len⦆ ·
+    when pre ≡ zero ⟦
+        yield 0 ·
+    ⟧
+
+    int64 offset ↦ 0 ·
+    int64 cur_p ↦ pre ·
+    qecd_pack_u32_native⦅cur_p ⸴ dist⦆ ·
+    offset ← offset ⊕ 4 ·
+
+    cur_p ← pre ⊕ offset ·
+    qecd_pack_u32_native⦅cur_p ⸴ n_qubits⦆ ·
+    offset ← offset ⊕ 4 ·
+
+    cur_p ← pre ⊕ offset ·
+    qecd_pack_u32_native⦅cur_p ⸴ n_syn⦆ ·
+    offset ← offset ⊕ 4 ·
+
+    when n_syn ≻ zero ⟦
+        cur_p ← pre ⊕ offset ·
+        int64 raw_syn_ptr ↦ res_ptr ⊕ 12 ·
+        memcpy⦅cur_p ⸴ raw_syn_ptr ⸴ n_syn⦆ ·
+        offset ← offset ⊕ n_syn ·
+    ⟧
+
+    cur_p ← pre ⊕ offset ·
+    qecd_pack_u32_native⦅cur_p ⸴ n_corr⦆ ·
+    offset ← offset ⊕ 4 ·
+
+    int64 i ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 eight ↦ 8 ·
+    int64 corr_base ↦ res_ptr ⊕ 528 ·
+    int64 c_off ↦ 0 ·
+    int64 c_ptr ↦ 0 ·
+    int64 q_idx ↦ 0 ·
+    int64 p_ptr ↦ 0 ·
+    int64 pauli ↦ 0 ·
+    cycle i ≺ n_corr ⟦
+        c_off ← i ⊗ eight ·
+        c_ptr ← corr_base ⊕ c_off ·
+        q_idx ← qecd_g32⦅c_ptr⦆ ·
+        cur_p ← pre ⊕ offset ·
+        qecd_pack_u32_native⦅cur_p ⸴ q_idx⦆ ·
+        offset ← offset ⊕ 4 ·
+
+        p_ptr ← c_ptr ⊕ 4 ·
+        pauli ← qecd_gb⦅p_ptr⦆ ·
+        cur_p ← pre ⊕ offset ·
+        qecd_sb⦅cur_p ⸴ pauli⦆ ·
+        offset ← offset ⊕ 1 ·
+
+        i ← i ⊕ one ·
+    ⟧
+
+    qadav_sha3_256⦅pre ⸴ offset ⸴ out_att_ptr⦆ ·
+    qadav_free⦅pre⦆ ·
+    yield 1 ·
+⟧
+
+process qecd_decode_native⦅int64 distance ⸴ int64 n_qubits ⸴ int64 syn_bytes_ptr ⸴ int64 syn_len⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 eight ↦ 8 ·
+    int64 two_five_six ↦ 256 ·
+    int64 d_valid ↦ 0 ·
+    when distance ≡ 3 ⟦
+        d_valid ← 1 ·
+    ⟧
+    when distance ≡ 5 ⟦
+        d_valid ← 1 ·
+    ⟧
+    when distance ≡ 7 ⟦
+        d_valid ← 1 ·
+    ⟧
+    when d_valid ≡ zero ⟦
+        yield zero ·
+    ⟧
+    when syn_len ≺ zero ⟦
+        yield zero ·
+    ⟧
+    when syn_len ≻ 512 ⟦
+        yield zero ·
+    ⟧
+
+    int64 real_qubits ↦ n_qubits ·
+    when real_qubits ≼ zero ⟦
+        real_qubits ← distance ⊗ distance ·
+    ⟧
+    when real_qubits ≻ 32 ⟦
+        real_qubits ← 32 ·
+    ⟧
+
+    int64 sz ↦ 1072 ·
+    int64 res ↦ qadav_alloc⦅sz⦆ ·
+    when res ≡ zero ⟦
+        yield zero ·
+    ⟧
+    memset⦅res ⸴ 0 ⸴ sz⦆ ·
+
+    qecd_s32⦅res ⸴ distance⦆ ·
+    int64 p_nq ↦ res ⊕ 4 ·
+    qecd_s32⦅p_nq ⸴ real_qubits⦆ ·
+    int64 p_ns ↦ res ⊕ 8 ·
+    qecd_s32⦅p_ns ⸴ syn_len⦆ ·
+
+    int64 p_raw ↦ res ⊕ 12 ·
+    int64 p_nc ↦ res ⊕ 524 ·
+    int64 corr_base ↦ res ⊕ 528 ·
+    int64 p_att ↦ res ⊕ 1040 ·
+
+    int64 b ↦ 0 ·
+    int64 total_bits ↦ syn_len ⊗ 8 ·
+    int64 byte_idx ↦ 0 ·
+    int64 bit_idx ↦ 0 ·
+    int64 s_ptr ↦ 0 ·
+    int64 s_byte ↦ 0 ·
+    int64 cur_val ↦ 0 ·
+    int64 shift_cnt ↦ 0 ·
+    int64 half ↦ 0 ·
+    int64 doubled ↦ 0 ·
+    int64 bit ↦ 0 ·
+    int64 b_half ↦ 0 ·
+    int64 b_div_q ↦ 0 ·
+    int64 b_mul_q ↦ 0 ·
+    int64 target_qubit ↦ 0 ·
+    int64 pauli_type ↦ 0 ·
+    int64 b_mod2 ↦ 0 ·
+    int64 found ↦ 0 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    int64 c ↦ 0 ·
+    int64 n_corr ↦ 0 ·
+    int64 c_ptr ↦ 0 ·
+    int64 c_off ↦ 0 ·
+    int64 q_existing ↦ 0 ·
+    int64 curr_pauli ↦ 0 ·
+    int64 k ↦ 0 ·
+    int64 k_ptr ↦ 0 ·
+    int64 knext_ptr ↦ 0 ·
+    int64 n_corr_sub1 ↦ 0 ·
+    int64 new_nc ↦ 0 ·
+    int64 q_ptr ↦ 0 ·
+    int64 pauli_ptr ↦ 0 ·
+
+    when syn_bytes_ptr ≻ zero ⟦
+        when syn_len ≻ zero ⟦
+            memcpy⦅p_raw ⸴ syn_bytes_ptr ⸴ syn_len⦆ ·
+            cycle b ≺ total_bits ⟦
+                byte_idx ← b ⊘ eight ·
+                int64 m_b ↦ byte_idx ⊗ eight ·
+                bit_idx ← b ⊖ m_b ·
+                s_ptr ← syn_bytes_ptr ⊕ byte_idx ·
+                s_byte ← qecd_gb⦅s_ptr⦆ ·
+
+                cur_val ← s_byte ·
+                shift_cnt ← 0 ·
+                cycle shift_cnt ≺ bit_idx ⟦
+                    cur_val ← cur_val ⊘ two ·
+                    shift_cnt ← shift_cnt ⊕ one ·
+                ⟧
+                half ← cur_val ⊘ two ·
+                doubled ← half ⊗ two ·
+                bit ← cur_val ⊖ doubled ·
+
+                when bit ≡ one ⟦
+                    b_half ← b ⊘ two ·
+                    b_div_q ← b_half ⊘ real_qubits ·
+                    b_mul_q ← b_div_q ⊗ real_qubits ·
+                    target_qubit ← b_half ⊖ b_mul_q ·
+
+                    b_mod2 ← b ⊖ ⦅b_half ⊗ two⦆ ·
+                    when b_mod2 ≡ zero ⟦
+                        pauli_type ← 1 ·
+                    ⟧
+                    when b_mod2 ≡ one ⟦
+                        pauli_type ← 2 ·
+                    ⟧
+
+                    found ← neg_one ·
+                    c ← 0 ·
+                    n_corr ← qecd_g32⦅p_nc⦆ ·
+                    cycle c ≺ n_corr ⟦
+                        c_off ← c ⊗ eight ·
+                        c_ptr ← corr_base ⊕ c_off ·
+                        q_existing ← qecd_g32⦅c_ptr⦆ ·
+                        when q_existing ≡ target_qubit ⟦
+                            found ← c ·
+                            c ← n_corr ·
+                        ⟧
+                        when q_existing ≺ target_qubit ∨ q_existing ≻ target_qubit ⟦
+                            c ← c ⊕ one ·
+                        ⟧
+                    ⟧
+
+                    when found ≽ zero ⟦
+                        c_off ← found ⊗ eight ·
+                        c_ptr ← corr_base ⊕ c_off ·
+                        pauli_ptr ← c_ptr ⊕ 4 ·
+                        curr_pauli ← qecd_gb⦅pauli_ptr⦆ ·
+
+                        when curr_pauli ≡ pauli_type ⟦
+                            k ← found ·
+                            n_corr_sub1 ← n_corr ⊖ one ·
+                            cycle k ≺ n_corr_sub1 ⟦
+                                k_ptr ← corr_base ⊕ ⦅k ⊗ eight⦆ ·
+                                int64 k1 ↦ k ⊕ one ·
+                                knext_ptr ← corr_base ⊕ ⦅k1 ⊗ eight⦆ ·
+                                int64 f_q ↦ qecd_g32⦅knext_ptr⦆ ·
+                                int64 p_p ↦ knext_ptr ⊕ 4 ·
+                                int64 f_p ↦ qecd_gb⦅p_p⦆ ·
+                                qecd_s32⦅k_ptr ⸴ f_q⦆ ·
+                                int64 k_pp ↦ k_ptr ⊕ 4 ·
+                                qecd_sb⦅k_pp ⸴ f_p⦆ ·
+                                k ← k ⊕ one ·
+                            ⟧
+                            new_nc ← n_corr ⊖ one ·
+                            qecd_s32⦅p_nc ⸴ new_nc⦆ ·
+                        ⟧
+
+                        when curr_pauli ≺ pauli_type ∨ curr_pauli ≻ pauli_type ⟦
+                            when curr_pauli ≡ 1 ⟦
+                                when pauli_type ≡ 2 ⟦
+                                    qecd_sb⦅pauli_ptr ⸴ 3⦆ ·
+                                ⟧
+                            ⟧
+                            when curr_pauli ≡ 2 ⟦
+                                when pauli_type ≡ 1 ⟦
+                                    qecd_sb⦅pauli_ptr ⸴ 3⦆ ·
+                                ⟧
+                            ⟧
+                            when curr_pauli ≡ 3 ⟦
+                                when pauli_type ≡ 1 ⟦
+                                    qecd_sb⦅pauli_ptr ⸴ 2⦆ ·
+                                ⟧
+                                when pauli_type ≡ 2 ⟦
+                                    qecd_sb⦅pauli_ptr ⸴ 1⦆ ·
+                                ⟧
+                            ⟧
+                        ⟧
+                    ⟧
+
+                    when found ≺ zero ⟦
+                        when n_corr ≺ 64 ⟦
+                            c_off ← n_corr ⊗ eight ·
+                            c_ptr ← corr_base ⊕ c_off ·
+                            qecd_s32⦅c_ptr ⸴ target_qubit⦆ ·
+                            pauli_ptr ← c_ptr ⊕ 4 ·
+                            qecd_sb⦅pauli_ptr ⸴ pauli_type⦆ ·
+                            new_nc ← n_corr ⊕ one ·
+                            qecd_s32⦅p_nc ⸴ new_nc⦆ ·
+                        ⟧
+                    ⟧
+                ⟧
+                b ← b ⊕ one ·
+            ⟧
+        ⟧
+    ⟧
+
+    qecd_compute_attestation_native⦅res ⸴ p_att⦆ ·
+    yield res ·
+⟧
+
+process qecd_verify_native⦅int64 res_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    when res_ptr ≡ zero ⟦
+        yield zero ·
+    ⟧
+    int64 exp_buf ↦ qadav_alloc⦅32⦆ ·
+    when exp_buf ≡ zero ⟦
+        yield zero ·
+    ⟧
+    qecd_compute_attestation_native⦅res_ptr ⸴ exp_buf⦆ ·
+    int64 stored_att ↦ res_ptr ⊕ 1040 ·
+    int64 cmp ↦ qadav_sha3_ct_compare⦅stored_att ⸴ exp_buf ⸴ 32⦆ ·
+    qadav_free⦅exp_buf⦆ ·
+    when cmp ≡ zero ⟦
+        yield 1 ·
+    ⟧
+    yield zero ·
+⟧
+
+process qecd_apply_native⦅int64 res_ptr ⸴ int64 state_ptr ⸴ int64 state_len⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    int64 neg_two ↦ zero ⊖ two ·
+    when res_ptr ≡ zero ⟦
+        yield neg_one ·
+    ⟧
+    when state_ptr ≡ zero ⟦
+        yield neg_one ·
+    ⟧
+    when state_len ≼ zero ⟦
+        yield neg_one ·
+    ⟧
+    int64 n_q_ptr ↦ res_ptr ⊕ 4 ·
+    int64 n_qubits ↦ qecd_g32⦅n_q_ptr⦆ ·
+    int64 min_len ↦ n_qubits ⊗ two ·
+    when state_len ≺ min_len ⟦
+        yield neg_two ·
+    ⟧
+
+    int64 p_nc ↦ res_ptr ⊕ 524 ·
+    int64 n_corr ↦ qecd_g32⦅p_nc⦆ ·
+    int64 corr_base ↦ res_ptr ⊕ 528 ·
+
+    int64 i ↦ 0 ·
+    int64 eight ↦ 8 ·
+    int64 c_off ↦ 0 ·
+    int64 c_ptr ↦ 0 ·
+    int64 q ↦ 0 ·
+    int64 pauli_ptr ↦ 0 ·
+    int64 p ↦ 0 ·
+    int64 q2 ↦ 0 ·
+    int64 q2_plus1 ↦ 0 ·
+    int64 s_idx0 ↦ 0 ·
+    int64 s_idx1 ↦ 0 ·
+    int64 cur_b0 ↦ 0 ·
+    int64 cur_b1 ↦ 0 ·
+
+    cycle i ≺ n_corr ⟦
+        c_off ← i ⊗ eight ·
+        c_ptr ← corr_base ⊕ c_off ·
+        q ← qecd_g32⦅c_ptr⦆ ·
+        when q ≽ n_qubits ⟦
+            yield neg_two ·
+        ⟧
+        q2 ← q ⊗ two ·
+        q2_plus1 ← q2 ⊕ one ·
+        when q2_plus1 ≽ state_len ⟦
+            yield neg_two ·
+        ⟧
+        pauli_ptr ← c_ptr ⊕ 4 ·
+        p ← qecd_gb⦅pauli_ptr⦆ ·
+
+        when p ≡ 1 ⟦
+            s_idx0 ← state_ptr ⊕ q2 ·
+            cur_b0 ← qecd_gb⦅s_idx0⦆ ·
+            cur_b0 ← cur_b0 ⊻ one ·
+            qecd_sb⦅s_idx0 ⸴ cur_b0⦆ ·
+        ⟧
+        when p ≡ 2 ⟦
+            s_idx1 ← state_ptr ⊕ q2_plus1 ·
+            cur_b1 ← qecd_gb⦅s_idx1⦆ ·
+            cur_b1 ← cur_b1 ⊻ one ·
+            qecd_sb⦅s_idx1 ⸴ cur_b1⦆ ·
+        ⟧
+        when p ≡ 3 ⟦
+            s_idx0 ← state_ptr ⊕ q2 ·
+            cur_b0 ← qecd_gb⦅s_idx0⦆ ·
+            cur_b0 ← cur_b0 ⊻ one ·
+            qecd_sb⦅s_idx0 ⸴ cur_b0⦆ ·
+            s_idx1 ← state_ptr ⊕ q2_plus1 ·
+            cur_b1 ← qecd_gb⦅s_idx1⦆ ·
+            cur_b1 ← cur_b1 ⊻ one ·
+            qecd_sb⦅s_idx1 ⸴ cur_b1⦆ ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    yield 0 ·
+⟧
