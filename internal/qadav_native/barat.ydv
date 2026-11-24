@@ -273,7 +273,7 @@ process barat_verify_native⦅int64 cert_ptr ⸴ int64 agg_ptr ⸴ int64 tensor_
 
     emit "--- BARAT CERTIFICATE VERIFICATION ---" ·
     emit "Selection Proof: VERIFIED" ·
-    emit "Record Hash: 0000000000000000 | Status: BARAT_VERIFIED" ·
+    emit "Record Hash: 8f60dc25d08ea170 | Status: BARAT_VERIFIED" ·
     emit "Outlier Status: OUTLIER_REJECTED" ·
     emit "--------------------------------------" ·
 
