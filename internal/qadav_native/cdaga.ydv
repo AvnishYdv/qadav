@@ -1,0 +1,239 @@
+// internal/qadav_native/cdaga.ydv
+// Qadav Native Cross-Device Attested Gradient Aggregation (CDAGA, Invention #8)
+// Target Architecture: C-Free Bootstrap Milestone M10.9L
+
+declare i64 @cdaga_b(i64)
+declare void @cdaga_sb(i64, i64)
+declare i64 @cdaga_deref(i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare void @qadav_sha3_256(i64, i64, i64)
+declare i32 @qadav_sha3_ct_compare(i64, i64, i64)
+declare void @qadav_qeeh_trigger_decoherence(i64)
+declare void @ExitProcess(i32)
+
+process cdaga_uuid_cmp⦅int64 a_ptr ⸴ int64 b_ptr⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 sixteen ↦ 16 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ sixteen ⟦
+        int64 ap ↦ a_ptr ⊕ i ·
+        int64 bp ↦ b_ptr ⊕ i ·
+        int64 av ↦ cdaga_b⦅ap⦆ ·
+        int64 bv ↦ cdaga_b⦅bp⦆ ·
+        when av ≺ bv ⟦
+            yield -1 ·
+        ⟧
+        when av ≻ bv ⟦
+            yield 1 ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    yield 0 ·
+⟧
+
+process cdaga_canonical_sort⦅int64 count ⸴ int64 uuids_ptr ⸴ int64 idx_arr_ptr⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 sixteen ↦ 16 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ count ⟦
+        int64 ip ↦ idx_arr_ptr ⊕ i ·
+        cdaga_sb⦅ip ⸴ i⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+
+    when count ≼ 1 ⟦
+        yield 0 ·
+    ⟧
+
+    int64 pass ↦ 0 ·
+    int64 limit ↦ count ⊖ one ·
+    cycle pass ≺ limit ⟦
+        int64 j ↦ 0 ·
+        int64 inner_limit ↦ limit ⊖ pass ·
+        cycle j ≺ inner_limit ⟦
+            int64 jp0 ↦ idx_arr_ptr ⊕ j ·
+            int64 idx0 ↦ cdaga_b⦅jp0⦆ ·
+            int64 next_j ↦ j ⊕ one ·
+            int64 jp1 ↦ idx_arr_ptr ⊕ next_j ·
+            int64 idx1 ↦ cdaga_b⦅jp1⦆ ·
+
+            int64 u0_off ↦ idx0 ⊗ sixteen ·
+            int64 u0_ptr ↦ uuids_ptr ⊕ u0_off ·
+            int64 u1_off ↦ idx1 ⊗ sixteen ·
+            int64 u1_ptr ↦ uuids_ptr ⊕ u1_off ·
+
+            int64 cmp ↦ cdaga_uuid_cmp⦅u0_ptr ⸴ u1_ptr⦆ ·
+            when cmp ≻ 0 ⟦
+                cdaga_sb⦅jp0 ⸴ idx1⦆ ·
+                cdaga_sb⦅jp1 ⸴ idx0⦆ ·
+            ⟧
+            j ← j ⊕ one ·
+        ⟧
+        pass ← pass ⊕ one ·
+    ⟧
+    yield 0 ·
+⟧
+
+process cdaga_digest_compute_native⦅int64 rec_ptr ⸴ int64 out_digest_ptr⦆ → int64 ⟦
+    when rec_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 eight ↦ 8 ·
+    int64 sixteen ↦ 16 ·
+    int64 twenty ↦ 20 ·
+    int64 thirty_two ↦ 32 ·
+    int64 one_four_eight ↦ 148 ·
+    int64 four_zero_four ↦ 404 ·
+    int64 m255 ↦ 255 ·
+
+    int64 step ↦ cdaga_deref⦅rec_ptr⦆ ·
+    int64 p_ts ↦ rec_ptr ⊕ eight ·
+    int64 ts ↦ cdaga_deref⦅p_ts⦆ ·
+    int64 p_count ↦ rec_ptr ⊕ sixteen ·
+    int64 count_raw ↦ cdaga_deref⦅p_count⦆ ·
+    int64 c ↦ count_raw ⊼ m255 ·
+    when c ≼ 0 ⟦
+        c ← one ·
+    ⟧
+    when c ≻ eight ⟦
+        c ← eight ·
+    ⟧
+
+    int64 uuids_ptr ↦ rec_ptr ⊕ twenty ·
+    int64 grads_ptr ↦ rec_ptr ⊕ one_four_eight ·
+    int64 topo_ptr  ↦ rec_ptr ⊕ four_zero_four ·
+
+    int64 alloc_512 ↦ 512 ·
+    int64 alloc_16 ↦ 16 ·
+    int64 buf ↦ qadav_alloc⦅alloc_512⦆ ·
+    int64 idx_arr ↦ qadav_alloc⦅alloc_16⦆ ·
+    cdaga_canonical_sort⦅c ⸴ uuids_ptr ⸴ idx_arr⦆ ·
+
+    // Copy step (8 bytes)
+    int64 k ↦ 0 ·
+    cycle k ≺ eight ⟦
+        int64 sh ↦ k ⊗ eight ·
+        int64 divisor ↦ one ≪ sh ·
+        int64 quot ↦ step ⊘ divisor ·
+        int64 b ↦ quot ⊼ m255 ·
+        int64 dst ↦ buf ⊕ k ·
+        cdaga_sb⦅dst ⸴ b⦆ ·
+        k ← k ⊕ one ·
+    ⟧
+
+    // Copy ts (8 bytes)
+    int64 buf_ts ↦ buf ⊕ eight ·
+    int64 tk ↦ 0 ·
+    cycle tk ≺ eight ⟦
+        int64 tsh ↦ tk ⊗ eight ·
+        int64 tdivisor ↦ one ≪ tsh ·
+        int64 tquot ↦ ts ⊘ tdivisor ·
+        int64 tb ↦ tquot ⊼ m255 ·
+        int64 tdst ↦ buf_ts ⊕ tk ·
+        cdaga_sb⦅tdst ⸴ tb⦆ ·
+        tk ← tk ⊕ one ·
+    ⟧
+
+    int64 offset ↦ sixteen ·
+    int64 d ↦ 0 ·
+    cycle d ≺ c ⟦
+        int64 jp ↦ idx_arr ⊕ d ·
+        int64 sorted_idx ↦ cdaga_b⦅jp⦆ ·
+
+        // Copy 16-byte UUID
+        int64 u_off ↦ sorted_idx ⊗ sixteen ·
+        int64 u_src ↦ uuids_ptr ⊕ u_off ·
+        int64 ui ↦ 0 ·
+        cycle ui ≺ sixteen ⟦
+            int64 p_usrc ↦ u_src ⊕ ui ·
+            int64 ub ↦ cdaga_b⦅p_usrc⦆ ·
+            int64 u_dst ↦ buf ⊕ offset ·
+            cdaga_sb⦅u_dst ⸴ ub⦆ ·
+            offset ← offset ⊕ one ·
+            ui ← ui ⊕ one ·
+        ⟧
+
+        // Copy 32-byte gradient digest
+        int64 g_off ↦ sorted_idx ⊗ thirty_two ·
+        int64 g_src ↦ grads_ptr ⊕ g_off ·
+        int64 gi ↦ 0 ·
+        cycle gi ≺ thirty_two ⟦
+            int64 p_gsrc ↦ g_src ⊕ gi ·
+            int64 gb ↦ cdaga_b⦅p_gsrc⦆ ·
+            int64 g_dst ↦ buf ⊕ offset ·
+            cdaga_sb⦅g_dst ⸴ gb⦆ ·
+            offset ← offset ⊕ one ·
+            gi ← gi ⊕ one ·
+        ⟧
+
+        d ← d ⊕ one ·
+    ⟧
+
+    // Copy 32-byte topology hash
+    int64 ti ↦ 0 ·
+    cycle ti ≺ thirty_two ⟦
+        int64 p_tsrc ↦ topo_ptr ⊕ ti ·
+        int64 tob ↦ cdaga_b⦅p_tsrc⦆ ·
+        int64 topo_dst ↦ buf ⊕ offset ·
+        cdaga_sb⦅topo_dst ⸴ tob⦆ ·
+        offset ← offset ⊕ one ·
+        ti ← ti ⊕ one ·
+    ⟧
+
+    qadav_sha3_256⦅buf ⸴ offset ⸴ out_digest_ptr⦆ ·
+    qadav_free⦅idx_arr⦆ ·
+    qadav_free⦅buf⦆ ·
+    yield 1 ·
+⟧
+
+process cdaga_verify_native⦅int64 rec_ptr ⸴ int64 ctx_ptr⦆ → int64 ⟦
+    when rec_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 thirty_two ↦ 32 ·
+    int64 four_three_six ↦ 436 ·
+    int64 four_six_eight ↦ 468 ·
+
+    int64 exp_agg ↦ qadav_alloc⦅thirty_two⦆ ·
+    int64 exp_rec ↦ qadav_alloc⦅thirty_two⦆ ·
+    int64 agg_ptr ↦ rec_ptr ⊕ four_three_six ·
+    int64 rec_hash_ptr ↦ rec_ptr ⊕ four_six_eight ·
+
+    cdaga_digest_compute_native⦅rec_ptr ⸴ exp_agg⦆ ·
+    int64 r1 ↦ qadav_sha3_ct_compare⦅exp_agg ⸴ agg_ptr ⸴ thirty_two⦆ ·
+    when r1 ≻ 0 ⟦
+        qadav_free⦅exp_agg⦆ ·
+        qadav_free⦅exp_rec⦆ ·
+        yield 0 ·
+    ⟧
+    when r1 ≺ 0 ⟦
+        qadav_free⦅exp_agg⦆ ·
+        qadav_free⦅exp_rec⦆ ·
+        yield 0 ·
+    ⟧
+
+    qadav_sha3_256⦅rec_ptr ⸴ four_six_eight ⸴ exp_rec⦆ ·
+    int64 r2 ↦ qadav_sha3_ct_compare⦅exp_rec ⸴ rec_hash_ptr ⸴ thirty_two⦆ ·
+    when r2 ≻ 0 ⟦
+        qadav_free⦅exp_agg⦆ ·
+        qadav_free⦅exp_rec⦆ ·
+        yield 0 ·
+    ⟧
+    when r2 ≺ 0 ⟦
+        qadav_free⦅exp_agg⦆ ·
+        qadav_free⦅exp_rec⦆ ·
+        yield 0 ·
+    ⟧
+
+    emit "--- CDAGA CROSS-DEVICE AGGREGATION VERIFIED ---" ·
+    emit "Canonical Sort: VERIFIED (UUID-lexicographic)" ·
+    emit "Aggregation Digest: MATCHED" ·
+    emit "Record Hash: MATCHED | Status: CDAGA_VERIFIED" ·
+    emit "-----------------------------------------------" ·
+
+    qadav_free⦅exp_agg⦆ ·
+    qadav_free⦅exp_rec⦆ ·
+    yield 1 ·
+⟧

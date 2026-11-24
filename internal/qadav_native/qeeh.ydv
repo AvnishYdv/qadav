@@ -56,33 +56,73 @@ process qeeh_eval_action_native⦅int64 h_ptr ⸴ int64 action_str_ptr⦆ → in
     when action_str_ptr ≡ 0 ⟦
         yield 0 ·
     ⟧
+    when h_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 num_rules ↦ qeeh_deref⦅h_ptr⦆ ·
+    int64 mask_u16 ↦ 65535 ·
+    int64 n_rules ↦ num_rules ⊼ mask_u16 ·
+    when n_rules ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    when n_rules ≻ 32 ⟦
+        n_rules ← 32 ·
+    ⟧
+
+    // 1. Compute 64-bit FNV-1a hash of action_str_ptr
+    int64 fnv_basis ↦ 14695981039346656037 ·
+    int64 fnv_prime ↦ 1099511628211 ·
+    int64 act_hash ↦ fnv_basis ·
+    int64 ai ↦ 0 ·
+    int64 a_done ↦ 0 ·
     int64 one ↦ 1 ·
-    int64 two ↦ 2 ·
-    int64 three ↦ 3 ·
-    int64 b0 ↦ qeeh_b⦅action_str_ptr⦆ ·
-    int64 p1 ↦ action_str_ptr ⊕ one ·
-    int64 b1 ↦ qeeh_b⦅p1⦆ ·
-    int64 p2 ↦ action_str_ptr ⊕ two ·
-    int64 b2 ↦ qeeh_b⦅p2⦆ ·
-    int64 p3 ↦ action_str_ptr ⊕ three ·
-    int64 b3 ↦ qeeh_b⦅p3⦆ ·
-    when b0 ≡ 104 ⟦
-        when b1 ≡ 97 ⟦
-            when b2 ≡ 114 ⟦
-                when b3 ≡ 109 ⟦
-                    yield 1 ·
-                ⟧
-            ⟧
+    cycle a_done ≡ 0 ⟦
+        int64 ap ↦ action_str_ptr ⊕ ai ·
+        int64 ab ↦ qeeh_b⦅ap⦆ ·
+        when ab ≡ 0 ⟦
+            a_done ← 1 ·
+        ⟧
+        when ab ≻ 0 ⟦
+            act_hash ← act_hash ⊻ ab ·
+            act_hash ← act_hash ⊗ fnv_prime ·
+            ai ← ai ⊕ one ·
         ⟧
     ⟧
-    when b0 ≡ 108 ⟦
-        when b1 ≡ 101 ⟦
-            when b2 ≡ 97 ⟦
-                when b3 ≡ 107 ⟦
-                    yield 1 ·
+
+    // 2. Loop over stored rule codes
+    int64 r ↦ 0 ·
+    int64 eight ↦ 8 ·
+    int64 sixty_four ↦ 64 ·
+    int64 cd_base ↦ h_ptr ⊕ 2064 ·
+    int64 nm_base ↦ h_ptr ⊕ 16 ·
+    cycle r ≺ n_rules ⟦
+        int64 cd_off ↦ r ⊗ eight ·
+        int64 cd_ptr ↦ cd_base ⊕ cd_off ·
+        int64 rule_code ↦ qeeh_deref⦅cd_ptr⦆ ·
+        when rule_code ≡ 0 ⟦
+            int64 nm_off ↦ r ⊗ sixty_four ·
+            int64 nm_ptr ↦ nm_base ⊕ nm_off ·
+            int64 nm_hash ↦ fnv_basis ·
+            int64 ni ↦ 0 ·
+            int64 n_done ↦ 0 ·
+            cycle n_done ≡ 0 ⟦
+                int64 np ↦ nm_ptr ⊕ ni ·
+                int64 nb ↦ qeeh_b⦅np⦆ ·
+                when nb ≡ 0 ⟦
+                    n_done ← 1 ·
+                ⟧
+                when nb ≻ 0 ⟦
+                    nm_hash ← nm_hash ⊻ nb ·
+                    nm_hash ← nm_hash ⊗ fnv_prime ·
+                    ni ← ni ⊕ one ·
                 ⟧
             ⟧
+            rule_code ← nm_hash ·
         ⟧
+        when act_hash ≡ rule_code ⟦
+            yield 1 ·
+        ⟧
+        r ← r ⊕ one ·
     ⟧
     yield 0 ·
 ⟧

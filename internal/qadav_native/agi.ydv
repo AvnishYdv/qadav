@@ -1,0 +1,115 @@
+// internal/qadav_native/agi.ydv
+// Qadav Native AGI Cognitive Types (Episodic Memory, Semantic Graph, Procedure)
+// Target Architecture: C-Free Bootstrap Milestone M10.9L
+
+declare i64 @agi_b(i64)
+declare void @agi_sb(i64, i64)
+declare i64 @agi_deref(i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare void @qadav_write_raw(i64, i64)
+
+// 64-bit FNV-1a Hash Algorithm
+process agi_fnv1a_hash⦅int64 str_ptr⦆ → int64 ⟦
+    when str_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 fnv_basis ↦ 14695981039346656037 ·
+    int64 fnv_prime ↦ 1099511628211 ·
+    int64 hash_val ↦ fnv_basis ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    int64 done ↦ 0 ·
+    cycle done ≡ 0 ⟦
+        int64 p ↦ str_ptr ⊕ i ·
+        int64 b ↦ agi_b⦅p⦆ ·
+        when b ≡ 0 ⟦
+            done ← 1 ·
+        ⟧
+        when b ≻ 0 ⟦
+            hash_val ← hash_val ⊻ b ·
+            hash_val ← hash_val ⊗ fnv_prime ·
+            i ← i ⊕ one ·
+        ⟧
+    ⟧
+    yield hash_val ·
+⟧
+
+process agi_memory_slot_chain⦅int64 hash_val ⸴ int64 num_buckets⦆ → int64 ⟦
+    when num_buckets ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 zero ↦ 0 ·
+    int64 pos_hash ↦ hash_val ·
+    when pos_hash ≺ 0 ⟦
+        pos_hash ← zero ⊖ pos_hash ·
+    ⟧
+    int64 bidx ↦ pos_hash ⊘ num_buckets ·
+    int64 prod ↦ bidx ⊗ num_buckets ·
+    int64 slot ↦ pos_hash ⊖ prod ·
+    yield slot ·
+⟧
+
+process agi_strcmp_native⦅int64 a_ptr ⸴ int64 b_ptr⦆ → int64 ⟦
+    when a_ptr ≡ 0 ∧ b_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    when a_ptr ≡ 0 ⟦
+        yield -1 ·
+    ⟧
+    when b_ptr ≡ 0 ⟦
+        yield 1 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    int64 done ↦ 0 ·
+    cycle done ≡ 0 ⟦
+        int64 ap ↦ a_ptr ⊕ i ·
+        int64 bp ↦ b_ptr ⊕ i ·
+        int64 av ↦ agi_b⦅ap⦆ ·
+        int64 bv ↦ agi_b⦅bp⦆ ·
+        when av ≺ bv ⟦
+            yield -1 ·
+        ⟧
+        when av ≻ bv ⟦
+            yield 1 ·
+        ⟧
+        when av ≡ 0 ⟦
+            done ← 1 ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    yield 0 ·
+⟧
+
+process agi_graph_bfs_trace⦅int64 num_nodes ⸴ int64 start_idx ⸴ int64 depth ⸴ int64 out_nodes_ptr⦆ → int64 ⟦
+    when num_nodes ≼ 0 ∨ start_idx ≺ 0 ∨ start_idx ≽ num_nodes ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 eight ↦ 8 ·
+    int64 count ↦ 0 ·
+    int64 cur ↦ start_idx ·
+    int64 limit ↦ depth ⊕ one ·
+    when limit ≻ num_nodes ⟦
+        limit ← num_nodes ·
+    ⟧
+    cycle count ≺ limit ⟦
+        int64 off ↦ count ⊗ eight ·
+        int64 dst_p ↦ out_nodes_ptr ⊕ off ·
+        agi_sb⦅dst_p ⸴ cur⦆ ·
+        count ← count ⊕ one ·
+        cur ← cur ⊕ one ·
+        when cur ≽ num_nodes ⟦
+            cur ← 0 ·
+        ⟧
+    ⟧
+    yield count ·
+⟧
+
+process agi_procedure_dispatch⦅int64 fn_ptr ⸴ int64 arg⦆ → int64 ⟦
+    when fn_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧

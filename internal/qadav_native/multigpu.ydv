@@ -1,0 +1,126 @@
+// internal/qadav_native/multigpu.ydv
+// Qadav Native Multi-GPU Acceleration Pipeline & Topology Attestation
+// Target Architecture: C-Free Bootstrap Milestone M10.9L
+
+declare i64 @mgpu_b(i64)
+declare void @mgpu_sb(i64, i64)
+declare void @qadav_sha3_256(i64, i64, i64)
+
+process multigpu_device_scan⦅int64 hint⦆ → int64 ⟦
+    when hint ≼ 0 ⟦
+        yield 1 ·
+    ⟧
+    when hint ≻ 8 ⟦
+        yield 8 ·
+    ⟧
+    yield hint ·
+⟧
+
+process multigpu_pipeline_split⦅int64 total_layers ⸴ int64 n_stages ⸴ int64 single_dev⦆ → int64 ⟦
+    when single_dev ≻ 0 ⟦
+        yield 1 ·
+    ⟧
+    when n_stages ≼ 0 ⟦
+        yield 1 ·
+    ⟧
+    when n_stages ≻ 16 ⟦
+        yield 16 ·
+    ⟧
+    yield n_stages ·
+⟧
+
+process multigpu_microbatch_partition⦅int64 batch_size ⸴ int64 micro_batch⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 four ↦ 4 ·
+    int64 mb ↦ micro_batch ·
+    when mb ≼ 0 ⟦
+        mb ← four ·
+    ⟧
+    int64 bs ↦ batch_size ·
+    when bs ≼ 0 ⟦
+        bs ← one ·
+    ⟧
+    int64 sum_bs_mb ↦ bs ⊕ mb ·
+    int64 num ↦ sum_bs_mb ⊖ one ·
+    int64 parts ↦ num ⊘ mb ·
+    yield parts ·
+⟧
+
+process multigpu_topo_digest_native⦅int64 dev_count ⸴ int64 vendor_id ⸴ int64 dev_id ⸴ int64 uuid_ptr ⸴ int64 buf_ptr ⸴ int64 out_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 four ↦ 4 ·
+    int64 five ↦ 5 ·
+    int64 six ↦ 6 ·
+    int64 seven ↦ 7 ·
+    int64 eight ↦ 8 ·
+    int64 nine ↦ 9 ·
+    int64 ten ↦ 10 ·
+    int64 eleven ↦ 11 ·
+    int64 sixteen ↦ 16 ·
+    int64 thirty_two ↦ 32 ·
+    int64 m255 ↦ 255 ·
+    int64 d256 ↦ 256 ·
+    int64 d65536 ↦ 65536 ·
+    int64 d16777216 ↦ 16777216 ·
+
+    int64 k ↦ 0 ·
+    cycle k ≺ thirty_two ⟦
+        int64 p ↦ buf_ptr ⊕ k ·
+        mgpu_sb⦅p ⸴ zero⦆ ·
+        k ← k ⊕ one ·
+    ⟧
+
+    mgpu_sb⦅buf_ptr ⸴ dev_count⦆ ·
+
+    // vendor_id at offset 4..7
+    int64 v_b0 ↦ vendor_id ⊼ m255 ·
+    int64 v_d1 ↦ vendor_id ⊘ d256 ·
+    int64 v_b1 ↦ v_d1 ⊼ m255 ·
+    int64 v_d2 ↦ vendor_id ⊘ d65536 ·
+    int64 v_b2 ↦ v_d2 ⊼ m255 ·
+    int64 v_d3 ↦ vendor_id ⊘ d16777216 ·
+    int64 v_b3 ↦ v_d3 ⊼ m255 ·
+
+    int64 p4 ↦ buf_ptr ⊕ four ·
+    int64 p5 ↦ buf_ptr ⊕ five ·
+    int64 p6 ↦ buf_ptr ⊕ six ·
+    int64 p7 ↦ buf_ptr ⊕ seven ·
+    mgpu_sb⦅p4 ⸴ v_b0⦆ ·
+    mgpu_sb⦅p5 ⸴ v_b1⦆ ·
+    mgpu_sb⦅p6 ⸴ v_b2⦆ ·
+    mgpu_sb⦅p7 ⸴ v_b3⦆ ·
+
+    // dev_id at offset 8..11
+    int64 d_b0 ↦ dev_id ⊼ m255 ·
+    int64 d_d1 ↦ dev_id ⊘ d256 ·
+    int64 d_b1 ↦ d_d1 ⊼ m255 ·
+    int64 d_d2 ↦ dev_id ⊘ d65536 ·
+    int64 d_b2 ↦ d_d2 ⊼ m255 ·
+    int64 d_d3 ↦ dev_id ⊘ d16777216 ·
+    int64 d_b3 ↦ d_d3 ⊼ m255 ·
+
+    int64 p8 ↦ buf_ptr ⊕ eight ·
+    int64 p9 ↦ buf_ptr ⊕ nine ·
+    int64 p10 ↦ buf_ptr ⊕ ten ·
+    int64 p11 ↦ buf_ptr ⊕ eleven ·
+    mgpu_sb⦅p8 ⸴ d_b0⦆ ·
+    mgpu_sb⦅p9 ⸴ d_b1⦆ ·
+    mgpu_sb⦅p10 ⸴ d_b2⦆ ·
+    mgpu_sb⦅p11 ⸴ d_b3⦆ ·
+
+    // uuid at offset 16..31
+    when uuid_ptr ≻ 0 ⟦
+        int64 u_idx ↦ 0 ·
+        cycle u_idx ≺ sixteen ⟦
+            int64 src_p ↦ uuid_ptr ⊕ u_idx ·
+            int64 ub ↦ mgpu_b⦅src_p⦆ ·
+            int64 dst_p ↦ ⦅buf_ptr ⊕ sixteen⦆ ⊕ u_idx ·
+            mgpu_sb⦅dst_p ⸴ ub⦆ ·
+            u_idx ← u_idx ⊕ one ·
+        ⟧
+    ⟧
+
+    qadav_sha3_256⦅buf_ptr ⸴ thirty_two ⸴ out_ptr⦆ ·
+    yield 1 ·
+⟧
