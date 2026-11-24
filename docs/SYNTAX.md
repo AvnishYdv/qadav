@@ -387,3 +387,39 @@ Supported program kinds in M8.4g:
    - Binding / Assignment: `↦` and `←`
    - Statement Terminator: `·`
    - List Separator: `⸴`
+
+---
+
+## 11. AVX2 / SIMD Vector Types & Hardware Lowering (Phase 11 M11.1) / सदिश प्रकार एवं हार्डवेयर निम्नता
+
+```ebnf
+VecType     ::= "vec4f64" | "vec8f32"
+VecAnnot    ::= "@vec256"
+VecIntrinsic::= "vec4_load" | "vec4_store" | "vec4_splat"
+              | "vec4_add" | "vec4_sub" | "vec4_mul" | "vec4_fma" | "vec4_hsum"
+              | "vec8_load" | "vec8_store" | "vec8_splat"
+              | "vec8_add" | "vec8_sub" | "vec8_mul" | "vec8_fma"
+```
+
+### Types & LLVM IR Target Mapping:
+- `vec4f64`: 256-bit SIMD vector containing 4 double-precision 64-bit IEEE-754 floats (`<4 x double>`). Lowers directly to hardware `ymm0`–`ymm15` registers.
+- `vec8f32`: 256-bit SIMD vector containing 8 single-precision 32-bit IEEE-754 floats (`<8 x float>`). Lowers directly to hardware `ymm0`–`ymm15` registers.
+- `@vec256`: Process-level annotation marking processes that utilize hardware 256-bit AVX2/FMA execution units. Emits `target-features="+avx2,+fma"` LLVM function attribute and hardware intrinsics.
+
+### Vector Intrinsics:
+- `vec4_load⦅ptr⦆ → vec4f64`: Unaligned 256-bit load (`vmovupd`).
+- `vec4_store⦅ptr ⸴ vec⦆ → void`: Unaligned 256-bit store (`vmovupd`).
+- `vec4_splat⦅scalar_f64⦆ → vec4f64`: Broadcast scalar across 4 lanes (`vbroadcastsd`).
+- `vec4_add⦅a ⸴ b⦆ → vec4f64`: Parallel 4-lane vector addition (`vaddpd`).
+- `vec4_sub⦅a ⸴ b⦆ → vec4f64`: Parallel 4-lane vector subtraction (`vsubpd`).
+- `vec4_mul⦅a ⸴ b⦆ → vec4f64`: Parallel 4-lane vector multiplication (`vmulpd`).
+- `vec4_fma⦅a ⸴ b ⸴ c⦆ → vec4f64`: Hardware fused multiply-add $a \times b + c$ (`vfmadd213pd`/`vfmadd231pd`).
+- `vec4_hsum⦅vec⦆ → float64`: Horizontal reduction sum across all 4 vector lanes.
+- `vec8_load⦅ptr⦆ → vec8f32`: Unaligned 256-bit load (`vmovups`).
+- `vec8_store⦅ptr ⸴ vec⦆ → void`: Unaligned 256-bit store (`vmovups`).
+- `vec8_splat⦅scalar_f32⦆ → vec8f32`: Broadcast scalar across 8 lanes (`vbroadcastss`).
+- `vec8_add⦅a ⸴ b⦆ → vec8f32`: Parallel 8-lane vector addition (`vaddps`).
+- `vec8_sub⦅a ⸴ b⦆ → vec8f32`: Parallel 8-lane vector subtraction (`vsubps`).
+- `vec8_mul⦅a ⸴ b⦆ → vec8f32`: Parallel 8-lane vector multiplication (`vmulps`).
+- `vec8_fma⦅a ⸴ b ⸴ c⦆ → vec8f32`: Hardware fused multiply-add $a \times b + c$ (`vfmadd213ps`/`vfmadd231ps`).
+

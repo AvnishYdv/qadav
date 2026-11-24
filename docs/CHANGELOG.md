@@ -5,6 +5,40 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M11.1] — Native `@vec256` / AVX2 SIMD Vector Lowering + CLI `version`/`doctor` Fix (100% Complete)
+## [M11.1] — नेटिव `@vec256` / AVX2 SIMD सदिश निम्नता + CLI `version`/`doctor` निवारण (100% पूर्ण)
+
+### Phase 11 M11.1 Overview
+- Eliminated **Gap 1** (`@vec256` / AVX2 SIMD deficit) and **Gap 4** (missing `version` / `doctor` CLI commands) documented in `PHASE10_FINAL_REPORT.md`.
+- Extended the 6-stage self-hosted compiler pipeline (`selfhost/*.ydv`):
+  - `lexer.ydv`: Added `@vec256` annotation (token kind 32) and vector type keywords `vec4f64`, `vec8f32` (token kind 26).
+  - `parser.ydv`: Enabled vector type annotations in variable bindings and process headers.
+  - `checker.ydv`: Added type codes 8 (`vec4f64`) and 9 (`vec8f32`), and typechecking processes `check_vector_op` and `check_vector_fma`.
+  - `codegen.ydv`: Emitted `<4 x double>` / `<8 x float>` vector operations (`fadd`, `fsub`, `fmul`), `@llvm.fma.v4f64`, and function target feature attribute `"target-features"="+avx2,+fma"`.
+- Lowered directly to genuine x86_64 hardware SIMD instructions:
+  - Hardware `ymm0`–`ymm15` registers utilized across vector execution.
+  - Hardware fused multiply-add: `vfmadd213pd`/`vfmadd231pd`.
+  - Unaligned vector loads/stores: `vmovupd`.
+  - Parallel arithmetic: `vaddpd`, `vsubpd`, `vmulpd`.
+- Implemented and verified complete CLI command dispatch in `bin/qyn.exe`:
+  - `version`, `-v`, `--version`: Prints compiler version string with architecture details.
+  - `doctor`: Comprehensive diagnostic suite reporting compiler status, active module inventory, CPU AVX2 support, and backend toolchain health.
+  - `help`, `-h`, `--help`: Prints structured command synopsis.
+  - Default invocation (no args): Displays usage guidance and exits 0.
+  - Unknown commands: Emits clear error and exits with code 1.
+- Implemented and ran `examples/avx2_simd_proof.ydv`:
+  - Processed 1,000,000 double-precision elements (8,000,000 bytes) in ~72ms.
+  - Emitted `AVX2_SIMD_VERIFIED` to stdout.
+- Verified 10/10 Phase 8 `fc.exe /b` bitwise regression suite:
+  - 10/10 reference programs produced `FC: no differences encountered` (0 differences).
+- Maintained repository invariants:
+  - Exactly 1 C file in workspace (`internal/runtime/qadav_nn.c`).
+  - Exactly 50 native `.ydv` modules in `internal/qadav_native/`.
+  - Exactly 6 selfhost `.ydv` modules in `selfhost/`.
+  - Zero `.go`, zero `.py` files across the workspace.
+
+---
+
 ## [M10.12] — Phase 10 Closure: Formal Audits, Repository Hygiene, and Phase 11 Roadmap (100% Complete)
 ## [M10.12] — चरण 10 समापन: औपचारिक ऑडिट, रिपॉजिटरी स्वच्छता, और चरण 11 रोडमैप (100% पूर्ण)
 

@@ -49,6 +49,8 @@ process classify_keyword⦅text kw⦆ → text ⟦
     when kw ≡ "learn" ⟦ res ← "LEARN" · ⟧
     when kw ≡ "rsca_attest" ⟦ res ← "RSCA_ATTEST" · ⟧
     when kw ≡ "rsca_verify" ⟦ res ← "RSCA_VERIFY" · ⟧
+    when kw ≡ "vec4f64" ⟦ res ← "VEC4F64" · ⟧
+    when kw ≡ "vec8f32" ⟦ res ← "VEC8F32" · ⟧
     yield res ·
 ⟧
 
@@ -80,6 +82,7 @@ process classify_annotation⦅text anno⦆ → text ⟦
     when anno ≡ "@multi_device" ⟦ res ← "MULTI_DEVICE" · ⟧
     when anno ≡ "@distributed" ⟦ res ← "DIST_INIT" · ⟧
     when anno ≡ "@qhal_backend" ⟦ res ← "QHAL_BACKEND" · ⟧
+    when anno ≡ "@vec256" ⟦ res ← "AT_VEC256" · ⟧
     yield res ·
 ⟧
 

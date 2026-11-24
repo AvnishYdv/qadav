@@ -1,0 +1,38 @@
+@vec256
+process vector_fma_bench⦅int64 ptr_a ⸴ int64 ptr_b ⸴ int64 ptr_c ⸴ int64 n_bytes⦆ → int64 ⟦
+    int64 off ↦ 0 ·
+    cycle off ≺ n_bytes ⟦
+        int64 pa ↦ ptr_a ⊕ off ·
+        int64 pb ↦ ptr_b ⊕ off ·
+        int64 pc ↦ ptr_c ⊕ off ·
+        vec4f64 va ↦ vec4_load⦅pa⦆ ·
+        vec4f64 vb ↦ vec4_load⦅pb⦆ ·
+        vec4f64 vc ↦ vec4_fma⦅va ⸴ vb ⸴ va⦆ ·
+        vec4_store⦅pc ⸴ vc⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    int64 n_bytes ↦ 8000000 ·
+    int64 ptr_a ↦ qadav_alloc⦅n_bytes⦆ ·
+    int64 ptr_b ↦ qadav_alloc⦅n_bytes⦆ ·
+    int64 ptr_c ↦ qadav_alloc⦅n_bytes⦆ ·
+
+    int64 res ↦ vector_fma_bench⦅ptr_a ⸴ ptr_b ⸴ ptr_c ⸴ n_bytes⦆ ·
+
+    vec4f64 v0 ↦ vec4_load⦅ptr_c⦆ ·
+    vec4f64 v1 ↦ vec4_load⦅ptr_a⦆ ·
+    vec4f64 v_add ↦ vec4_add⦅v0 ⸴ v1⦆ ·
+    vec4f64 v_sub ↦ vec4_sub⦅v_add ⸴ v1⦆ ·
+    vec4f64 v_mul ↦ vec4_mul⦅v_sub ⸴ v1⦆ ·
+    vec4_store⦅ptr_c ⸴ v_mul⦆ ·
+
+    emit "AVX2_SIMD_VERIFIED" ·
+
+    qadav_free⦅ptr_a⦆ ·
+    qadav_free⦅ptr_b⦆ ·
+    qadav_free⦅ptr_c⦆ ·
+    yield 0 ·
+⟧

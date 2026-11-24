@@ -42,7 +42,25 @@ process type_of⦅text type_name⦆ → int64 ⟦
     when type_name ≡ "logic" ⟦ tid ← 5 · ⟧
     when type_name ≡ "qubit" ⟦ tid ← 6 · ⟧
     when type_name ≡ "tensor" ⟦ tid ← 7 · ⟧
+    when type_name ≡ "vec4f64" ⟦ tid ← 8 · ⟧
+    when type_name ≡ "vec8f32" ⟦ tid ← 9 · ⟧
     yield tid ·
+⟧
+
+// Type check vector binary operation
+process check_vector_op⦅text op_name ⸴ int64 t1 ⸴ int64 t2⦆ → int64 ⟦
+    int64 res ↦ 0 ·
+    when t1 ≡ 8 ∧ t2 ≡ 8 ⟦ res ← 8 · ⟧
+    when t1 ≡ 9 ∧ t2 ≡ 9 ⟦ res ← 9 · ⟧
+    yield res ·
+⟧
+
+// Type check vector FMA operation
+process check_vector_fma⦅int64 t1 ⸴ int64 t2 ⸴ int64 t3⦆ → int64 ⟦
+    int64 res ↦ 0 ·
+    when t1 ≡ 8 ∧ t2 ≡ 8 ∧ t3 ≡ 8 ⟦ res ← 8 · ⟧
+    when t1 ≡ 9 ∧ t2 ≡ 9 ∧ t3 ≡ 9 ⟦ res ← 9 · ⟧
+    yield res ·
 ⟧
 
 // Unify two types: returns 1 if identical or compatible, 0 otherwise
