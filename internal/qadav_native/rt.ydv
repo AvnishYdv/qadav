@@ -1,0 +1,143 @@
+// internal/qadav_native/rt.ydv
+// Qadav Native Minimal Freestanding Runtime (Zero CRT, Zero libc)
+// Target Architecture: C-Free Bootstrap Milestone M10.9N
+
+declare i64 @rt_b(i64)
+declare void @rt_sb(i64, i64)
+
+process rt_strlen⦅int64 s_ptr⦆ → int64 ⟦
+    when s_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 len ↦ 0 ·
+    int64 done ↦ 0 ·
+    cycle done ≡ 0 ⟦
+        int64 p ↦ s_ptr ⊕ len ·
+        int64 b ↦ rt_b⦅p⦆ ·
+        when b ≡ 0 ⟦
+            done ← 1 ·
+        ⟧
+        when b ≻ 0 ⟦
+            len ← len ⊕ one ·
+        ⟧
+    ⟧
+    yield len ·
+⟧
+
+process rt_memcmp⦅int64 a_ptr ⸴ int64 b_ptr ⸴ int64 n⦆ → int64 ⟦
+    when n ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    int64 i ↦ 0 ·
+    int64 diff ↦ 0 ·
+    int64 done ↦ 0 ·
+    cycle i ≺ n ∧ done ≡ 0 ⟦
+        int64 pa ↦ a_ptr ⊕ i ·
+        int64 pb ↦ b_ptr ⊕ i ·
+        int64 ba ↦ rt_b⦅pa⦆ ·
+        int64 bb ↦ rt_b⦅pb⦆ ·
+        when ba ≻ bb ⟦
+            diff ← 1 ·
+            done ← 1 ·
+        ⟧
+        when ba ≺ bb ⟦
+            diff ← neg_one ·
+            done ← 1 ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    yield diff ·
+⟧
+
+process rt_memset⦅int64 p_ptr ⸴ int64 v_val ⸴ int64 n⦆ → int64 ⟦
+    when p_ptr ≡ 0 ∨ n ≼ 0 ⟦
+        yield p_ptr ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ n ⟦
+        int64 p ↦ p_ptr ⊕ i ·
+        rt_sb⦅p ⸴ v_val⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    yield p_ptr ·
+⟧
+
+process rt_memcpy⦅int64 d_ptr ⸴ int64 s_ptr ⸴ int64 n⦆ → int64 ⟦
+    when d_ptr ≡ 0 ∨ s_ptr ≡ 0 ∨ n ≼ 0 ⟦
+        yield d_ptr ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ n ⟦
+        int64 sp ↦ s_ptr ⊕ i ·
+        int64 sb ↦ rt_b⦅sp⦆ ·
+        int64 dp ↦ d_ptr ⊕ i ·
+        rt_sb⦅dp ⸴ sb⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    yield d_ptr ·
+⟧
+
+process rt_strcmp⦅int64 a_ptr ⸴ int64 b_ptr⦆ → int64 ⟦
+    when a_ptr ≡ 0 ∨ b_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 neg_one ↦ zero ⊖ one ·
+    int64 i ↦ 0 ·
+    int64 diff ↦ 0 ·
+    int64 done ↦ 0 ·
+    cycle done ≡ 0 ⟦
+        int64 pa ↦ a_ptr ⊕ i ·
+        int64 pb ↦ b_ptr ⊕ i ·
+        int64 ba ↦ rt_b⦅pa⦆ ·
+        int64 bb ↦ rt_b⦅pb⦆ ·
+        when ba ≡ 0 ∨ bb ≡ 0 ⟦
+            when ba ≻ bb ⟦
+                diff ← 1 ·
+            ⟧
+            when ba ≺ bb ⟦
+                diff ← neg_one ·
+            ⟧
+            done ← 1 ·
+        ⟧
+        when ba ≻ 0 ∧ bb ≻ 0 ⟦
+            when ba ≻ bb ⟦
+                diff ← 1 ·
+                done ← 1 ·
+            ⟧
+            when ba ≺ bb ⟦
+                diff ← neg_one ·
+                done ← 1 ·
+            ⟧
+            i ← i ⊕ one ·
+        ⟧
+    ⟧
+    yield diff ·
+⟧
+
+process rt_fnv1a_hash⦅int64 bytes_ptr ⸴ int64 len⦆ → int64 ⟦
+    int64 fnv_basis ↦ 14695981039346656037 ·
+    int64 fnv_prime ↦ 1099511628211 ·
+    int64 h ↦ fnv_basis ·
+    when bytes_ptr ≡ 0 ∧ len ≻ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ len ⟦
+        int64 p ↦ bytes_ptr ⊕ i ·
+        int64 b ↦ rt_b⦅p⦆ ·
+        h ← h ⊻ b ·
+        h ← h ⊗ fnv_prime ·
+        i ← i ⊕ one ·
+    ⟧
+    yield h ·
+⟧

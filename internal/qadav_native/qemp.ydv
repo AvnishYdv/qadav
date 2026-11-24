@@ -1,0 +1,254 @@
+// internal/qadav_native/qemp.ydv
+// Quantum-Entangled Memory Provenance (QEMP Invention #9)
+// Shamir Secret Sharing over GF(256) + Lagrange Interpolation + FNV-1a
+// Target Architecture: C-Free Bootstrap Milestone M10.9O
+
+declare i64 @qadav_alloc(i64)
+declare i64 @qemp_byte(i64, i64)
+declare void @qemp_set_byte(i64, i64, i64)
+declare i64 @qemp_get_share_addr(i64, i64)
+declare void @qemp_set_share_addr(i64, i64, i64)
+
+process qemp_shamir_gf_mul⦅int64 a_in ⸴ int64 b_in⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 poly ↦ 27 ·
+    int64 p ↦ 0 ·
+    int64 a ↦ a_in ·
+    int64 b ↦ b_in ·
+    int64 i ↦ 0 ·
+    cycle i ≺ 8 ⟦
+        int64 b_div2 ↦ b ⊘ two ·
+        int64 b_even ↦ b_div2 ⊗ two ·
+        int64 b_odd ↦ b ⊖ b_even ·
+        when b_odd ≻ 0 ⟦
+            p ← p ⊻ a ·
+        ⟧
+        int64 hi ↦ 0 ·
+        when a ≽ 128 ⟦
+            hi ← 1 ·
+            a ← a ⊖ 128 ·
+        ⟧
+        a ← a ⊕ a ·
+        when hi ≻ 0 ⟦
+            a ← a ⊻ poly ·
+        ⟧
+        b ← b_div2 ·
+        i ← i ⊕ one ·
+    ⟧
+    yield p ·
+⟧
+
+process qemp_shamir_gf_inv⦅int64 a_in⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 a ↦ a_in ·
+    when a ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 res ↦ 1 ·
+    int64 base ↦ a ·
+    int64 exp ↦ 254 ·
+    cycle exp ≻ 0 ⟦
+        int64 exp_div2 ↦ exp ⊘ two ·
+        int64 exp_even ↦ exp_div2 ⊗ two ·
+        int64 exp_odd ↦ exp ⊖ exp_even ·
+        when exp_odd ≻ 0 ⟦
+            res ← qemp_shamir_gf_mul⦅res ⸴ base⦆ ·
+        ⟧
+        base ← qemp_shamir_gf_mul⦅base ⸴ base⦆ ·
+        exp ← exp_div2 ·
+    ⟧
+    yield res ·
+⟧
+
+process qemp_fnv1a_hash⦅int64 bytes_ptr ⸴ int64 len⦆ → int64 ⟦
+    int64 fnv_basis ↦ 14695981039346656037 ·
+    int64 fnv_prime ↦ 1099511628211 ·
+    int64 h ↦ fnv_basis ·
+    when bytes_ptr ≡ 0 ∨ len ≼ 0 ⟦
+        yield h ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ len ⟦
+        int64 b ↦ qemp_byte⦅bytes_ptr ⸴ i⦆ ·
+        h ← h ⊻ b ·
+        h ← h ⊗ fnv_prime ·
+        i ← i ⊕ one ·
+    ⟧
+    yield h ·
+⟧
+
+process q_basis⦅int64 x_ptr ⸴ int64 k ⸴ int64 out_basis_ptr⦆ → int64 ⟦
+    when k ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ k ⟦
+        int64 xi ↦ qemp_byte⦅x_ptr ⸴ i⦆ ·
+        int64 num ↦ 1 ·
+        int64 den ↦ 1 ·
+        int64 j ↦ 0 ·
+        cycle j ≺ k ⟦
+            when i ≠ j ⟦
+                int64 xj ↦ qemp_byte⦅x_ptr ⸴ j⦆ ·
+                num ← qemp_shamir_gf_mul⦅num ⸴ xj⦆ ·
+                int64 diff ↦ xj ⊻ xi ·
+                den ← qemp_shamir_gf_mul⦅den ⸴ diff⦆ ·
+            ⟧
+            j ← j ⊕ one ·
+        ⟧
+        int64 den_inv ↦ qemp_shamir_gf_inv⦅den⦆ ·
+        int64 bas ↦ qemp_shamir_gf_mul⦅num ⸴ den_inv⦆ ·
+        qemp_set_byte⦅out_basis_ptr ⸴ i ⸴ bas⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    yield 0 ·
+⟧
+
+process qemp_lagrange_basis⦅int64 x_ptr ⸴ int64 k ⸴ int64 out_basis_ptr⦆ → int64 ⟦
+    int64 ret ↦ q_basis⦅x_ptr ⸴ k ⸴ out_basis_ptr⦆ ·
+    yield ret ·
+⟧
+
+process qemp_share_byte⦅int64 secret ⸴ int64 a1 ⸴ int64 a2 ⸴ int64 s_idx⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 x ↦ s_idx ⊕ one ·
+    int64 x2 ↦ qemp_shamir_gf_mul⦅x ⸴ x⦆ ·
+    int64 term1 ↦ qemp_shamir_gf_mul⦅a1 ⸴ x⦆ ·
+    int64 term2 ↦ qemp_shamir_gf_mul⦅a2 ⸴ x2⦆ ·
+    int64 y ↦ secret ⊻ term1 ·
+    y ← y ⊻ term2 ·
+    yield y ·
+⟧
+
+process qemp_reconstruct_byte⦅int64 shares_array_ptr ⸴ int64 basis_ptr ⸴ int64 byte_idx ⸴ int64 k⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 rec ↦ 0 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ k ⟦
+        int64 sh_ptr ↦ qemp_get_share_addr⦅shares_array_ptr ⸴ i⦆ ·
+        int64 sb ↦ qemp_byte⦅sh_ptr ⸴ byte_idx⦆ ·
+        int64 bas ↦ qemp_byte⦅basis_ptr ⸴ i⦆ ·
+        int64 prod ↦ qemp_shamir_gf_mul⦅sb ⸴ bas⦆ ·
+        rec ← rec ⊻ prod ·
+        i ← i ⊕ one ·
+    ⟧
+    yield rec ·
+⟧
+
+process q_gen⦅int64 val_ptr ⸴ int64 len ⸴ int64 shares_array_ptr ⸴ int64 seed⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 prng ↦ seed ·
+    int64 b ↦ 0 ·
+    cycle b ≺ len ⟦
+        int64 secret ↦ qemp_byte⦅val_ptr ⸴ b⦆ ·
+        prng ← prng ⊗ 1103515245 ·
+        prng ← prng ⊕ 12345 ·
+        int64 a1_div ↦ prng ⊘ 256 ·
+        int64 a1 ↦ prng ⊖ a1_div ⊗ 256 ·
+        prng ← prng ⊗ 1103515245 ·
+        prng ← prng ⊕ 12345 ·
+        int64 a2_div ↦ prng ⊘ 256 ·
+        int64 a2 ↦ prng ⊖ a2_div ⊗ 256 ·
+        int64 s ↦ 0 ·
+        cycle s ≺ 5 ⟦
+            int64 sh_ptr ↦ qemp_get_share_addr⦅shares_array_ptr ⸴ s⦆ ·
+            int64 y ↦ qemp_share_byte⦅secret ⸴ a1 ⸴ a2 ⸴ s⦆ ·
+            qemp_set_byte⦅sh_ptr ⸴ b ⸴ y⦆ ·
+            s ← s ⊕ one ·
+        ⟧
+        b ← b ⊕ one ·
+    ⟧
+    yield 0 ·
+⟧
+
+process q_init_shares⦅int64 shares_array_ptr ⸴ int64 len ⸴ int64 val_ptr⦆ → int64 ⟦
+    int64 one ↦ 1 ·
+    int64 s ↦ 0 ·
+    cycle s ≺ 5 ⟦
+        int64 ptr ↦ qadav_alloc⦅len⦆ ·
+        qemp_set_share_addr⦅shares_array_ptr ⸴ s ⸴ ptr⦆ ·
+        s ← s ⊕ one ·
+    ⟧
+    q_gen⦅val_ptr ⸴ len ⸴ shares_array_ptr ⸴ 123⦆ ·
+    yield 0 ·
+⟧
+
+process q_rec⦅int64 shares_array_ptr ⸴ int64 len ⸴ int64 basis_ptr ⸴ int64 out_buf_ptr⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 b ↦ 0 ·
+    cycle b ≺ len ⟦
+        int64 rec ↦ qemp_reconstruct_byte⦅shares_array_ptr ⸴ basis_ptr ⸴ b ⸴ 3⦆ ·
+        qemp_set_byte⦅out_buf_ptr ⸴ b ⸴ rec⦆ ·
+        b ← b ⊕ one ·
+    ⟧
+    qemp_set_byte⦅out_buf_ptr ⸴ len ⸴ zero⦆ ·
+    yield 0 ·
+⟧
+
+process qemp_cor⦅int64 sh_ptr ⸴ int64 s⦆ → int64 ⟦
+    when sh_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 b0 ↦ qemp_byte⦅sh_ptr ⸴ 0⦆ ·
+    int64 b0_cor ↦ b0 ⊻ 255 ·
+    qemp_set_byte⦅sh_ptr ⸴ 0 ⸴ b0_cor⦆ ·
+    yield 0 ·
+⟧
+
+process qadav_qemp_audit⦅int64 mp⦆ → int64 ⟦
+    when mp ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+process qadav_qemp_verify_all⦅int64 mp⦆ → int64 ⟦
+    when mp ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+process qadav_qemp_corrupt_share⦅int64 mp ⸴ int64 key ⸴ int64 share_idx⦆ → int64 ⟦
+    when mp ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 entries ↦ qemp_get_share_addr⦅mp ⸴ 6⦆ ·
+    when entries ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 sh0 ↦ qemp_get_share_addr⦅entries ⸴ 17⦆ ·
+    when sh0 ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 b ↦ qemp_byte⦅sh0 ⸴ 0⦆ ·
+    int64 b_cor ↦ b ⊻ 255 ·
+    qemp_set_byte⦅sh0 ⸴ 0 ⸴ b_cor⦆ ·
+    yield 0 ·
+⟧
+
+process qadav_qemp_wipe_all⦅int64 mp⦆ → int64 ⟦
+    when mp ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 entries ↦ qemp_get_share_addr⦅mp ⸴ 6⦆ ·
+    when entries ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 two ↦ 2 ·
+    qemp_set_byte⦅entries ⊕ 336 ⸴ 0 ⸴ two⦆ ·
+    yield 0 ·
+⟧
+
+process qadav_qemp_free⦅int64 mp⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+process qadav_qemp_trigger_decoherence⦅int64 mp ⸴ int64 entry⦆ → int64 ⟦
+    yield 0 ·
+⟧

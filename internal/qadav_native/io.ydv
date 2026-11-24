@@ -1,0 +1,153 @@
+// internal/qadav_native/io.ydv
+// Qadav Native I/O and String Formatting Engine
+// Target Architecture: C-Free Bootstrap Milestone M10.9N
+
+declare i64 @io_b(i64)
+declare void @io_sb(i64, i64)
+
+process io_strlen⦅int64 s_ptr⦆ → int64 ⟦
+    when s_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 len ↦ 0 ·
+    int64 done ↦ 0 ·
+    cycle done ≡ 0 ⟦
+        int64 p ↦ s_ptr ⊕ len ·
+        int64 b ↦ io_b⦅p⦆ ·
+        when b ≡ 0 ⟦
+            done ← 1 ·
+        ⟧
+        when b ≻ 0 ⟦
+            len ← len ⊕ one ·
+        ⟧
+    ⟧
+    yield len ·
+⟧
+
+process io_path_is_safe⦅int64 path_ptr⦆ → int64 ⟦
+    when path_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 ascii_dot ↦ 46 ·
+    int64 ascii_slash ↦ 47 ·
+    int64 ascii_bslash ↦ 92 ·
+    int64 i ↦ 0 ·
+    int64 safe ↦ 1 ·
+    int64 done ↦ 0 ·
+    cycle done ≡ 0 ⟦
+        int64 p0 ↦ path_ptr ⊕ i ·
+        int64 c0 ↦ io_b⦅p0⦆ ·
+        when c0 ≡ 0 ⟦
+            done ← 1 ·
+        ⟧
+        when c0 ≻ 0 ⟦
+            int64 i1 ↦ i ⊕ one ·
+            int64 p1 ↦ path_ptr ⊕ i1 ·
+            int64 c1 ↦ io_b⦅p1⦆ ·
+            when c0 ≡ ascii_dot ∧ c1 ≡ ascii_dot ⟦
+                int64 i2 ↦ i ⊕ two ·
+                int64 p2 ↦ path_ptr ⊕ i2 ·
+                int64 c2 ↦ io_b⦅p2⦆ ·
+                when c2 ≡ ascii_slash ∨ c2 ≡ ascii_bslash ∨ c2 ≡ 0 ⟦
+                    safe ← 0 ·
+                    done ← 1 ·
+                ⟧
+            ⟧
+            i ← i ⊕ one ·
+        ⟧
+    ⟧
+    yield safe ·
+⟧
+
+process io_format_i64⦅int64 val ⸴ int64 buf_ptr⦆ → int64 ⟦
+    when buf_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 ten ↦ 10 ·
+    int64 ascii_zero ↦ 48 ·
+    int64 ascii_minus ↦ 45 ·
+    when val ≡ 0 ⟦
+        io_sb⦅buf_ptr ⸴ ascii_zero⦆ ·
+        yield 1 ·
+    ⟧
+    int64 is_neg ↦ 0 ·
+    int64 uv ↦ val ·
+    when val ≺ 0 ⟦
+        is_neg ← 1 ·
+        uv ← zero ⊖ val ·
+    ⟧
+    int64 uv_copy ↦ uv ·
+    int64 digit_count ↦ 0 ·
+    cycle uv_copy ≻ 0 ⟦
+        uv_copy ← uv_copy ⊘ ten ·
+        digit_count ← digit_count ⊕ one ·
+    ⟧
+    when is_neg ≻ 0 ⟦
+        io_sb⦅buf_ptr ⸴ ascii_minus⦆ ·
+    ⟧
+    int64 offset ↦ is_neg ⊕ digit_count ·
+    offset ← offset ⊖ one ·
+    cycle uv ≻ 0 ⟦
+        int64 quot ↦ uv ⊘ ten ·
+        int64 prod ↦ quot ⊗ ten ·
+        int64 rem ↦ uv ⊖ prod ·
+        int64 dchar ↦ ascii_zero ⊕ rem ·
+        int64 dest ↦ buf_ptr ⊕ offset ·
+        io_sb⦅dest ⸴ dchar⦆ ·
+        offset ← offset ⊖ one ·
+        uv ← quot ·
+    ⟧
+    int64 total_len ↦ is_neg ⊕ digit_count ·
+    yield total_len ·
+⟧
+
+process io_format_f64_parts⦅int64 is_neg ⸴ int64 ipart ⸴ int64 fpart ⸴ int64 buf_ptr⦆ → int64 ⟦
+    when buf_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 ten ↦ 10 ·
+    int64 ascii_zero ↦ 48 ·
+    int64 ascii_minus ↦ 45 ·
+    int64 ascii_dot ↦ 46 ·
+    int64 idx ↦ 0 ·
+    when is_neg ≻ 0 ⟦
+        int64 pneg ↦ buf_ptr ⊕ idx ·
+        io_sb⦅pneg ⸴ ascii_minus⦆ ·
+        idx ← idx ⊕ one ·
+    ⟧
+    int64 p_ip ↦ buf_ptr ⊕ idx ·
+    int64 ilen ↦ io_format_i64⦅ipart ⸴ p_ip⦆ ·
+    idx ← idx ⊕ ilen ·
+    int64 p_dot ↦ buf_ptr ⊕ idx ·
+    io_sb⦅p_dot ⸴ ascii_dot⦆ ·
+    idx ← idx ⊕ one ·
+    int64 f_copy ↦ fpart ·
+    int64 fn ↦ 0 ·
+    cycle f_copy ≻ 0 ⟦
+        f_copy ← f_copy ⊘ ten ·
+        fn ← fn ⊕ one ·
+    ⟧
+    when fpart ≡ 0 ⟦
+        fn ← 1 ·
+    ⟧
+    int64 six ↦ 6 ·
+    int64 pad ↦ six ⊖ fn ·
+    int64 p ↦ 0 ·
+    cycle p ≺ pad ⟦
+        int64 ppad ↦ buf_ptr ⊕ idx ·
+        io_sb⦅ppad ⸴ ascii_zero⦆ ·
+        idx ← idx ⊕ one ·
+        p ← p ⊕ one ·
+    ⟧
+    int64 p_fp ↦ buf_ptr ⊕ idx ·
+    int64 flen ↦ io_format_i64⦅fpart ⸴ p_fp⦆ ·
+    idx ← idx ⊕ flen ·
+    yield idx ·
+⟧

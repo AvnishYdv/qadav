@@ -1,0 +1,141 @@
+// internal/qadav_native/tensor.ydv
+// Qadav Native Tensor Engine with 3-Deep Nested MatMul
+// Target Architecture: C-Free Bootstrap Milestone M10.9O
+
+declare i64 @t_dim(i64, i64)
+declare i64 @t_res(i64, i64, i64)
+declare i64 @t_dat(i64)
+declare void @t_mac(i64, i64, i64)
+declare void @t_add_f64(i64, i64)
+declare void @t_mul_elem(i64, i64, i64)
+
+process tensor_shape_valid⦅int64 rank ⸴ int64 dims_ptr⦆ → int64 ⟦
+    when rank ≺ 0 ∨ rank ≻ 4 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 valid ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ rank ⟦
+        int64 d ↦ t_dim⦅dims_ptr ⸴ i⦆ ·
+        when d ≼ 0 ⟦
+            valid ← 0 ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    yield valid ·
+⟧
+
+process t_tot⦅int64 rank ⸴ int64 dims_ptr⦆ → int64 ⟦
+    when rank ≼ 0 ⟦
+        yield 1 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 total ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ rank ⟦
+        int64 d ↦ t_dim⦅dims_ptr ⸴ i⦆ ·
+        total ← total ⊗ d ·
+        i ← i ⊕ one ·
+    ⟧
+    yield total ·
+⟧
+
+process t_matmul⦅int64 a_ptr ⸴ int64 b_ptr⦆ → int64 ⟦
+    when a_ptr ≡ 0 ∨ b_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 dims_a ↦ a_ptr ⊕ 12 ·
+    int64 dims_b ↦ b_ptr ⊕ 12 ·
+    int64 M ↦ t_dim⦅dims_a ⸴ 0⦆ ·
+    int64 K ↦ t_dim⦅dims_a ⸴ 1⦆ ·
+    int64 N ↦ t_dim⦅dims_b ⸴ 1⦆ ·
+    int64 res_ptr ↦ t_res⦅2 ⸴ M ⸴ N⦆ ·
+    when res_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 a_data ↦ t_dat⦅a_ptr⦆ ·
+    int64 b_data ↦ t_dat⦅b_ptr⦆ ·
+    int64 res_data ↦ t_dat⦅res_ptr⦆ ·
+    int64 one ↦ 1 ·
+    int64 eight ↦ 8 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ M ⟦
+        int64 j ↦ 0 ·
+        cycle j ≺ N ⟦
+            int64 idx_res ↦ i ⊗ N ⊕ j ·
+            int64 addr_res ↦ res_data ⊕ idx_res ⊗ eight ·
+            int64 k ↦ 0 ·
+            cycle k ≺ K ⟦
+                int64 idx_a ↦ i ⊗ K ⊕ k ·
+                int64 addr_a ↦ a_data ⊕ idx_a ⊗ eight ·
+                int64 idx_b ↦ k ⊗ N ⊕ j ·
+                int64 addr_b ↦ b_data ⊕ idx_b ⊗ eight ·
+                t_mac⦅addr_res ⸴ addr_a ⸴ addr_b⦆ ·
+                k ← k ⊕ one ·
+            ⟧
+            j ← j ⊕ one ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    yield res_ptr ·
+⟧
+
+process t_sum⦅int64 res_ptr ⸴ int64 data_ptr ⸴ int64 total_size⦆ → int64 ⟦
+    when res_ptr ≡ 0 ∨ data_ptr ≡ 0 ∨ total_size ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 eight ↦ 8 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ total_size ⟦
+        int64 addr ↦ data_ptr ⊕ i ⊗ eight ·
+        t_add_f64⦅res_ptr ⸴ addr⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    yield 0 ·
+⟧
+
+process t_sum_i64⦅int64 data_ptr ⸴ int64 total_size⦆ → int64 ⟦
+    when data_ptr ≡ 0 ∨ total_size ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 sum ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 eight ↦ 8 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ total_size ⟦
+        int64 addr ↦ data_ptr ⊕ i ⊗ eight ·
+        int64 val ↦ t_dat⦅addr⦆ ·
+        sum ← sum ⊕ val ·
+        i ← i ⊕ one ·
+    ⟧
+    yield sum ·
+⟧
+
+process qadav_tensor_mul⦅int64 a ⸴ int64 b⦆ → int64 ⟦
+    when a ≡ 0 ∨ b ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 sz ↦ t_dim⦅a ⸴ 9⦆ ·
+    int64 rank ↦ t_dim⦅a ⸴ 2⦆ ·
+    int64 res ↦ t_res⦅rank ⸴ sz ⸴ 1⦆ ·
+    when res ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 ad ↦ t_dat⦅a⦆ ·
+    int64 bd ↦ t_dat⦅b⦆ ·
+    int64 rd ↦ t_dat⦅res⦆ ·
+    int64 one ↦ 1 ·
+    int64 eight ↦ 8 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ sz ⟦
+        int64 off ↦ i ⊗ eight ·
+        int64 r_addr ↦ rd ⊕ off ·
+        int64 a_addr ↦ ad ⊕ off ·
+        int64 b_addr ↦ bd ⊕ off ·
+        t_mul_elem⦅r_addr ⸴ a_addr ⸴ b_addr⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    yield res ·
+⟧
