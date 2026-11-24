@@ -1,0 +1,59 @@
+// internal/qadav_native/linker.ydv
+// Qadav Native Direct Binary Linker Engine (M10.9Q)
+// Target Architecture: C-Free Bootstrap Milestone M10.9Q
+
+declare i64 @linker_get_u16(i64, i64)
+declare i64 @linker_get_u32(i64, i64)
+declare void @linker_apply_reloc(i64, i64, i64, i64)
+
+process linker_coff_validate⦅int64 coff_ptr ⸴ int64 len⦆ → int64 ⟦
+    when coff_ptr ≡ 0 ∨ len ≺ 20 ⟦
+        yield 0 ·
+    ⟧
+    int64 machine ↦ linker_get_u16⦅coff_ptr ⸴ 0⦆ ·
+    // Check machine AMD64 (34404 = 0x8664)
+    when machine ≡ 34404 ⟦
+        int64 n_sec ↦ linker_get_u16⦅coff_ptr ⸴ 2⦆ ·
+        when n_sec ≻ 0 ∧ n_sec ≺ 96 ⟦
+            yield 1 ·
+        ⟧
+    ⟧
+    yield 0 ·
+⟧
+
+process linker_align_up⦅int64 size ⸴ int64 align⦆ → int64 ⟦
+    when align ≼ 0 ⟦
+        yield size ·
+    ⟧
+    int64 div ↦ size ⊘ align ·
+    int64 prod ↦ div ⊗ align ·
+    int64 rem ↦ size ⊖ prod ·
+    when rem ≡ 0 ⟦
+        yield size ·
+    ⟧
+    int64 diff ↦ align ⊖ rem ·
+    int64 aligned ↦ size ⊕ diff ·
+    yield aligned ·
+⟧
+
+process linker_resolve_reloc_loop⦅int64 sec_base ⸴ int64 reloc_ptr ⸴ int64 n_relocs ⸴ int64 sym_table ⸴ int64 img_base⦆ → int64 ⟦
+    when sec_base ≡ 0 ∨ reloc_ptr ≡ 0 ∨ n_relocs ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ n_relocs ⟦
+        int64 r_off ↦ i ⊗ 10 ·
+        int64 virt_addr ↦ linker_get_u32⦅reloc_ptr ⸴ r_off⦆ ·
+        int64 off4 ↦ r_off ⊕ 4 ·
+        int64 off8 ↦ r_off ⊕ 8 ·
+        int64 sym_idx ↦ linker_get_u32⦅reloc_ptr ⸴ off4⦆ ·
+        int64 r_type ↦ linker_get_u16⦅reloc_ptr ⸴ off8⦆ ·
+        int64 target_addr ↦ sec_base ⊕ virt_addr ·
+        int64 sym_addr ↦ sym_table ⊕ sym_idx ·
+        
+        linker_apply_reloc⦅target_addr ⸴ sym_addr ⸴ r_type ⸴ img_base⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    yield n_relocs ·
+⟧

@@ -1,0 +1,132 @@
+// internal/qadav_native/pe.ydv
+// Qadav Native Portable Executable (PE/COFF) Writer Engine (M10.9Q)
+// Target Architecture: C-Free Bootstrap Milestone M10.9Q
+
+declare i64 @pe_get_byte(i64, i64)
+declare void @pe_set_byte(i64, i64, i64)
+declare void @pe_set_u16(i64, i64, i64)
+declare void @pe_set_u32(i64, i64, i64)
+declare void @pe_set_u64(i64, i64, i64)
+
+process pe_dos_header_init⦅int64 buf_ptr ⸴ int64 pe_offset⦆ → int64 ⟦
+    when buf_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    // MZ signature
+    pe_set_byte⦅buf_ptr ⸴ 0 ⸴ 77⦆ · // 'M'
+    pe_set_byte⦅buf_ptr ⸴ 1 ⸴ 90⦆ · // 'Z'
+    // e_lfanew at offset 0x3C (60)
+    pe_set_u32⦅buf_ptr ⸴ 60 ⸴ pe_offset⦆ ·
+    yield 64 ·
+⟧
+
+process pe_coff_header_init⦅int64 buf_ptr ⸴ int64 offset ⸴ int64 n_sections ⸴ int64 opt_hdr_sz ⸴ int64 charact⦆ → int64 ⟦
+    when buf_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 three ↦ 3 ·
+    int64 four ↦ 4 ·
+    int64 off1 ↦ offset ⊕ one ·
+    int64 off2 ↦ offset ⊕ two ·
+    int64 off3 ↦ offset ⊕ three ·
+    int64 coff_off ↦ offset ⊕ four ·
+    
+    // PE\0\0 signature
+    pe_set_byte⦅buf_ptr ⸴ offset ⸴ 80⦆ ·   // 'P'
+    pe_set_byte⦅buf_ptr ⸴ off1 ⸴ 69⦆ ·     // 'E'
+    pe_set_byte⦅buf_ptr ⸴ off2 ⸴ 0⦆ ·
+    pe_set_byte⦅buf_ptr ⸴ off3 ⸴ 0⦆ ·
+    
+    int64 coff2 ↦ coff_off ⊕ two ·
+    int64 coff4 ↦ coff_off ⊕ four ·
+    int64 coff16 ↦ coff_off ⊕ 16 ·
+    int64 coff18 ↦ coff_off ⊕ 18 ·
+    int64 coff20 ↦ coff_off ⊕ 20 ·
+    
+    // Machine: AMD64 = 0x8664 (34404)
+    pe_set_u16⦅buf_ptr ⸴ coff_off ⸴ 34404⦆ ·
+    pe_set_u16⦅buf_ptr ⸴ coff2 ⸴ n_sections⦆ ·
+    // TimeDateStamp
+    pe_set_u32⦅buf_ptr ⸴ coff4 ⸴ 1700000000⦆ ·
+    // SizeOfOptionalHeader
+    pe_set_u16⦅buf_ptr ⸴ coff16 ⸴ opt_hdr_sz⦆ ·
+    // Characteristics: 0x0022 (EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE)
+    pe_set_u16⦅buf_ptr ⸴ coff18 ⸴ charact⦆ ·
+    
+    yield coff20 ·
+⟧
+
+process pe_opt_header64_init⦅int64 buf_ptr ⸴ int64 offset ⸴ int64 entry_rva ⸴ int64 img_base ⸴ int64 size_pack⦆ → int64 ⟦
+    when buf_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 shift32 ↦ 4294967296 ·
+    int64 sec_align ↦ size_pack ⊘ shift32 ·
+    int64 prod_align ↦ sec_align ⊗ shift32 ·
+    int64 file_align ↦ size_pack ⊖ prod_align ·
+    
+    int64 off2 ↦ offset ⊕ 2 ·
+    int64 off3 ↦ offset ⊕ 3 ·
+    int64 off16 ↦ offset ⊕ 16 ·
+    int64 off24 ↦ offset ⊕ 24 ·
+    int64 off32 ↦ offset ⊕ 32 ·
+    int64 off36 ↦ offset ⊕ 36 ·
+    int64 off68 ↦ offset ⊕ 68 ·
+    int64 off70 ↦ offset ⊕ 70 ·
+    int64 off108 ↦ offset ⊕ 108 ·
+    int64 off240 ↦ offset ⊕ 240 ·
+    
+    // Magic: PE32+ = 0x020B (523)
+    pe_set_u16⦅buf_ptr ⸴ offset ⸴ 523⦆ ·
+    // MajorLinkerVersion = 14, MinorLinkerVersion = 0
+    pe_set_byte⦅buf_ptr ⸴ off2 ⸴ 14⦆ ·
+    pe_set_byte⦅buf_ptr ⸴ off3 ⸴ 0⦆ ·
+    // AddressOfEntryPoint
+    pe_set_u32⦅buf_ptr ⸴ off16 ⸴ entry_rva⦆ ·
+    // ImageBase
+    pe_set_u64⦅buf_ptr ⸴ off24 ⸴ img_base⦆ ·
+    // SectionAlignment & FileAlignment
+    pe_set_u32⦅buf_ptr ⸴ off32 ⸴ sec_align⦆ ·
+    pe_set_u32⦅buf_ptr ⸴ off36 ⸴ file_align⦆ ·
+    // Subsystem: IMAGE_SUBSYSTEM_WINDOWS_CUI = 3
+    pe_set_u16⦅buf_ptr ⸴ off68 ⸴ 3⦆ ·
+    // DllCharacteristics: 0x8160 (DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE)
+    pe_set_u16⦅buf_ptr ⸴ off70 ⸴ 33120⦆ ·
+    // NumberOfRvaAndSizes = 16
+    pe_set_u32⦅buf_ptr ⸴ off108 ⸴ 16⦆ ·
+    
+    yield off240 ·
+⟧
+
+process pe_section_header_add⦅int64 buf_ptr ⸴ int64 offset ⸴ int64 virt_pack ⸴ int64 raw_pack ⸴ int64 charact⦆ → int64 ⟦
+    when buf_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 shift32 ↦ 4294967296 ·
+    int64 virt_sz ↦ virt_pack ⊘ shift32 ·
+    int64 prod_v ↦ virt_sz ⊗ shift32 ·
+    int64 virt_addr ↦ virt_pack ⊖ prod_v ·
+    int64 raw_sz ↦ raw_pack ⊘ shift32 ·
+    int64 prod_r ↦ raw_sz ⊗ shift32 ·
+    int64 raw_ptr ↦ raw_pack ⊖ prod_r ·
+    
+    int64 off8 ↦ offset ⊕ 8 ·
+    int64 off12 ↦ offset ⊕ 12 ·
+    int64 off16 ↦ offset ⊕ 16 ·
+    int64 off20 ↦ offset ⊕ 20 ·
+    int64 off36 ↦ offset ⊕ 36 ·
+    int64 off40 ↦ offset ⊕ 40 ·
+    
+    // VirtualSize & VirtualAddress
+    pe_set_u32⦅buf_ptr ⸴ off8 ⸴ virt_sz⦆ ·
+    pe_set_u32⦅buf_ptr ⸴ off12 ⸴ virt_addr⦆ ·
+    // SizeOfRawData & PointerToRawData
+    pe_set_u32⦅buf_ptr ⸴ off16 ⸴ raw_sz⦆ ·
+    pe_set_u32⦅buf_ptr ⸴ off20 ⸴ raw_ptr⦆ ·
+    // Characteristics
+    pe_set_u32⦅buf_ptr ⸴ off36 ⸴ charact⦆ ·
+    
+    yield off40 ·
+⟧

@@ -1,0 +1,126 @@
+// internal/qadav_native/bpe.ydv
+// Qadav Native Byte Pair Encoding (BPE) Tokenizer Engine (M10.2)
+// Target Architecture: C-Free Bootstrap Milestone M10.9P
+
+declare i64 @bpe_get_byte(i64, i64)
+declare void @bpe_set_byte(i64, i64, i64)
+declare i64 @bpe_get_u32(i64, i64)
+declare void @bpe_set_u32(i64, i64, i64)
+declare i64 @bpe_get_tok_len(i64, i64)
+declare i64 @bpe_get_tok_off(i64, i64)
+declare i64 @bpe_get_tok_byte(i64, i64)
+
+process bpe_fnv1a_hash⦅int64 bytes_ptr ⸴ int64 len⦆ → int64 ⟦
+    when bytes_ptr ≡ 0 ∨ len ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 h ↦ 0 ⊖ 3750763034362895579 ·
+    int64 prime ↦ 1099511628211 ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ len ⟦
+        int64 b ↦ bpe_get_byte⦅bytes_ptr ⸴ i⦆ ·
+        h ← h ⊻ b ·
+        h ← h ⊗ prime ·
+        i ← i ⊕ one ·
+    ⟧
+    yield h ·
+⟧
+
+process bpe_header_check⦅int64 raw_ptr ⸴ int64 raw_len⦆ → int64 ⟦
+    when raw_ptr ≡ 0 ∨ raw_len ≺ 12 ⟦
+        yield 0 ·
+    ⟧
+    int64 b0 ↦ bpe_get_byte⦅raw_ptr ⸴ 0⦆ ·
+    int64 b1 ↦ bpe_get_byte⦅raw_ptr ⸴ 1⦆ ·
+    int64 b2 ↦ bpe_get_byte⦅raw_ptr ⸴ 2⦆ ·
+    int64 b3 ↦ bpe_get_byte⦅raw_ptr ⸴ 3⦆ ·
+    when b0 ≡ 66 ∧ b1 ≡ 80 ∧ b2 ≡ 69 ∧ b3 ≡ 49 ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process bpe_build_offsets⦅int64 vocab_size ⸴ int64 lens_ptr ⸴ int64 offs_ptr⦆ → int64 ⟦
+    when lens_ptr ≡ 0 ∨ offs_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 sum ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ vocab_size ⟦
+        bpe_set_u32⦅offs_ptr ⸴ i ⸴ sum⦆ ·
+        int64 l ↦ bpe_get_byte⦅lens_ptr ⸴ i⦆ ·
+        sum ← sum ⊕ l ·
+        i ← i ⊕ one ·
+    ⟧
+    yield sum ·
+⟧
+
+process bpe_decode_all⦅int64 tok_ids_ptr ⸴ int64 n_tokens ⸴ int64 bpe_ctx_ptr ⸴ int64 text_out_ptr ⸴ int64 max_chars⦆ → int64 ⟦
+    when tok_ids_ptr ≡ 0 ∨ n_tokens ≼ 0 ∨ bpe_ctx_ptr ≡ 0 ∨ text_out_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    int64 out_pos ↦ 0 ·
+    cycle i ≺ n_tokens ⟦
+        int64 id ↦ bpe_get_u32⦅tok_ids_ptr ⸴ i⦆ ·
+        int64 len ↦ bpe_get_tok_len⦅bpe_ctx_ptr ⸴ id⦆ ·
+        int64 off ↦ bpe_get_tok_off⦅bpe_ctx_ptr ⸴ id⦆ ·
+        int64 j ↦ 0 ·
+        cycle j ≺ len ⟦
+            when out_pos ≺ max_chars ⟦
+                int64 ch ↦ bpe_get_tok_byte⦅bpe_ctx_ptr ⸴ off ⊕ j⦆ ·
+                bpe_set_byte⦅text_out_ptr ⸴ out_pos ⸴ ch⦆ ·
+                out_pos ← out_pos ⊕ one ·
+            ⟧
+            j ← j ⊕ one ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    when out_pos ≺ max_chars ⟦
+        bpe_set_byte⦅text_out_ptr ⸴ out_pos ⸴ 0⦆ ·
+    ⟧
+    yield out_pos ·
+⟧
+
+process bpe_merge_pair_loop⦅int64 sym_ptr ⸴ int64 n ⸴ int64 best_pair ⸴ int64 best_new ⸴ int64 out_ptr⦆ → int64 ⟦
+    when sym_ptr ≡ 0 ∨ n ≼ 0 ∨ out_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 shift32 ↦ 4294967296 ·
+    int64 best_a ↦ best_pair ⊘ shift32 ·
+    int64 prod_a ↦ best_a ⊗ shift32 ·
+    int64 best_b ↦ best_pair ⊖ prod_a ·
+    int64 one ↦ 1 ·
+    int64 two ↦ 2 ·
+    int64 write_i ↦ 0 ·
+    int64 i ↦ 0 ·
+    int64 n_minus_1 ↦ n ⊖ one ·
+    cycle i ≺ n ⟦
+        int64 can_pair ↦ 0 ·
+        when i ≺ n_minus_1 ⟦
+            can_pair ← 1 ·
+        ⟧
+        int64 cur_a ↦ bpe_get_u32⦅sym_ptr ⸴ i⦆ ·
+        int64 matched ↦ 0 ·
+        when can_pair ≡ 1 ∧ cur_a ≡ best_a ⟦
+            int64 next_b ↦ bpe_get_u32⦅sym_ptr ⸴ i ⊕ one⦆ ·
+            when next_b ≡ best_b ⟦
+                matched ← 1 ·
+            ⟧
+        ⟧
+        when matched ≡ 1 ⟦
+            bpe_set_u32⦅out_ptr ⸴ write_i ⸴ best_new⦆ ·
+            write_i ← write_i ⊕ one ·
+            i ← i ⊕ two ·
+        ⟧
+        when matched ≡ 0 ⟦
+            bpe_set_u32⦅out_ptr ⸴ write_i ⸴ cur_a⦆ ·
+            write_i ← write_i ⊕ one ·
+            i ← i ⊕ one ·
+        ⟧
+    ⟧
+    yield write_i ·
+⟧

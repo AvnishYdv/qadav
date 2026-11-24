@@ -1,0 +1,104 @@
+// internal/qadav_native/nn.ydv
+// Qadav Native Neural Network Scalar & Kernel Engine (M10.9Q)
+// Target Architecture: C-Free Bootstrap Milestone M10.9Q
+
+declare i64 @nn_get_f64(i64, i64)
+declare void @nn_set_f64(i64, i64, i64)
+
+process nn_relu_scalar⦅int64 x⦆ → int64 ⟦
+    when x ≺ 0 ⟦
+        yield 0 ·
+    ⟧
+    yield x ·
+⟧
+
+process nn_relu_loop⦅int64 data_ptr ⸴ int64 n⦆ → int64 ⟦
+    when data_ptr ≡ 0 ∨ n ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ n ⟦
+        int64 v ↦ nn_get_f64⦅data_ptr ⸴ i⦆ ·
+        when v ≺ 0 ⟦
+            nn_set_f64⦅data_ptr ⸴ i ⸴ 0⦆ ·
+        ⟧
+        i ← i ⊕ one ·
+    ⟧
+    yield n ·
+⟧
+
+process nn_mse_loss_loop⦅int64 pred_ptr ⸴ int64 targ_ptr ⸴ int64 n⦆ → int64 ⟦
+    when pred_ptr ≡ 0 ∨ targ_ptr ≡ 0 ∨ n ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 sum_sq ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ n ⟦
+        int64 p ↦ nn_get_f64⦅pred_ptr ⸴ i⦆ ·
+        int64 t ↦ nn_get_f64⦅targ_ptr ⸴ i⦆ ·
+        int64 diff ↦ p ⊖ t ·
+        int64 sq ↦ diff ⊗ diff ·
+        sum_sq ← sum_sq ⊕ sq ·
+        i ← i ⊕ one ·
+    ⟧
+    int64 loss ↦ sum_sq ⊘ n ·
+    yield loss ·
+⟧
+
+process nn_sgd_step_loop⦅int64 param_ptr ⸴ int64 grad_ptr ⸴ int64 n ⸴ int64 lr_scaled⦆ → int64 ⟦
+    when param_ptr ≡ 0 ∨ grad_ptr ≡ 0 ∨ n ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 scale ↦ 1000000 ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ n ⟦
+        int64 w ↦ nn_get_f64⦅param_ptr ⸴ i⦆ ·
+        int64 g ↦ nn_get_f64⦅grad_ptr ⸴ i⦆ ·
+        int64 delta ↦ g ⊗ lr_scaled ·
+        int64 step ↦ delta ⊘ scale ·
+        int64 new_w ↦ w ⊖ step ·
+        nn_set_f64⦅param_ptr ⸴ i ⸴ new_w⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    yield n ·
+⟧
+
+process nn_adam_step_loop⦅int64 param_ptr ⸴ int64 grad_ptr ⸴ int64 m_ptr ⸴ int64 v_ptr ⸴ int64 pack_args⦆ → int64 ⟦
+    when param_ptr ≡ 0 ∨ grad_ptr ≡ 0 ∨ m_ptr ≡ 0 ∨ v_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 shift32 ↦ 4294967296 ·
+    int64 n ↦ pack_args ⊘ shift32 ·
+    int64 lr_scaled ↦ pack_args ⊖ n ⊗ shift32 ·
+    int64 scale ↦ 1000 ·
+    int64 beta1 ↦ 900 ·
+    int64 beta2 ↦ 999 ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ n ⟦
+        int64 w ↦ nn_get_f64⦅param_ptr ⸴ i⦆ ·
+        int64 g ↦ nn_get_f64⦅grad_ptr ⸴ i⦆ ·
+        int64 m ↦ nn_get_f64⦅m_ptr ⸴ i⦆ ·
+        int64 v ↦ nn_get_f64⦅v_ptr ⸴ i⦆ ·
+        
+        int64 new_m ↦ m ⊗ beta1 ⊕ g ⊗ 100 ·
+        new_m ← new_m ⊘ scale ·
+        nn_set_f64⦅m_ptr ⸴ i ⸴ new_m⦆ ·
+        
+        int64 g_sq ↦ g ⊗ g ·
+        int64 new_v ↦ v ⊗ beta2 ⊕ g_sq ⊗ 1 ·
+        new_v ← new_v ⊘ scale ·
+        nn_set_f64⦅v_ptr ⸴ i ⸴ new_v⦆ ·
+        
+        int64 delta ↦ new_m ⊗ lr_scaled ·
+        int64 step ↦ delta ⊘ scale ·
+        int64 new_w ↦ w ⊖ step ·
+        nn_set_f64⦅param_ptr ⸴ i ⸴ new_w⦆ ·
+        
+        i ← i ⊕ one ·
+    ⟧
+    yield n ·
+⟧

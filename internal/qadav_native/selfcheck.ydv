@@ -1,0 +1,104 @@
+// internal/qadav_native/selfcheck.ydv
+// Qadav Native Binary Integrity Self-Check Engine (Invention #5)
+// Target Architecture: C-Free Bootstrap Milestone M10.9P
+
+declare i64 @sc_get_byte(i64, i64)
+declare void @sc_set_byte(i64, i64, i64)
+
+process selfcheck_magic_check⦅int64 hdr_ptr⦆ → int64 ⟦
+    when hdr_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 b0 ↦ sc_get_byte⦅hdr_ptr ⸴ 0⦆ ·
+    int64 b1 ↦ sc_get_byte⦅hdr_ptr ⸴ 1⦆ ·
+    int64 b2 ↦ sc_get_byte⦅hdr_ptr ⸴ 2⦆ ·
+    int64 b3 ↦ sc_get_byte⦅hdr_ptr ⸴ 3⦆ ·
+    int64 b4 ↦ sc_get_byte⦅hdr_ptr ⸴ 4⦆ ·
+    int64 b5 ↦ sc_get_byte⦅hdr_ptr ⸴ 5⦆ ·
+    int64 b6 ↦ sc_get_byte⦅hdr_ptr ⸴ 6⦆ ·
+    int64 b7 ↦ sc_get_byte⦅hdr_ptr ⸴ 7⦆ ·
+    when b0 ≡ 81 ∧ b1 ≡ 83 ∧ b2 ≡ 67 ∧ b3 ≡ 49 ∧ b4 ≡ 0 ∧ b5 ≡ 0 ∧ b6 ≡ 0 ∧ b7 ≡ 0 ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process selfcheck_compare_root⦅int64 a_ptr ⸴ int64 b_ptr⦆ → int64 ⟦
+    when a_ptr ≡ 0 ∨ b_ptr ≡ 0 ⟦
+        yield 1 ·
+    ⟧
+    int64 diff ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ 32 ⟦
+        int64 ba ↦ sc_get_byte⦅a_ptr ⸴ i⦆ ·
+        int64 bb ↦ sc_get_byte⦅b_ptr ⸴ i⦆ ·
+        int64 d ↦ ba ⊻ bb ·
+        diff ← diff ⊕ d ·
+        i ← i ⊕ one ·
+    ⟧
+    when diff ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    yield 1 ·
+⟧
+
+process selfcheck_nullify_loop⦅int64 code_start ⸴ int64 code_size⦆ → int64 ⟦
+    when code_start ≡ 0 ∨ code_size ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ code_size ⟦
+        sc_set_byte⦅code_start ⸴ i ⸴ zero⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    yield code_size ·
+⟧
+
+process selfcheck_derive_qsc_path⦅int64 exe_path ⸴ int64 len ⸴ int64 qsc_path⦆ → int64 ⟦
+    when exe_path ≡ 0 ∨ len ≼ 0 ∨ qsc_path ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 one ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ len ⟦
+        int64 ch ↦ sc_get_byte⦅exe_path ⸴ i⦆ ·
+        sc_set_byte⦅qsc_path ⸴ i ⸴ ch⦆ ·
+        i ← i ⊕ one ·
+    ⟧
+    int64 dot_idx ↦ 0 ⊖ 1 ·
+    int64 k ↦ len ⊖ one ·
+    cycle k ≽ 0 ⟦
+        int64 c ↦ sc_get_byte⦅qsc_path ⸴ k⦆ ·
+        when c ≡ 46 ⟦
+            dot_idx ← k ·
+            k ← 0 ⊖ 1 ·
+        ⟧
+        when c ≡ 92 ∨ c ≡ 47 ⟦
+            k ← 0 ⊖ 1 ·
+        ⟧
+        k ← k ⊖ one ·
+    ⟧
+    when dot_idx ≽ 0 ⟦
+        sc_set_byte⦅qsc_path ⸴ dot_idx ⊕ 1 ⸴ 113⦆ ·
+        sc_set_byte⦅qsc_path ⸴ dot_idx ⊕ 2 ⸴ 115⦆ ·
+        sc_set_byte⦅qsc_path ⸴ dot_idx ⊕ 3 ⸴ 99⦆ ·
+        sc_set_byte⦅qsc_path ⸴ dot_idx ⊕ 4 ⸴ 0⦆ ·
+        yield dot_idx ⊕ 4 ·
+    ⟧
+    sc_set_byte⦅qsc_path ⸴ len ⸴ 46⦆ ·
+    sc_set_byte⦅qsc_path ⸴ len ⊕ 1 ⸴ 113⦆ ·
+    sc_set_byte⦅qsc_path ⸴ len ⊕ 2 ⸴ 115⦆ ·
+    sc_set_byte⦅qsc_path ⸴ len ⊕ 3 ⸴ 99⦆ ·
+    sc_set_byte⦅qsc_path ⸴ len ⊕ 4 ⸴ 0⦆ ·
+    yield len ⊕ 4 ·
+⟧
+
+process selfcheck_block_size⦅int64 bs⦆ → int64 ⟦
+    when bs ≼ 0 ⟦
+        yield 4096 ·
+    ⟧
+    yield bs ·
+⟧

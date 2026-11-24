@@ -1,0 +1,53 @@
+// internal/qadav_native/rt_linux.ydv
+// Qadav Native Linux Runtime Engine (Zero CRT, Zero Libc)
+// Target Architecture: C-Free Bootstrap Milestone M10.9P
+
+declare i64 @rt_linux_sb(i64, i64)
+
+process rt_linux_int_to_str⦅int64 val ⸴ int64 buf_ptr⦆ → int64 ⟦
+    when buf_ptr ≡ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 zero ↦ 0 ·
+    int64 one ↦ 1 ·
+    int64 ten ↦ 10 ·
+    int64 ascii_zero ↦ 48 ·
+    int64 ascii_minus ↦ 45 ·
+    when val ≡ 0 ⟦
+        rt_linux_sb⦅buf_ptr ⸴ ascii_zero⦆ ·
+        yield 1 ·
+    ⟧
+    int64 is_neg ↦ 0 ·
+    int64 uv ↦ val ·
+    when val ≺ 0 ⟦
+        is_neg ← 1 ·
+        uv ← zero ⊖ val ·
+    ⟧
+    int64 uv_copy ↦ uv ·
+    int64 digit_count ↦ 0 ·
+    cycle uv_copy ≻ 0 ⟦
+        uv_copy ← uv_copy ⊘ ten ·
+        digit_count ← digit_count ⊕ one ·
+    ⟧
+    when is_neg ≻ 0 ⟦
+        rt_linux_sb⦅buf_ptr ⸴ ascii_minus⦆ ·
+    ⟧
+    int64 offset ↦ is_neg ⊕ digit_count ·
+    offset ← offset ⊖ one ·
+    cycle uv ≻ 0 ⟦
+        int64 quot ↦ uv ⊘ ten ·
+        int64 prod ↦ quot ⊗ ten ·
+        int64 rem ↦ uv ⊖ prod ·
+        int64 dchar ↦ ascii_zero ⊕ rem ·
+        int64 dest ↦ buf_ptr ⊕ offset ·
+        rt_linux_sb⦅dest ⸴ dchar⦆ ·
+        offset ← offset ⊖ one ·
+        uv ← quot ·
+    ⟧
+    int64 total_len ↦ is_neg ⊕ digit_count ·
+    yield total_len ·
+⟧
+
+process rt_linux_target_kind⦅int64 stub⦆ → int64 ⟦
+    yield 0 ·
+⟧
