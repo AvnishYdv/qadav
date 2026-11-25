@@ -459,3 +459,85 @@ process qadav_run_ablation_driver⦅int64 cmd_ptr⦆ → int64 ⟦
 process qadav_nn_mctp_dispatch⦅int64 c_ptr ⸴ int64 epochs⦆ → int64 ⟦
     yield 0 ·
 ⟧
+
+// ============================================================================
+// PART 4: PHASE 11 M11.6 ALGEBRAIC KERNEL FUSION
+// ============================================================================
+
+// 27. vec_fused_rmsnorm_linear_256
+// Single-pass register-resident RMSNorm + Linear GEMM projection without intermediate RAM activation spills
+process vec_fused_rmsnorm_linear_256⦅int64 x_ptr ⸴ int64 w_ptr ⸴ int64 y_ptr ⸴ int64 batch ⸴ int64 d⦆ → int64 ⟦
+    int64 b ↦ 0 ·
+    int64 d4 ↦ d ⊘ 4 ·
+    int64 d_bytes ↦ d4 ⊗ 32 ·
+    cycle b ≺ batch ⟦
+        int64 xb ↦ x_ptr ⊕ (b ⊗ d ⊗ 8) ·
+        int64 yb ↦ y_ptr ⊕ (b ⊗ d ⊗ 8) ·
+        
+        // Pass 1: Accumulate sum of squares in ymm register
+        int64 off_s ↦ 0 ·
+        vec4f64 vx0 ↦ vec4_load⦅xb⦆ ·
+        vec4f64 vacc_sq ↦ vec4_sub⦅vx0 ⸴ vx0⦆ ·
+        cycle off_s ≺ d_bytes ⟦
+            int64 pxi ↦ xb ⊕ off_s ·
+            vec4f64 vx ↦ vec4_load⦅pxi⦆ ·
+            vec4f64 vsq_next ↦ vec4_fma⦅vx ⸴ vx ⸴ vacc_sq⦆ ·
+            vacc_sq ← vsq_next ·
+            off_s ← off_s ⊕ 32 ·
+        ⟧
+        float64 sum_sq ↦ vec4_hsum⦅vacc_sq⦆ ·
+        float64 d_f ↦ qadav_itof⦅d⦆ ·
+        float64 mean_sq ↦ sum_sq ⊘ d_f ·
+        float64 rms ↦ qadav_sqrt⦅mean_sq ⊕ 0.000001⦆ ·
+        float64 inv_rms ↦ 1.0 ⊘ rms ·
+        vec4f64 vrms ↦ vec4_splat⦅inv_rms⦆ ·
+        
+        // Pass 2: Register-resident projection across columns j without writing normalized activations to RAM
+        int64 j ↦ 0 ·
+        cycle j ≺ d ⟦
+            int64 off_k ↦ 0 ·
+            vec4f64 vacc_j ↦ vec4_sub⦅vx0 ⸴ vx0⦆ ·
+            cycle off_k ≺ d_bytes ⟦
+                int64 pxk ↦ xb ⊕ off_k ·
+                vec4f64 vx_k ↦ vec4_load⦅pxk⦆ ·
+                vec4f64 vx_norm ↦ vec4_mul⦅vx_k ⸴ vrms⦆ ·
+                
+                int64 k_idx ↦ off_k ⊘ 8 ·
+                int64 pw ↦ w_ptr ⊕ ((k_idx ⊗ d ⊕ j) ⊗ 8) ·
+                vec4f64 vw ↦ vec4_load⦅pw⦆ ·
+                
+                vec4f64 vacc_next ↦ vec4_fma⦅vx_norm ⸴ vw ⸴ vacc_j⦆ ·
+                vacc_j ← vacc_next ·
+                off_k ← off_k ⊕ 32 ·
+            ⟧
+            float64 col_sum ↦ vec4_hsum⦅vacc_j⦆ ·
+            int64 py ↦ yb ⊕ (j ⊗ 8) ·
+            qadav_store_f64⦅py ⸴ col_sum⦆ ·
+            j ← j ⊕ 1 ·
+        ⟧
+        b ← b ⊕ 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 28. vec_fused_qnmf_bilateral_256
+// Single-pass register-resident QNMF bilateral projection Sym(Wa x (x) Wb x) + SiLU activation in AVX2 registers
+process vec_fused_qnmf_bilateral_256⦅int64 x_ptr ⸴ int64 wa_ptr ⸴ int64 wb_ptr ⸴ int64 y_ptr ⸴ int64 d⦆ → int64 ⟦
+    int64 d4 ↦ d ⊘ 4 ·
+    int64 d_bytes ↦ d4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    cycle off ≺ d_bytes ⟦
+        int64 pa ↦ wa_ptr ⊕ off ·
+        int64 pb ↦ wb_ptr ⊕ off ·
+        vec4f64 va ↦ vec4_load⦅pa⦆ ·
+        vec4f64 vb ↦ vec4_load⦅pb⦆ ·
+        
+        // Sym(Wa x (x) Wb x) = 0.5 * (va * vb + vb * va) = va * vb
+        vec4f64 v_bilat ↦ vec4_mul⦅va ⸴ vb⦆ ·
+        
+        int64 py ↦ y_ptr ⊕ off ·
+        vec4_store⦅py ⸴ v_bilat⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧

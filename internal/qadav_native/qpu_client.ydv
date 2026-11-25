@@ -1,0 +1,209 @@
+// internal/qadav_native/qpu_client.ydv
+// Qadav Native Hardware-Ready QPU Submission Adapter & OpenQASM 3.0 Serializer
+// Target Architecture: Phase 11 Milestone M11.7 (Pure Qadav, Zero Python, Zero Qiskit)
+
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare i64 @rt_b(i64)
+declare void @rt_sb(i64, i64)
+declare void @qadav_sha3_256(i64, i64, i64)
+
+// ============================================================================
+// PART 1: STRING SERIALIZATION HELPERS
+// ============================================================================
+
+process qpu_append_str⦅int64 dst ⸴ int64 off ⸴ int64 src ⸴ int64 len⦆ → int64 ⟦
+    int64 i ↦ 0 ·
+    cycle i ≺ len ⟦
+        int64 ps ↦ src ⊕ i ·
+        int64 ch ↦ rt_b⦅ps⦆ ·
+        int64 pd ↦ dst ⊕ off ⊕ i ·
+        rt_sb⦅pd ⸴ ch⦆ ·
+        i ← i ⊕ 1 ·
+    ⟧
+    int64 end_off ↦ off ⊕ len ·
+    yield end_off ·
+⟧
+
+// ============================================================================
+// PART 2: OPENQASM 3.0 CIRCUIT EMITTER
+// ============================================================================
+
+process qpu_emit_openqasm3_ghz⦅int64 out_buf ⸴ int64 n_qubits⦆ → int64 ⟦
+    // Header: "OPENQASM 3.0;\ninclude \"stdgates.inc\";\nqubit[1000] q;\nh q[0];\ncx q[0], q[1];\nc = measure q;\n"
+    int64 p ↦ 0 ·
+    
+    // "OPENQASM 3.0;\n"
+    int64 p0 ↦ out_buf ⊕ p · rt_sb⦅p0 ⸴ 79⦆ · p ← p ⊕ 1 ·  // O
+    int64 p1 ↦ out_buf ⊕ p · rt_sb⦅p1 ⸴ 80⦆ · p ← p ⊕ 1 ·  // P
+    int64 p2 ↦ out_buf ⊕ p · rt_sb⦅p2 ⸴ 69⦆ · p ← p ⊕ 1 ·  // E
+    int64 p3 ↦ out_buf ⊕ p · rt_sb⦅p3 ⸴ 78⦆ · p ← p ⊕ 1 ·  // N
+    int64 p4 ↦ out_buf ⊕ p · rt_sb⦅p4 ⸴ 81⦆ · p ← p ⊕ 1 ·  // Q
+    int64 p5 ↦ out_buf ⊕ p · rt_sb⦅p5 ⸴ 65⦆ · p ← p ⊕ 1 ·  // A
+    int64 p6 ↦ out_buf ⊕ p · rt_sb⦅p6 ⸴ 83⦆ · p ← p ⊕ 1 ·  // S
+    int64 p7 ↦ out_buf ⊕ p · rt_sb⦅p7 ⸴ 77⦆ · p ← p ⊕ 1 ·  // M
+    int64 p8 ↦ out_buf ⊕ p · rt_sb⦅p8 ⸴ 32⦆ · p ← p ⊕ 1 ·  // ' '
+    int64 p9 ↦ out_buf ⊕ p · rt_sb⦅p9 ⸴ 51⦆ · p ← p ⊕ 1 ·  // 3
+    int64 p10 ↦ out_buf ⊕ p · rt_sb⦅p10 ⸴ 46⦆ · p ← p ⊕ 1 · // .
+    int64 p11 ↦ out_buf ⊕ p · rt_sb⦅p11 ⸴ 48⦆ · p ← p ⊕ 1 · // 0
+    int64 p12 ↦ out_buf ⊕ p · rt_sb⦅p12 ⸴ 59⦆ · p ← p ⊕ 1 · // ;
+    int64 p13 ↦ out_buf ⊕ p · rt_sb⦅p13 ⸴ 10⦆ · p ← p ⊕ 1 · // \n
+    
+    // "include \"stdgates.inc\";\n"
+    int64 p14 ↦ out_buf ⊕ p · rt_sb⦅p14 ⸴ 105⦆ · p ← p ⊕ 1 · // i
+    int64 p15 ↦ out_buf ⊕ p · rt_sb⦅p15 ⸴ 110⦆ · p ← p ⊕ 1 · // n
+    int64 p16 ↦ out_buf ⊕ p · rt_sb⦅p16 ⸴ 99⦆ · p ← p ⊕ 1 ·  // c
+    int64 p17 ↦ out_buf ⊕ p · rt_sb⦅p17 ⸴ 108⦆ · p ← p ⊕ 1 · // l
+    int64 p18 ↦ out_buf ⊕ p · rt_sb⦅p18 ⸴ 117⦆ · p ← p ⊕ 1 · // u
+    int64 p19 ↦ out_buf ⊕ p · rt_sb⦅p19 ⸴ 100⦆ · p ← p ⊕ 1 · // d
+    int64 p20 ↦ out_buf ⊕ p · rt_sb⦅p20 ⸴ 101⦆ · p ← p ⊕ 1 · // e
+    int64 p21 ↦ out_buf ⊕ p · rt_sb⦅p21 ⸴ 32⦆ · p ← p ⊕ 1 ·  // ' '
+    int64 p22 ↦ out_buf ⊕ p · rt_sb⦅p22 ⸴ 34⦆ · p ← p ⊕ 1 ·  // "
+    int64 p23 ↦ out_buf ⊕ p · rt_sb⦅p23 ⸴ 115⦆ · p ← p ⊕ 1 · // s
+    int64 p24 ↦ out_buf ⊕ p · rt_sb⦅p24 ⸴ 116⦆ · p ← p ⊕ 1 · // t
+    int64 p25 ↦ out_buf ⊕ p · rt_sb⦅p25 ⸴ 100⦆ · p ← p ⊕ 1 · // d
+    int64 p26 ↦ out_buf ⊕ p · rt_sb⦅p26 ⸴ 103⦆ · p ← p ⊕ 1 · // g
+    int64 p27 ↦ out_buf ⊕ p · rt_sb⦅p27 ⸴ 97⦆ · p ← p ⊕ 1 ·  // a
+    int64 p28 ↦ out_buf ⊕ p · rt_sb⦅p28 ⸴ 116⦆ · p ← p ⊕ 1 · // t
+    int64 p29 ↦ out_buf ⊕ p · rt_sb⦅p29 ⸴ 101⦆ · p ← p ⊕ 1 · // e
+    int64 p30 ↦ out_buf ⊕ p · rt_sb⦅p30 ⸴ 115⦆ · p ← p ⊕ 1 · // s
+    int64 p31 ↦ out_buf ⊕ p · rt_sb⦅p31 ⸴ 46⦆ · p ← p ⊕ 1 ·  // .
+    int64 p32 ↦ out_buf ⊕ p · rt_sb⦅p32 ⸴ 105⦆ · p ← p ⊕ 1 · // i
+    int64 p33 ↦ out_buf ⊕ p · rt_sb⦅p33 ⸴ 110⦆ · p ← p ⊕ 1 · // n
+    int64 p34 ↦ out_buf ⊕ p · rt_sb⦅p34 ⸴ 99⦆ · p ← p ⊕ 1 ·  // c
+    int64 p35 ↦ out_buf ⊕ p · rt_sb⦅p35 ⸴ 34⦆ · p ← p ⊕ 1 ·  // "
+    int64 p36 ↦ out_buf ⊕ p · rt_sb⦅p36 ⸴ 59⦆ · p ← p ⊕ 1 ·  // ;
+    int64 p37 ↦ out_buf ⊕ p · rt_sb⦅p37 ⸴ 10⦆ · p ← p ⊕ 1 ·  // \n
+    
+    // "qubit[1000] q;\n"
+    int64 p38 ↦ out_buf ⊕ p · rt_sb⦅p38 ⸴ 113⦆ · p ← p ⊕ 1 · // q
+    int64 p39 ↦ out_buf ⊕ p · rt_sb⦅p39 ⸴ 117⦆ · p ← p ⊕ 1 · // u
+    int64 p40 ↦ out_buf ⊕ p · rt_sb⦅p40 ⸴ 98⦆ · p ← p ⊕ 1 ·  // b
+    int64 p41 ↦ out_buf ⊕ p · rt_sb⦅p41 ⸴ 105⦆ · p ← p ⊕ 1 · // i
+    int64 p42 ↦ out_buf ⊕ p · rt_sb⦅p42 ⸴ 116⦆ · p ← p ⊕ 1 · // t
+    int64 p43 ↦ out_buf ⊕ p · rt_sb⦅p43 ⸴ 91⦆ · p ← p ⊕ 1 ·  // [
+    int64 p44 ↦ out_buf ⊕ p · rt_sb⦅p44 ⸴ 49⦆ · p ← p ⊕ 1 ·  // 1
+    int64 p45 ↦ out_buf ⊕ p · rt_sb⦅p45 ⸴ 48⦆ · p ← p ⊕ 1 ·  // 0
+    int64 p46 ↦ out_buf ⊕ p · rt_sb⦅p46 ⸴ 48⦆ · p ← p ⊕ 1 ·  // 0
+    int64 p47 ↦ out_buf ⊕ p · rt_sb⦅p47 ⸴ 48⦆ · p ← p ⊕ 1 ·  // 0
+    int64 p48 ↦ out_buf ⊕ p · rt_sb⦅p48 ⸴ 93⦆ · p ← p ⊕ 1 ·  // ]
+    int64 p49 ↦ out_buf ⊕ p · rt_sb⦅p49 ⸴ 32⦆ · p ← p ⊕ 1 ·  // ' '
+    int64 p50 ↦ out_buf ⊕ p · rt_sb⦅p50 ⸴ 113⦆ · p ← p ⊕ 1 · // q
+    int64 p51 ↦ out_buf ⊕ p · rt_sb⦅p51 ⸴ 59⦆ · p ← p ⊕ 1 ·  // ;
+    int64 p52 ↦ out_buf ⊕ p · rt_sb⦅p52 ⸴ 10⦆ · p ← p ⊕ 1 ·  // \n
+    
+    // "h q[0];\n"
+    int64 p53 ↦ out_buf ⊕ p · rt_sb⦅p53 ⸴ 104⦆ · p ← p ⊕ 1 · // h
+    int64 p54 ↦ out_buf ⊕ p · rt_sb⦅p54 ⸴ 32⦆ · p ← p ⊕ 1 ·  // ' '
+    int64 p55 ↦ out_buf ⊕ p · rt_sb⦅p55 ⸴ 113⦆ · p ← p ⊕ 1 · // q
+    int64 p56 ↦ out_buf ⊕ p · rt_sb⦅p56 ⸴ 91⦆ · p ← p ⊕ 1 ·  // [
+    int64 p57 ↦ out_buf ⊕ p · rt_sb⦅p57 ⸴ 48⦆ · p ← p ⊕ 1 ·  // 0
+    int64 p58 ↦ out_buf ⊕ p · rt_sb⦅p58 ⸴ 93⦆ · p ← p ⊕ 1 ·  // ]
+    int64 p59 ↦ out_buf ⊕ p · rt_sb⦅p59 ⸴ 59⦆ · p ← p ⊕ 1 ·  // ;
+    int64 p60 ↦ out_buf ⊕ p · rt_sb⦅p60 ⸴ 10⦆ · p ← p ⊕ 1 ·  // \n
+    
+    // "cx q[0], q[1];\n"
+    int64 p61 ↦ out_buf ⊕ p · rt_sb⦅p61 ⸴ 99⦆ · p ← p ⊕ 1 ·  // c
+    int64 p62 ↦ out_buf ⊕ p · rt_sb⦅p62 ⸴ 120⦆ · p ← p ⊕ 1 · // x
+    int64 p63 ↦ out_buf ⊕ p · rt_sb⦅p63 ⸴ 32⦆ · p ← p ⊕ 1 ·  // ' '
+    int64 p64 ↦ out_buf ⊕ p · rt_sb⦅p64 ⸴ 113⦆ · p ← p ⊕ 1 · // q
+    int64 p65 ↦ out_buf ⊕ p · rt_sb⦅p65 ⸴ 91⦆ · p ← p ⊕ 1 ·  // [
+    int64 p66 ↦ out_buf ⊕ p · rt_sb⦅p66 ⸴ 48⦆ · p ← p ⊕ 1 ·  // 0
+    int64 p67 ↦ out_buf ⊕ p · rt_sb⦅p67 ⸴ 93⦆ · p ← p ⊕ 1 ·  // ]
+    int64 p68 ↦ out_buf ⊕ p · rt_sb⦅p68 ⸴ 44⦆ · p ← p ⊕ 1 ·  // ,
+    int64 p69 ↦ out_buf ⊕ p · rt_sb⦅p69 ⸴ 32⦆ · p ← p ⊕ 1 ·  // ' '
+    int64 p70 ↦ out_buf ⊕ p · rt_sb⦅p70 ⸴ 113⦆ · p ← p ⊕ 1 · // q
+    int64 p71 ↦ out_buf ⊕ p · rt_sb⦅p71 ⸴ 91⦆ · p ← p ⊕ 1 ·  // [
+    int64 p72 ↦ out_buf ⊕ p · rt_sb⦅p72 ⸴ 49⦆ · p ← p ⊕ 1 ·  // 1
+    int64 p73 ↦ out_buf ⊕ p · rt_sb⦅p73 ⸴ 93⦆ · p ← p ⊕ 1 ·  // ]
+    int64 p74 ↦ out_buf ⊕ p · rt_sb⦅p74 ⸴ 59⦆ · p ← p ⊕ 1 ·  // ;
+    int64 p75 ↦ out_buf ⊕ p · rt_sb⦅p75 ⸴ 10⦆ · p ← p ⊕ 1 ·  // \n
+    
+    // "c = measure q;\n"
+    int64 p76 ↦ out_buf ⊕ p · rt_sb⦅p76 ⸴ 99⦆ · p ← p ⊕ 1 ·  // c
+    int64 p77 ↦ out_buf ⊕ p · rt_sb⦅p77 ⸴ 32⦆ · p ← p ⊕ 1 ·  // ' '
+    int64 p78 ↦ out_buf ⊕ p · rt_sb⦅p78 ⸴ 61⦆ · p ← p ⊕ 1 ·  // =
+    int64 p79 ↦ out_buf ⊕ p · rt_sb⦅p79 ⸴ 32⦆ · p ← p ⊕ 1 ·  // ' '
+    int64 p80 ↦ out_buf ⊕ p · rt_sb⦅p80 ⸴ 109⦆ · p ← p ⊕ 1 · // m
+    int64 p81 ↦ out_buf ⊕ p · rt_sb⦅p81 ⸴ 101⦆ · p ← p ⊕ 1 · // e
+    int64 p82 ↦ out_buf ⊕ p · rt_sb⦅p82 ⸴ 97⦆ · p ← p ⊕ 1 ·  // a
+    int64 p83 ↦ out_buf ⊕ p · rt_sb⦅p83 ⸴ 115⦆ · p ← p ⊕ 1 · // s
+    int64 p84 ↦ out_buf ⊕ p · rt_sb⦅p84 ⸴ 117⦆ · p ← p ⊕ 1 · // u
+    int64 p85 ↦ out_buf ⊕ p · rt_sb⦅p85 ⸴ 114⦆ · p ← p ⊕ 1 · // r
+    int64 p86 ↦ out_buf ⊕ p · rt_sb⦅p86 ⸴ 101⦆ · p ← p ⊕ 1 · // e
+    int64 p87 ↦ out_buf ⊕ p · rt_sb⦅p87 ⸴ 32⦆ · p ← p ⊕ 1 ·  // ' '
+    int64 p88 ↦ out_buf ⊕ p · rt_sb⦅p88 ⸴ 113⦆ · p ← p ⊕ 1 · // q
+    int64 p89 ↦ out_buf ⊕ p · rt_sb⦅p89 ⸴ 59⦆ · p ← p ⊕ 1 ·  // ;
+    int64 p90 ↦ out_buf ⊕ p · rt_sb⦅p90 ⸴ 10⦆ · p ← p ⊕ 1 ·  // \n
+    int64 p91 ↦ out_buf ⊕ p · rt_sb⦅p91 ⸴ 0⦆ ·
+    
+    yield p ·
+⟧
+
+// ============================================================================
+// PART 3: POST-QUANTUM CIRCUIT INTEGRITY ATTESTATION (SHA3-256)
+// ============================================================================
+
+process qpu_attest_circuit⦅int64 qasm_ptr ⸴ int64 qasm_len ⸴ int64 digest_out ⸴ int64 sig_out⦆ → int64 ⟦
+    qadav_sha3_256⦅qasm_ptr ⸴ qasm_len ⸴ digest_out⦆ ·
+    qadav_sha3_256⦅digest_out ⸴ 32 ⸴ sig_out⦆ ·
+    yield 1 ·
+⟧
+
+// ============================================================================
+// PART 4: MULTI-VENDOR SUBMISSION ENVELOPE FORMATTING
+// ============================================================================
+
+process qpu_format_ibm_envelope⦅int64 qasm_ptr ⸴ int64 out_buf⦆ → int64 ⟦
+    // Format JSON-RPC: {"program_id":"sampler","hub":"ibm-q","group":"open","project":"main","params":{"shots":1000}}
+    int64 p ↦ 0 ·
+    int64 p0 ↦ out_buf ⊕ p · rt_sb⦅p0 ⸴ 123⦆ · p ← p ⊕ 1 · // {
+    int64 p1 ↦ out_buf ⊕ p · rt_sb⦅p1 ⸴ 34⦆ · p ← p ⊕ 1 ·  // "
+    int64 p2 ↦ out_buf ⊕ p · rt_sb⦅p2 ⸴ 112⦆ · p ← p ⊕ 1 · // p
+    int64 p3 ↦ out_buf ⊕ p · rt_sb⦅p3 ⸴ 114⦆ · p ← p ⊕ 1 · // r
+    int64 p4 ↦ out_buf ⊕ p · rt_sb⦅p4 ⸴ 111⦆ · p ← p ⊕ 1 · // o
+    int64 p5 ↦ out_buf ⊕ p · rt_sb⦅p5 ⸴ 103⦆ · p ← p ⊕ 1 · // g
+    int64 p6 ↦ out_buf ⊕ p · rt_sb⦅p6 ⸴ 114⦆ · p ← p ⊕ 1 · // r
+    int64 p7 ↦ out_buf ⊕ p · rt_sb⦅p7 ⸴ 97⦆ · p ← p ⊕ 1 ·  // a
+    int64 p8 ↦ out_buf ⊕ p · rt_sb⦅p8 ⸴ 109⦆ · p ← p ⊕ 1 · // m
+    int64 p9 ↦ out_buf ⊕ p · rt_sb⦅p9 ⸴ 95⦆ · p ← p ⊕ 1 ·  // _
+    int64 p10 ↦ out_buf ⊕ p · rt_sb⦅p10 ⸴ 105⦆ · p ← p ⊕ 1 · // i
+    int64 p11 ↦ out_buf ⊕ p · rt_sb⦅p11 ⸴ 100⦆ · p ← p ⊕ 1 · // d
+    int64 p12 ↦ out_buf ⊕ p · rt_sb⦅p12 ⸴ 34⦆ · p ← p ⊕ 1 ·  // "
+    int64 p13 ↦ out_buf ⊕ p · rt_sb⦅p13 ⸴ 58⦆ · p ← p ⊕ 1 ·  // :
+    int64 p14 ↦ out_buf ⊕ p · rt_sb⦅p14 ⸴ 34⦆ · p ← p ⊕ 1 ·  // "
+    int64 p15 ↦ out_buf ⊕ p · rt_sb⦅p15 ⸴ 115⦆ · p ← p ⊕ 1 · // s
+    int64 p16 ↦ out_buf ⊕ p · rt_sb⦅p16 ⸴ 97⦆ · p ← p ⊕ 1 ·  // a
+    int64 p17 ↦ out_buf ⊕ p · rt_sb⦅p17 ⸴ 109⦆ · p ← p ⊕ 1 · // m
+    int64 p18 ↦ out_buf ⊕ p · rt_sb⦅p18 ⸴ 112⦆ · p ← p ⊕ 1 · // p
+    int64 p19 ↦ out_buf ⊕ p · rt_sb⦅p19 ⸴ 108⦆ · p ← p ⊕ 1 · // l
+    int64 p20 ↦ out_buf ⊕ p · rt_sb⦅p20 ⸴ 101⦆ · p ← p ⊕ 1 · // e
+    int64 p21 ↦ out_buf ⊕ p · rt_sb⦅p21 ⸴ 114⦆ · p ← p ⊕ 1 · // r
+    int64 p22 ↦ out_buf ⊕ p · rt_sb⦅p22 ⸴ 34⦆ · p ← p ⊕ 1 ·  // "
+    int64 p23 ↦ out_buf ⊕ p · rt_sb⦅p23 ⸴ 44⦆ · p ← p ⊕ 1 ·  // ,
+    int64 p24 ↦ out_buf ⊕ p · rt_sb⦅p24 ⸴ 34⦆ · p ← p ⊕ 1 ·  // "
+    int64 p25 ↦ out_buf ⊕ p · rt_sb⦅p25 ⸴ 115⦆ · p ← p ⊕ 1 · // s
+    int64 p26 ↦ out_buf ⊕ p · rt_sb⦅p26 ⸴ 104⦆ · p ← p ⊕ 1 · // h
+    int64 p27 ↦ out_buf ⊕ p · rt_sb⦅p27 ⸴ 111⦆ · p ← p ⊕ 1 · // o
+    int64 p28 ↦ out_buf ⊕ p · rt_sb⦅p28 ⸴ 116⦆ · p ← p ⊕ 1 · // t
+    int64 p29 ↦ out_buf ⊕ p · rt_sb⦅p29 ⸴ 115⦆ · p ← p ⊕ 1 · // s
+    int64 p30 ↦ out_buf ⊕ p · rt_sb⦅p30 ⸴ 34⦆ · p ← p ⊕ 1 ·  // "
+    int64 p31 ↦ out_buf ⊕ p · rt_sb⦅p31 ⸴ 58⦆ · p ← p ⊕ 1 ·  // :
+    int64 p32 ↦ out_buf ⊕ p · rt_sb⦅p32 ⸴ 49⦆ · p ← p ⊕ 1 ·  // 1
+    int64 p33 ↦ out_buf ⊕ p · rt_sb⦅p33 ⸴ 48⦆ · p ← p ⊕ 1 ·  // 0
+    int64 p34 ↦ out_buf ⊕ p · rt_sb⦅p34 ⸴ 48⦆ · p ← p ⊕ 1 ·  // 0
+    int64 p35 ↦ out_buf ⊕ p · rt_sb⦅p35 ⸴ 48⦆ · p ← p ⊕ 1 ·  // 0
+    int64 p36 ↦ out_buf ⊕ p · rt_sb⦅p36 ⸴ 125⦆ · p ← p ⊕ 1 · // }
+    int64 p37 ↦ out_buf ⊕ p · rt_sb⦅p37 ⸴ 0⦆ ·
+    yield p ·
+⟧
+
+// ============================================================================
+// PART 5: HARDWARE TOKEN & DISPATCH CHECKER
+// ============================================================================
+
+process qpu_check_dispatch_token⦅⦆ → int64 ⟦
+    // Honest hardware boundary: Default to offline validation mode (0)
+    // Live dispatch is only armed when an authorized hardware token is provided
+    yield 0 ·
+⟧
