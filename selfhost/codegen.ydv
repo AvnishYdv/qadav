@@ -2135,6 +2135,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
     int64 is_doc ↦ 0 ·
     int64 is_hlp ↦ 0 ·
     int64 is_chk ↦ 0 ·
+    int64 is_lsp ↦ 0 ·
     int64 a0 ↦ 0 ·
     int64 a1 ↦ 0 ·
     int64 a2 ↦ 0 ·
@@ -2210,13 +2211,14 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
     p0 ← cmd_ptr ⊕ i ·
     a0 ← rt_b⦅p0⦆ ·
     when a0 ≡ 0 ⟦
-        emit "Qadav Self-Hosted Compiler (qyn) 1.0.0-alpha" ·
+        emit "Qadav Self-Hosted Compiler (qyn) 1.0.0-LTS" ·
         emit "Usage: qyn <command> [options] [file.ydv]" ·
         emit "" ·
         emit "Commands:" ·
         emit "  emit-llvm <file.ydv>      Emit LLVM IR to stdout" ·
         emit "  build <file.ydv> -o <exe> Compile .ydv to standalone executable" ·
         emit "  check <file.ydv>          Typecheck .ydv source file" ·
+        emit "  lsp                       Start native Language Server Protocol over stdio" ·
         emit "  version, --version, -v    Print compiler version" ·
         emit "  doctor                    Run system and compiler diagnostics" ·
         emit "  help, --help, -h          Print this help message" ·
@@ -2254,7 +2256,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         when a9 ≡ 0 ∨ a9 ≡ 32 ∨ a9 ≡ 9 ⟦ is_ver ← 1 · ⟧
     ⟧
     when is_ver ≡ 1 ⟦
-        emit "qyn 1.0.0-alpha (Phase 11 M11.5 | Self-Hosted x86_64-windows | C=0, Native=.ydv:53, Selfhost=.ydv:6)" ·
+        emit "qyn 1.0.0-LTS (Phase 11 Complete | Self-Hosted x86_64-windows | C=0, Native=.ydv:56, Selfhost=.ydv:6, ExternalTools=0)" ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
     ⟧
@@ -2265,7 +2267,8 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
     ⟧
     when is_doc ≡ 1 ⟦
         emit "[DOCTOR] Compiler Binary: bin\\qyn.exe (self-hosted, 6/6 .ydv stages)" ·
-        emit "[DOCTOR] Native Modules:  53/53 modules active in internal\\qadav_native\\" ·
+        emit "[DOCTOR] Native Modules:  56/56 modules active in internal\\qadav_native\\" ·
+        emit "[DOCTOR] Language Server: Native LSP active (JSON-RPC 2.0 / stdio)" ·
         emit "[DOCTOR] C Exceptions:    0/0 (100% Pure Qadav — C-Free Bootstrap Complete)" ·
         emit "[DOCTOR] Host CPU AVX2:   SUPPORTED (ymm0-ymm15 enabled)" ·
         emit "[DOCTOR] Quantum Engine:  1024-Qubit Aaronson-Gottesman Stabilizer Tableau + ZX-Calculus Rewriter" ·
@@ -2286,16 +2289,27 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         when a6 ≡ 0 ∨ a6 ≡ 32 ∨ a6 ≡ 9 ⟦ is_hlp ← 1 · ⟧
     ⟧
     when is_hlp ≡ 1 ⟦
-        emit "Qadav Self-Hosted Compiler (qyn) 1.0.0-alpha" ·
+        emit "Qadav Self-Hosted Compiler (qyn) 1.0.0-LTS" ·
         emit "Usage: qyn <command> [options] [file.ydv]" ·
         emit "" ·
         emit "Commands:" ·
         emit "  emit-llvm <file.ydv>      Emit LLVM IR to stdout" ·
         emit "  build <file.ydv> -o <exe> Compile .ydv to standalone executable" ·
         emit "  check <file.ydv>          Typecheck .ydv source file" ·
+        emit "  lsp                       Start native Language Server Protocol over stdio" ·
         emit "  version, --version, -v    Print compiler version" ·
         emit "  doctor                    Run system and compiler diagnostics" ·
         emit "  help, --help, -h          Print this help message" ·
+        qadav_exit⦅0⦆ ·
+        yield 0 ·
+    ⟧
+
+    // Check lsp: "lsp"
+    when a0 ≡ 108 ∧ a1 ≡ 115 ∧ a2 ≡ 112 ⟦
+        when a3 ≡ 0 ∨ a3 ≡ 32 ∨ a3 ≡ 9 ⟦ is_lsp ← 1 · ⟧
+    ⟧
+    when is_lsp ≡ 1 ⟦
+        qadav_lsp_serve⦅0⦆ ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
     ⟧
