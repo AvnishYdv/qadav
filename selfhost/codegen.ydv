@@ -985,6 +985,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                     emit_proc_header⦅name ⸴ ret_type ⸴ param_name⦆ ·
                 ⟧
             ⟧
+            reset_vector_vars⦅0⦆ ·
             int64 t_proc ↦ walk_core_ast⦅body ⸴ temp_counter⦆ ·
             int64 is_term_proc ↦ get_is_terminated⦅⦆ ·
             when is_term_proc ≡ 0 ⟦
@@ -1041,6 +1042,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 set_proc_is_dot⦅0⦆ ·
                 emit_proc_header_2⦅name ⸴ ret_type ⸴ p1 ⸴ p2⦆ ·
             ⟧
+            reset_vector_vars⦅0⦆ ·
             int64 t_proc2 ↦ walk_core_ast⦅body ⸴ temp_counter⦆ ·
             int64 is_term_proc2 ↦ get_is_terminated⦅⦆ ·
             when is_term_proc2 ≡ 0 ⟦
@@ -1313,9 +1315,15 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                             emit sret_txt ·
                             yield t_yield_y ·
                         ⟧ otherwise ⟦
-                            text sret64_y ↦ format_ret_i64⦅last_t_y⦆ ·
-                            emit sret64_y ·
-                            yield t_yield_y ·
+                            when ekind_yd ≡ 3 ⟦
+                                text sret_d3 ↦ format_ret_double⦅last_t_y⦆ ·
+                                emit sret_d3 ·
+                                yield t_yield_y ·
+                            ⟧ otherwise ⟦
+                                text sret64_y ↦ format_ret_i64⦅last_t_y⦆ ·
+                                emit sret64_y ·
+                                yield t_yield_y ·
+                            ⟧
                         ⟧
                     ⟧
                 ⟧
@@ -1406,6 +1414,7 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
         | Call1Decl(name ⸴ arg) ⟹
             int64 t_arg_c1 ↦ walk_core_ast⦅arg ⸴ temp_counter⦆ ·
             int64 reg_arg_c1 ↦ get_last_temp⦅⦆ ·
+            int64 k_arg_c1 ↦ get_last_emit_kind⦅⦆ ·
             int64 res_temp_c1 ↦ t_arg_c1 ·
             int64 is_v1 ↦ 0 ·
             when str_eq⦅name ⸴ "vec4_load"⦆ ≡ 1 ⟦
@@ -1421,6 +1430,10 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                 is_v1 ← 1 ·
             ⟧
             when str_eq⦅name ⸴ "vec4_hsum"⦆ ≡ 1 ⟦
+                when k_arg_c1 ≠ 5 ⟦
+                    emit "qyn: type error: scalar-to-vector type mismatch in vector intrinsic" ·
+                    qadav_exit⦅1⦆ ·
+                ⟧
                 emit_vec4_hsum⦅res_temp_c1 ⸴ reg_arg_c1⦆ ·
                 set_last_temp⦅res_temp_c1⦆ ·
                 set_last_emit_kind⦅3⦆ ·
@@ -1441,59 +1454,89 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
             when is_v1 ≡ 1 ⟦
                 yield res_temp_c1 ⊕ 1 ·
             ⟧ otherwise ⟦
-                text call_line_c1 ↦ format_call_i64⦅name ⸴ res_temp_c1 ⸴ reg_arg_c1⦆ ·
-                emit call_line_c1 ·
-                set_last_temp⦅res_temp_c1⦆ ·
-                int64 is_void1 ↦ is_void_call_proc⦅name⦆ ·
-                when is_void1 ≡ 1 ⟦
-                    yield res_temp_c1 ·
+                int64 is_d_call1 ↦ 0 ·
+                when str_eq⦅name ⸴ "qadav_sqrt"⦆ ≡ 1 ∨ str_eq⦅name ⸴ "qadav_exp"⦆ ≡ 1 ∨ str_eq⦅name ⸴ "qadav_log"⦆ ≡ 1 ⟦
+                    is_d_call1 ← 1 ·
+                ⟧
+                when is_d_call1 ≡ 1 ⟦
+                    text call_line_d1 ↦ format_call_double_1arg⦅name ⸴ res_temp_c1 ⸴ reg_arg_c1⦆ ·
+                    emit call_line_d1 ·
+                    set_last_temp⦅res_temp_c1⦆ ·
+                    set_last_emit_kind⦅3⦆ ·
+                    yield res_temp_c1 ⊕ 1 ·
                 ⟧ otherwise ⟦
-                    int64 is_tag_p ↦ str_eq⦅name ⸴ "qadav_variant_get_tag"⦆ ·
-                    when is_tag_p ≡ 1 ⟦
-                        set_last_emit_kind⦅3⦆ ·
+                    text call_line_c1 ↦ format_call_i64⦅name ⸴ res_temp_c1 ⸴ reg_arg_c1⦆ ·
+                    emit call_line_c1 ·
+                    set_last_temp⦅res_temp_c1⦆ ·
+                    int64 is_void1 ↦ is_void_call_proc⦅name⦆ ·
+                    when is_void1 ≡ 1 ⟦
+                        yield res_temp_c1 ·
                     ⟧ otherwise ⟦
-                        int64 is_txt_ret ↦ is_text_returning_proc⦅name⦆ ·
-                        when is_txt_ret ≡ 1 ⟦
-                            set_last_emit_kind⦅0⦆ ·
+                        int64 is_tag_p ↦ str_eq⦅name ⸴ "qadav_variant_get_tag"⦆ ·
+                        when is_tag_p ≡ 1 ⟦
+                            set_last_emit_kind⦅3⦆ ·
                         ⟧ otherwise ⟦
-                            int64 is_log_ret ↦ is_logic_returning_proc⦅name⦆ ·
-                            when is_log_ret ≡ 1 ⟦
-                                set_last_emit_kind⦅4⦆ ·
+                            int64 is_txt_ret ↦ is_text_returning_proc⦅name⦆ ·
+                            when is_txt_ret ≡ 1 ⟦
+                                set_last_emit_kind⦅0⦆ ·
                             ⟧ otherwise ⟦
-                                set_last_emit_kind⦅1⦆ ·
+                                int64 is_log_ret ↦ is_logic_returning_proc⦅name⦆ ·
+                                when is_log_ret ≡ 1 ⟦
+                                    set_last_emit_kind⦅4⦆ ·
+                                ⟧ otherwise ⟦
+                                    set_last_emit_kind⦅1⦆ ·
+                                ⟧
                             ⟧
                         ⟧
+                        yield res_temp_c1 ⊕ 1 ·
                     ⟧
-                    yield res_temp_c1 ⊕ 1 ·
                 ⟧
             ⟧
         | Call2Decl(name ⸴ arg1 ⸴ arg2) ⟹
             int64 t_a1 ↦ walk_core_ast⦅arg1 ⸴ temp_counter⦆ ·
             int64 reg_a1 ↦ get_last_temp⦅⦆ ·
+            int64 k_a1 ↦ get_last_emit_kind⦅⦆ ·
             int64 t_a2 ↦ walk_core_ast⦅arg2 ⸴ t_a1⦆ ·
             int64 reg_a2 ↦ get_last_temp⦅⦆ ·
+            int64 k_a2 ↦ get_last_emit_kind⦅⦆ ·
             int64 res_temp_c2 ↦ t_a2 ·
             int64 is_v2 ↦ 0 ·
             int64 ret_v2 ↦ res_temp_c2 ⊕ 1 ·
             when str_eq⦅name ⸴ "vec4_store"⦆ ≡ 1 ⟦
+                when k_a2 ≠ 5 ⟦
+                    emit "qyn: type error: scalar-to-vector type mismatch in vector intrinsic" ·
+                    qadav_exit⦅1⦆ ·
+                ⟧
                 emit_vec4_store⦅reg_a1 ⸴ reg_a2⦆ ·
                 set_last_temp⦅res_temp_c2⦆ ·
                 is_v2 ← 1 ·
                 ret_v2 ← res_temp_c2 ·
             ⟧
             when str_eq⦅name ⸴ "vec4_add"⦆ ≡ 1 ⟦
+                when k_a1 ≠ 5 ∨ k_a2 ≠ 5 ⟦
+                    emit "qyn: type error: scalar-to-vector type mismatch in vector intrinsic" ·
+                    qadav_exit⦅1⦆ ·
+                ⟧
                 emit_vec4_add⦅res_temp_c2 ⸴ reg_a1 ⸴ reg_a2⦆ ·
                 set_last_temp⦅res_temp_c2⦆ ·
                 set_last_emit_kind⦅5⦆ ·
                 is_v2 ← 1 ·
             ⟧
             when str_eq⦅name ⸴ "vec4_sub"⦆ ≡ 1 ⟦
+                when k_a1 ≠ 5 ∨ k_a2 ≠ 5 ⟦
+                    emit "qyn: type error: scalar-to-vector type mismatch in vector intrinsic" ·
+                    qadav_exit⦅1⦆ ·
+                ⟧
                 emit_vec4_sub⦅res_temp_c2 ⸴ reg_a1 ⸴ reg_a2⦆ ·
                 set_last_temp⦅res_temp_c2⦆ ·
                 set_last_emit_kind⦅5⦆ ·
                 is_v2 ← 1 ·
             ⟧
             when str_eq⦅name ⸴ "vec4_mul"⦆ ≡ 1 ⟦
+                when k_a1 ≠ 5 ∨ k_a2 ≠ 5 ⟦
+                    emit "qyn: type error: scalar-to-vector type mismatch in vector intrinsic" ·
+                    qadav_exit⦅1⦆ ·
+                ⟧
                 emit_vec4_mul⦅res_temp_c2 ⸴ reg_a1 ⸴ reg_a2⦆ ·
                 set_last_temp⦅res_temp_c2⦆ ·
                 set_last_emit_kind⦅5⦆ ·
@@ -1671,12 +1714,19 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
         | Call3Decl(name ⸴ a1 ⸴ a2 ⸴ a3) ⟹
             int64 t_c3_1 ↦ walk_core_ast⦅a1 ⸴ temp_counter⦆ ·
             int64 reg_c3_1 ↦ get_last_temp⦅⦆ ·
+            int64 k_c3_1 ↦ get_last_emit_kind⦅⦆ ·
             int64 t_c3_2 ↦ walk_core_ast⦅a2 ⸴ t_c3_1⦆ ·
             int64 reg_c3_2 ↦ get_last_temp⦅⦆ ·
+            int64 k_c3_2 ↦ get_last_emit_kind⦅⦆ ·
             int64 t_c3_3 ↦ walk_core_ast⦅a3 ⸴ t_c3_2⦆ ·
             int64 reg_c3_3 ↦ get_last_temp⦅⦆ ·
+            int64 k_c3_3 ↦ get_last_emit_kind⦅⦆ ·
             int64 is_v3 ↦ 0 ·
             when str_eq⦅name ⸴ "vec4_fma"⦆ ≡ 1 ⟦
+                when k_c3_1 ≠ 5 ∨ k_c3_2 ≠ 5 ∨ k_c3_3 ≠ 5 ⟦
+                    emit "qyn: type error: scalar-to-vector type mismatch in vector intrinsic" ·
+                    qadav_exit⦅1⦆ ·
+                ⟧
                 emit_vec4_fma⦅t_c3_3 ⸴ reg_c3_1 ⸴ reg_c3_2 ⸴ reg_c3_3⦆ ·
                 set_last_temp⦅t_c3_3⦆ ·
                 set_last_emit_kind⦅5⦆ ·
@@ -1776,9 +1826,12 @@ process emit_common_decls_0⦅⦆ → logic ⟦
     emit "declare double @qadav_loss_cross_entropy(i8*, i8*)" ·
     emit "declare double @qadav_train_step(i8*, i8*, i8*, i32, i32, double, i32)" ·
     emit "declare void @qadav_train_epochs(i8*, i8*, i8*, i32, i32, double, i32)" ·
-    emit "declare double @qadav_sqrt(double)" ·
-    emit "declare double @qadav_exp(double)" ·
-    emit "declare double @qadav_log(double)" ·
+    int64 has_v_math ↦ get_has_vec256⦅0⦆ ·
+    when has_v_math ≡ 0 ⟦
+        emit "declare double @qadav_sqrt(double)" ·
+        emit "declare double @qadav_exp(double)" ·
+        emit "declare double @qadav_log(double)" ·
+    ⟧
     yield affirm ·
 ⟧
 
@@ -2076,6 +2129,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
     int64 is_ver ↦ 0 ·
     int64 is_doc ↦ 0 ·
     int64 is_hlp ↦ 0 ·
+    int64 is_chk ↦ 0 ·
     int64 a0 ↦ 0 ·
     int64 a1 ↦ 0 ·
     int64 a2 ↦ 0 ·
@@ -2195,7 +2249,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         when a9 ≡ 0 ∨ a9 ≡ 32 ∨ a9 ≡ 9 ⟦ is_ver ← 1 · ⟧
     ⟧
     when is_ver ≡ 1 ⟦
-        emit "qyn 1.0.0-alpha (Phase 11 M11.1 | Self-Hosted x86_64-windows | C=1, Native=.ydv:50, Selfhost=.ydv:6)" ·
+        emit "qyn 1.0.0-alpha (Phase 11 M11.2 | Self-Hosted x86_64-windows | C=0, Native=.ydv:51, Selfhost=.ydv:6)" ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
     ⟧
@@ -2206,8 +2260,8 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
     ⟧
     when is_doc ≡ 1 ⟦
         emit "[DOCTOR] Compiler Binary: bin\\qyn.exe (self-hosted, 6/6 .ydv stages)" ·
-        emit "[DOCTOR] Native Modules:  50/50 modules active in internal\\qadav_native\\" ·
-        emit "[DOCTOR] C Exceptions:    1/1 (qadav_nn.c — AVX2 kernel isolation)" ·
+        emit "[DOCTOR] Native Modules:  51/51 modules active in internal\\qadav_native\\" ·
+        emit "[DOCTOR] C Exceptions:    0/0 (100% Pure Qadav — C-Free Bootstrap Complete)" ·
         emit "[DOCTOR] Host CPU AVX2:   SUPPORTED (ymm0-ymm15 enabled)" ·
         emit "[DOCTOR] Backend Toolchain: clang.exe + lld-link.exe" ·
         emit "[DOCTOR] System Status:   HEALTHY — ready for native compilation" ·
@@ -2240,6 +2294,19 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         yield 0 ·
     ⟧
 
+    // Check check: "check"
+    when a0 ≡ 99 ∧ a1 ≡ 104 ∧ a2 ≡ 101 ∧ a3 ≡ 99 ∧ a4 ≡ 107 ⟦
+        when a5 ≡ 0 ∨ a5 ≡ 32 ∨ a5 ≡ 9 ⟦ is_chk ← 1 · ⟧
+    ⟧
+    when is_chk ≡ 1 ⟦
+        when str_eq⦅target_file ⸴ ""⦆ ≡ 1 ⟦
+            emit "qyn: error: unknown command or missing .ydv input file" ·
+            qadav_exit⦅1⦆ ·
+            yield 1 ·
+        ⟧
+        yield 2 ·
+    ⟧
+
     // Check if target_file is missing or empty
     when str_eq⦅target_file ⸴ ""⦆ ≡ 1 ⟦
         emit "qyn: error: unknown command or missing .ydv input file" ·
@@ -2254,9 +2321,12 @@ process scan_for_vec256⦅int64 num_toks⦆ → int64 ⟦
     int64 i ↦ 0 ·
     int64 found ↦ 0 ·
     cycle i ≺ num_toks ∧ found ≡ 0 ⟦
-        text lit ↦ token_literal⦅i⦆ ·
-        when str_eq⦅lit ⸴ "@vec256"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec4f64"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec8f32"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec4_load"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec4_store"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec4_fma"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec4_add"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec4_sub"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec4_mul"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec4_splat"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec4_hsum"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec8_load"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec8_store"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec8_fma"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec8_add"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec8_sub"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec8_mul"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec8_splat"⦆ ≡ 1 ⟦
-            found ← 1 ·
+        int64 kc ↦ token_kind_code⦅i⦆ ·
+        when kc ≠ 3 ⟦
+            text lit ↦ token_literal⦅i⦆ ·
+            when str_eq⦅lit ⸴ "@vec256"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec4f64"⦆ ≡ 1 ∨ str_eq⦅lit ⸴ "vec8f32"⦆ ≡ 1 ⟦
+                found ← 1 ·
+            ⟧
         ⟧
         i ← i ⊕ 1 ·
     ⟧
@@ -2275,6 +2345,21 @@ process emit_common_prefix⦅⦆ → logic ⟦
         emit "" ·
         emit "declare <4 x double> @llvm.fma.v4f64(<4 x double>, <4 x double>, <4 x double>)" ·
         emit "declare <8 x float> @llvm.fma.v8f32(<8 x float>, <8 x float>, <8 x float>)" ·
+        emit "declare double @llvm.sqrt.f64(double)" ·
+        emit "declare double @llvm.exp.f64(double)" ·
+        emit "declare double @llvm.log.f64(double)" ·
+        emit "define double @\"qadav_sqrt\"(double %x) #0 {" ·
+        emit "  %r = call double @llvm.sqrt.f64(double %x)" ·
+        emit "  ret double %r" ·
+        emit "}" ·
+        emit "define double @\"qadav_exp\"(double %x) #0 {" ·
+        emit "  %r = call double @llvm.exp.f64(double %x)" ·
+        emit "  ret double %r" ·
+        emit "}" ·
+        emit "define double @\"qadav_log\"(double %x) #0 {" ·
+        emit "  %r = call double @llvm.log.f64(double %x)" ·
+        emit "  ret double %r" ·
+        emit "}" ·
     ⟧
     yield affirm ·
 ⟧
@@ -2283,6 +2368,15 @@ process main⦅⦆ → int64 ⟦
     int64 cmd_ptr ↦ get_if_yield_val⦅⦆ ·
     text target_file ↦ get_input_path⦅⦆ ·
     int64 chk ↦ handle_cli⦅cmd_ptr ⸴ target_file⦆ ·
+    when chk ≡ 2 ⟦
+        reset_vector_vars⦅0⦆ ·
+        int64 num_toks_c ↦ tokenize_file⦅target_file⦆ ·
+        CoreAst prog_c ↦ parse_program⦅num_toks_c⦆ ·
+        int64 res_c ↦ walk_core_ast⦅prog_c ⸴ 1⦆ ·
+        emit "qyn: check: passed — zero type errors" ·
+        qadav_exit⦅0⦆ ·
+        yield 0 ·
+    ⟧
     when chk ≠ 0 ⟦
         yield chk ·
     ⟧

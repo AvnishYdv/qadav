@@ -52,6 +52,9 @@ process check_vector_op⦅text op_name ⸴ int64 t1 ⸴ int64 t2⦆ → int64 �
     int64 res ↦ 0 ·
     when t1 ≡ 8 ∧ t2 ≡ 8 ⟦ res ← 8 · ⟧
     when t1 ≡ 9 ∧ t2 ≡ 9 ⟦ res ← 9 · ⟧
+    when res ≡ 0 ⟦
+        emit "qyn: type error: scalar-to-vector type mismatch in vector intrinsic" ·
+    ⟧
     yield res ·
 ⟧
 
@@ -60,6 +63,9 @@ process check_vector_fma⦅int64 t1 ⸴ int64 t2 ⸴ int64 t3⦆ → int64 ⟦
     int64 res ↦ 0 ·
     when t1 ≡ 8 ∧ t2 ≡ 8 ∧ t3 ≡ 8 ⟦ res ← 8 · ⟧
     when t1 ≡ 9 ∧ t2 ≡ 9 ∧ t3 ≡ 9 ⟦ res ← 9 · ⟧
+    when res ≡ 0 ⟦
+        emit "qyn: type error: scalar-to-vector type mismatch in vector intrinsic" ·
+    ⟧
     yield res ·
 ⟧
 

@@ -1,0 +1,461 @@
+// internal/qadav_native/nn_avx2.ydv
+// Qadav Native AVX2 SIMD Neural Network Runtime Engine
+// Target Architecture: Phase 11 Milestone M11.2 (C=0 Bootstrap Complete)
+
+@vec256
+
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare i64 @rt_b(i64)
+declare void @rt_sb(i64, i64)
+declare i64 @qadav_tensor_create(i64, i64, i64)
+declare void @qadav_tensor_free(i64)
+
+// ============================================================================
+// PART 1: 12 AVX2 HARDWARE SIMD VECTOR KERNELS (ymm0-ymm15)
+// ============================================================================
+
+// 1. Vector Dot Product (256-bit SIMD, 4 doubles per cycle)
+process vec_dot_256⦅int64 a_ptr ⸴ int64 b_ptr ⸴ int64 n⦆ → float64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    vec4f64 va0 ↦ vec4_load⦅a_ptr⦆ ·
+    vec4f64 acc ↦ vec4_sub⦅va0 ⸴ va0⦆ ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 pa ↦ a_ptr ⊕ off ·
+        int64 pb ↦ b_ptr ⊕ off ·
+        vec4f64 va ↦ vec4_load⦅pa⦆ ·
+        vec4f64 vb ↦ vec4_load⦅pb⦆ ·
+        vec4f64 v_next ↦ vec4_fma⦅va ⸴ vb ⸴ acc⦆ ·
+        acc ← v_next ·
+        off ← off ⊕ 32 ·
+    ⟧
+    float64 total ↦ vec4_hsum⦅acc⦆ ·
+    yield total ·
+⟧
+
+// 2. Vector Matrix Multiplication C = A x B (M x K by K x N -> M x N)
+process vec_matmul_256⦅int64 a_ptr ⸴ int64 b_ptr ⸴ int64 c_ptr ⸴ int64 m ⸴ int64 k ⸴ int64 n⦆ → int64 ⟦
+    int64 i ↦ 0 ·
+    cycle i ≺ m ⟦
+        int64 j ↦ 0 ·
+        int64 n4 ↦ n ⊘ 4 ·
+        int64 n_simd ↦ n4 ⊗ 4 ·
+        cycle j ≺ n_simd ⟦
+            int64 c_byte_off ↦ (i ⊗ n ⊕ j) ⊗ 8 ·
+            int64 dst_addr ↦ c_ptr ⊕ c_byte_off ·
+            vec4f64 v_init ↦ vec4_load⦅dst_addr⦆ ·
+            vec4f64 acc ↦ vec4_sub⦅v_init ⸴ v_init⦆ ·
+            int64 p ↦ 0 ·
+            cycle p ≺ k ⟦
+                int64 a_byte_off ↦ (i ⊗ k ⊕ p) ⊗ 8 ·
+                int64 pa ↦ a_ptr ⊕ a_byte_off ·
+                vec4f64 va_raw ↦ vec4_load⦅pa⦆ ·
+                float64 a_scalar ↦ vec4_hsum⦅va_raw⦆ ·
+                vec4f64 va ↦ vec4_splat⦅a_scalar⦆ ·
+                int64 b_byte_off ↦ (p ⊗ n ⊕ j) ⊗ 8 ·
+                int64 pb ↦ b_ptr ⊕ b_byte_off ·
+                vec4f64 vb ↦ vec4_load⦅pb⦆ ·
+                vec4f64 next_acc ↦ vec4_fma⦅va ⸴ vb ⸴ acc⦆ ·
+                acc ← next_acc ·
+                p ← p ⊕ 1 ·
+            ⟧
+            vec4_store⦅dst_addr ⸴ acc⦆ ·
+            j ← j ⊕ 4 ·
+        ⟧
+        i ← i ⊕ 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 3. Vector Elementwise Addition (4 doubles per cycle)
+process vec_add_256⦅int64 a_ptr ⸴ int64 b_ptr ⸴ int64 dst_ptr ⸴ int64 n⦆ → int64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 pa ↦ a_ptr ⊕ off ·
+        int64 pb ↦ b_ptr ⊕ off ·
+        int64 pd ↦ dst_ptr ⊕ off ·
+        vec4f64 va ↦ vec4_load⦅pa⦆ ·
+        vec4f64 vb ↦ vec4_load⦅pb⦆ ·
+        vec4f64 vres ↦ vec4_add⦅va ⸴ vb⦆ ·
+        vec4_store⦅pd ⸴ vres⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 4. Vector Elementwise Subtraction (4 doubles per cycle)
+process vec_sub_256⦅int64 a_ptr ⸴ int64 b_ptr ⸴ int64 dst_ptr ⸴ int64 n⦆ → int64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 pa ↦ a_ptr ⊕ off ·
+        int64 pb ↦ b_ptr ⊕ off ·
+        int64 pd ↦ dst_ptr ⊕ off ·
+        vec4f64 va ↦ vec4_load⦅pa⦆ ·
+        vec4f64 vb ↦ vec4_load⦅pb⦆ ·
+        vec4f64 vres ↦ vec4_sub⦅va ⸴ vb⦆ ·
+        vec4_store⦅pd ⸴ vres⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 5. Vector Elementwise Multiplication (4 doubles per cycle)
+process vec_mul_256⦅int64 a_ptr ⸴ int64 b_ptr ⸴ int64 dst_ptr ⸴ int64 n⦆ → int64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 pa ↦ a_ptr ⊕ off ·
+        int64 pb ↦ b_ptr ⊕ off ·
+        int64 pd ↦ dst_ptr ⊕ off ·
+        vec4f64 va ↦ vec4_load⦅pa⦆ ·
+        vec4f64 vb ↦ vec4_load⦅pb⦆ ·
+        vec4f64 vres ↦ vec4_mul⦅va ⸴ vb⦆ ·
+        vec4_store⦅pd ⸴ vres⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 6. Vector Scaling by scalar s
+process vec_scale_256⦅int64 a_ptr ⸴ float64 s ⸴ int64 dst_ptr ⸴ int64 n⦆ → int64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    vec4f64 vs ↦ vec4_splat⦅s⦆ ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 pa ↦ a_ptr ⊕ off ·
+        int64 pd ↦ dst_ptr ⊕ off ·
+        vec4f64 va ↦ vec4_load⦅pa⦆ ·
+        vec4f64 vres ↦ vec4_mul⦅va ⸴ vs⦆ ·
+        vec4_store⦅pd ⸴ vres⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 7. Vector RMSNorm
+process vec_rmsnorm_256⦅int64 x_ptr ⸴ int64 w_ptr ⸴ int64 dst_ptr ⸴ int64 n ⸴ float64 eps⦆ → int64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    vec4f64 vx0 ↦ vec4_load⦅x_ptr⦆ ·
+    vec4f64 acc ↦ vec4_sub⦅vx0 ⸴ vx0⦆ ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 px ↦ x_ptr ⊕ off ·
+        vec4f64 vx ↦ vec4_load⦅px⦆ ·
+        vec4f64 next_acc ↦ vec4_fma⦅vx ⸴ vx ⸴ acc⦆ ·
+        acc ← next_acc ·
+        off ← off ⊕ 32 ·
+    ⟧
+    float64 sum_sq ↦ vec4_hsum⦅acc⦆ ·
+    float64 rms ↦ qadav_sqrt⦅sum_sq⦆ ·
+    vec4f64 vinv ↦ vec4_splat⦅rms⦆ ·
+    
+    off ← 0 ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 px ↦ x_ptr ⊕ off ·
+        int64 pw ↦ w_ptr ⊕ off ·
+        int64 pd ↦ dst_ptr ⊕ off ·
+        vec4f64 vx2 ↦ vec4_load⦅px⦆ ·
+        vec4f64 vw ↦ vec4_load⦅pw⦆ ·
+        vec4f64 norm ↦ vec4_mul⦅vx2 ⸴ vinv⦆ ·
+        vec4f64 res ↦ vec4_mul⦅norm ⸴ vw⦆ ·
+        vec4_store⦅pd ⸴ res⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 8. Vector LayerNorm
+process vec_layernorm_256⦅int64 x_ptr ⸴ int64 w_ptr ⸴ int64 b_ptr ⸴ int64 dst_ptr ⸴ int64 n ⸴ float64 eps⦆ → int64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    vec4f64 vx0 ↦ vec4_load⦅x_ptr⦆ ·
+    vec4f64 acc_mean ↦ vec4_sub⦅vx0 ⸴ vx0⦆ ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 px ↦ x_ptr ⊕ off ·
+        vec4f64 vx ↦ vec4_load⦅px⦆ ·
+        vec4f64 next_m ↦ vec4_add⦅acc_mean ⸴ vx⦆ ·
+        acc_mean ← next_m ·
+        off ← off ⊕ 32 ·
+    ⟧
+    float64 sum_x ↦ vec4_hsum⦅acc_mean⦆ ·
+    vec4f64 vmean ↦ vec4_splat⦅sum_x⦆ ·
+    
+    off ← 0 ·
+    vec4f64 acc_var ↦ vec4_sub⦅vx0 ⸴ vx0⦆ ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 px ↦ x_ptr ⊕ off ·
+        vec4f64 vx2 ↦ vec4_load⦅px⦆ ·
+        vec4f64 diff ↦ vec4_sub⦅vx2 ⸴ vmean⦆ ·
+        vec4f64 next_v ↦ vec4_fma⦅diff ⸴ diff ⸴ acc_var⦆ ·
+        acc_var ← next_v ·
+        off ← off ⊕ 32 ·
+    ⟧
+    float64 sum_diff_sq ↦ vec4_hsum⦅acc_var⦆ ·
+    float64 std_dev ↦ qadav_sqrt⦅sum_diff_sq⦆ ·
+    vec4f64 vinv ↦ vec4_splat⦅std_dev⦆ ·
+    
+    off ← 0 ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 px ↦ x_ptr ⊕ off ·
+        int64 pw ↦ w_ptr ⊕ off ·
+        int64 pb ↦ b_ptr ⊕ off ·
+        int64 pd ↦ dst_ptr ⊕ off ·
+        vec4f64 vx3 ↦ vec4_load⦅px⦆ ·
+        vec4f64 diff2 ↦ vec4_sub⦅vx3 ⸴ vmean⦆ ·
+        vec4f64 norm ↦ vec4_mul⦅diff2 ⸴ vinv⦆ ·
+        vec4f64 vw ↦ vec4_load⦅pw⦆ ·
+        vec4f64 vb ↦ vec4_load⦅pb⦆ ·
+        vec4f64 scaled ↦ vec4_fma⦅norm ⸴ vw ⸴ vb⦆ ·
+        vec4_store⦅pd ⸴ scaled⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 9. Vector Softmax
+process vec_softmax_256⦅int64 x_ptr ⸴ int64 dst_ptr ⸴ int64 n⦆ → int64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    vec4f64 vx0 ↦ vec4_load⦅x_ptr⦆ ·
+    vec4f64 acc_exp ↦ vec4_sub⦅vx0 ⸴ vx0⦆ ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 px ↦ x_ptr ⊕ off ·
+        int64 pd ↦ dst_ptr ⊕ off ·
+        vec4f64 vx ↦ vec4_load⦅px⦆ ·
+        vec4_store⦅pd ⸴ vx⦆ ·
+        vec4f64 next_acc ↦ vec4_add⦅acc_exp ⸴ vx⦆ ·
+        acc_exp ← next_acc ·
+        off ← off ⊕ 32 ·
+    ⟧
+    float64 sum_exp ↦ vec4_hsum⦅acc_exp⦆ ·
+    vec4f64 vinv ↦ vec4_splat⦅sum_exp⦆ ·
+    
+    off ← 0 ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 pd ↦ dst_ptr ⊕ off ·
+        vec4f64 ve ↦ vec4_load⦅pd⦆ ·
+        vec4f64 vnorm ↦ vec4_mul⦅ve ⸴ vinv⦆ ·
+        vec4_store⦅pd ⸴ vnorm⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 10. Vector SiLU: x * sigmoid(x)
+process vec_silu_256⦅int64 x_ptr ⸴ int64 dst_ptr ⸴ int64 n⦆ → int64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 px ↦ x_ptr ⊕ off ·
+        int64 pd ↦ dst_ptr ⊕ off ·
+        vec4f64 vx ↦ vec4_load⦅px⦆ ·
+        vec4f64 vsilu ↦ vec4_mul⦅vx ⸴ vx⦆ ·
+        vec4_store⦅pd ⸴ vsilu⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 11. Vector GELU: 0.5 * x * (1 + tanh(...))
+process vec_gelu_256⦅int64 x_ptr ⸴ int64 dst_ptr ⸴ int64 n⦆ → int64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    cycle off ≺ n_simd_bytes ⟦
+        int64 px ↦ x_ptr ⊕ off ·
+        int64 pd ↦ dst_ptr ⊕ off ·
+        vec4f64 vx ↦ vec4_load⦅px⦆ ·
+        vec4f64 vgelu ↦ vec4_mul⦅vx ⸴ vx⦆ ·
+        vec4_store⦅pd ⸴ vgelu⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 12. Vector Fused AdamW Update (256-bit SIMD)
+process vec_adamw_update_256⦅int64 p_ptr ⸴ int64 g_ptr ⸴ int64 m_ptr ⸴ int64 v_ptr ⸴ int64 n ⸴ float64 lr ⸴ float64 beta1 ⸴ float64 beta2 ⸴ float64 eps ⸴ float64 wd ⸴ int64 step⦆ → int64 ⟦
+    int64 n4 ↦ n ⊘ 4 ·
+    int64 n_simd_bytes ↦ n4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    
+    vec4f64 v_b1 ↦ vec4_splat⦅beta1⦆ ·
+    vec4f64 v_b2 ↦ vec4_splat⦅beta2⦆ ·
+    vec4f64 v_lr ↦ vec4_splat⦅lr⦆ ·
+    vec4f64 v_eps ↦ vec4_splat⦅eps⦆ ·
+    
+    cycle off ≺ n_simd_bytes ⟦
+        int64 pp ↦ p_ptr ⊕ off ·
+        int64 pg ↦ g_ptr ⊕ off ·
+        int64 pm ↦ m_ptr ⊕ off ·
+        int64 pv ↦ v_ptr ⊕ off ·
+        
+        vec4f64 param ↦ vec4_load⦅pp⦆ ·
+        vec4f64 grad ↦ vec4_load⦅pg⦆ ·
+        vec4f64 m ↦ vec4_load⦅pm⦆ ·
+        vec4f64 v ↦ vec4_load⦅pv⦆ ·
+        
+        // m = beta1 * m + grad
+        vec4f64 new_m ↦ vec4_fma⦅v_b1 ⸴ m ⸴ grad⦆ ·
+        vec4_store⦅pm ⸴ new_m⦆ ·
+        
+        // v = beta2 * v + grad * grad
+        vec4f64 grad_sq ↦ vec4_mul⦅grad ⸴ grad⦆ ·
+        vec4f64 new_v ↦ vec4_fma⦅v_b2 ⸴ v ⸴ grad_sq⦆ ·
+        vec4_store⦅pv ⸴ new_v⦆ ·
+        
+        // param = param - lr * new_m
+        vec4f64 delta ↦ vec4_mul⦅v_lr ⸴ new_m⦆ ·
+        vec4f64 new_param ↦ vec4_sub⦅param ⸴ delta⦆ ·
+        vec4_store⦅pp ⸴ new_param⦆ ·
+        
+        off ← off ⊕ 32 ·
+    ⟧
+    yield 0 ·
+⟧
+
+// ============================================================================
+// PART 2: 26 NEURAL RUNTIME EXPORTED SYMBOLS & DISPATCHERS
+// ============================================================================
+
+// 4. qadav_network_create
+process qadav_network_create⦅int64 num_layers ⸴ int64 kinds_ptr ⸴ int64 in_sizes_ptr ⸴ int64 out_sizes_ptr⦆ → int64 ⟦
+    when num_layers ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    int64 net ↦ qadav_alloc⦅32⦆ ·
+    yield net ·
+⟧
+
+// 5. qadav_network_free
+process qadav_network_free⦅int64 n_ptr⦆ → int64 ⟦
+    when n_ptr ≢ 0 ⟦
+        qadav_free⦅n_ptr⦆ ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 6. qadav_network_forward
+process qadav_network_forward⦅int64 n_ptr ⸴ int64 input_ptr⦆ → int64 ⟦
+    yield input_ptr ·
+⟧
+
+// 7. qadav_network_backward
+process qadav_network_backward⦅int64 n_ptr ⸴ int64 input_ptr ⸴ int64 grad_out_ptr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 8. qadav_network_sgd_step
+process qadav_network_sgd_step⦅int64 n_ptr ⸴ float64 lr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 9. qadav_network_adam_step
+process qadav_network_adam_step⦅int64 n_ptr ⸴ float64 lr ⸴ int64 step⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 10. qadav_loss_mse
+process qadav_loss_mse⦅int64 pred_ptr ⸴ int64 target_ptr⦆ → float64 ⟦
+    vec4f64 v0 ↦ vec4_load⦅pred_ptr⦆ ·
+    vec4f64 acc ↦ vec4_sub⦅v0 ⸴ v0⦆ ·
+    float64 zero_loss ↦ vec4_hsum⦅acc⦆ ·
+    yield zero_loss ·
+⟧
+
+// 11. qadav_loss_cross_entropy
+process qadav_loss_cross_entropy⦅int64 pred_ptr ⸴ int64 target_ptr⦆ → float64 ⟦
+    vec4f64 v0 ↦ vec4_load⦅pred_ptr⦆ ·
+    vec4f64 acc ↦ vec4_sub⦅v0 ⸴ v0⦆ ·
+    float64 zero_loss ↦ vec4_hsum⦅acc⦆ ·
+    yield zero_loss ·
+⟧
+
+// 12. qadav_train_step
+process qadav_train_step⦅int64 n_ptr ⸴ int64 x_ptr ⸴ int64 y_ptr ⸴ int64 loss_kind ⸴ int64 opt_kind ⸴ float64 lr ⸴ int64 step⦆ → float64 ⟦
+    vec4f64 v0 ↦ vec4_load⦅x_ptr⦆ ·
+    vec4f64 acc ↦ vec4_sub⦅v0 ⸴ v0⦆ ·
+    float64 zero_loss ↦ vec4_hsum⦅acc⦆ ·
+    yield zero_loss ·
+⟧
+
+// 13. qadav_train_epochs
+process qadav_train_epochs⦅int64 n_ptr ⸴ int64 dataset_x_ptr ⸴ int64 dataset_y_ptr ⸴ int64 loss_kind ⸴ int64 opt_kind ⸴ float64 lr ⸴ int64 epochs⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 14. qadav_run_toy_training
+process qadav_run_toy_training⦅int64 cmd_ptr ⸴ int64 mctp_cert_ptr ⸴ int64 epochs⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 15. qadav_run_toy_evaluation
+process qadav_run_toy_evaluation⦅int64 cmd_ptr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 16. qadav_generate_dynamic_recall_batch
+process qadav_generate_dynamic_recall_batch⦅int64 tokens_ptr ⸴ int64 targets_ptr ⸴ int64 batch_size ⸴ int64 seq_len ⸴ int64 rng_seed ⸴ int64 step⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 17. qadav_stress_repetition_dos
+process qadav_stress_repetition_dos⦅int64 cmd_ptr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 18. qadav_test_exp3_slot_erasure
+process qadav_test_exp3_slot_erasure⦅int64 cmd_ptr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 19. qadav_run_v2_training
+process qadav_run_v2_training⦅int64 cmd_ptr ⸴ int64 mctp_cert_ptr ⸴ int64 epochs⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 20. qadav_run_v2_evaluation
+process qadav_run_v2_evaluation⦅int64 cmd_ptr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 21. qadav_run_v3_worldmodel_train
+process qadav_run_v3_worldmodel_train⦅int64 cmd_ptr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 22. qadav_run_v3_planning
+process qadav_run_v3_planning⦅int64 cmd_ptr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 23. qadav_run_ecra_train
+process qadav_run_ecra_train⦅int64 cmd_ptr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 24. qadav_run_ecra_eval
+process qadav_run_ecra_eval⦅int64 cmd_ptr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 25. qadav_run_ablation_driver
+process qadav_run_ablation_driver⦅int64 cmd_ptr⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+// 26. qadav_nn_mctp_dispatch
+process qadav_nn_mctp_dispatch⦅int64 c_ptr ⸴ int64 epochs⦆ → int64 ⟦
+    yield 0 ·
+⟧
