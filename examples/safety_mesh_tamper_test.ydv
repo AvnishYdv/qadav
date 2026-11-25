@@ -1,0 +1,109 @@
+// examples/safety_mesh_tamper_test.ydv
+// Active Tamper Stress Test for Production Multi-Agent AI Safety Mesh (M11.8)
+// Demonstrating QEEH Hardware Decoherence Firewall triggering on mid-flight tamper:
+// Corrupting 1 byte of reasoning commitment triggers instant decoherence with exit code 0xDEADBEEF (-559038737).
+
+network MeshModel ⟦
+    dense ⟬2⸴ 4⟭ ·
+    relu ·
+    dense ⟬4⸴ 1⟭ ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "======================================================================" ·
+    emit "=== QADAV PHASE 11 M11.8 SAFETY MESH ACTIVE TAMPER DECOHERENCE TEST ===" ·
+    emit "======================================================================" ·
+
+    // Protocol 1: QEEH — Epistemic Ethical Authority
+    ethical_boundary logic_auth ⟦
+        rule execution_safety ↦ 1.0 ·
+        rule non_harm ↦ 1.0 ·
+        rule cross_modal_integrity ↦ 1.0 ·
+        rule epistemic_consistency ↦ 1.0 ·
+    ⟧
+
+    // Protocol 4: QERA — Audit Reasoning Chain with Post-Quantum Commitment
+    reasoning_chain clinical with logic_auth ⟦ capacity ↦ 100 · ⟧
+
+    // STAGE 1: VAULT UNSEAL (QEMWV 3-of-5 THRESHOLD)
+    vault model_vault with logic_auth ⟨ MeshModel ⟩ threshold ↦ 3 ·
+    seal model_vault ·
+    unseal model_vault with logic_auth ·
+    emit "Stage 1: QEMWV_UNSEAL_VERIFIED" ·
+
+    // STAGE 2: SANDBOXED UNTRUSTED TOOL EXECUTION (QESI + QECMA)
+    ethical_boundary untrusted_auth ⟦
+        rule tool_safety ↦ 1.0 ·
+    ⟧
+    sandbox_create untrusted_sandbox with untrusted_auth ⟦ capacity ↦ 20 · ⟧
+    tool_register safe_tool with untrusted_auth pre ⟦ 1 ⟧ post ⟦ 1 ⟧ ·
+    sandbox_run untrusted_sandbox ⦅ safe_tool⦅"valid_data_ingest"⦆ ⦆ ·
+    sandbox_run untrusted_sandbox ⦅ safe_tool⦅"trigger_violation"⦆ ⦆ ·
+    text sb_attestation ↦ sandbox_verify untrusted_sandbox ·
+    emit "Stage 2: QESI_HOST_SURVIVED" ·
+
+    tensor⟨float64⟩⟬4⟭ sensor_readings ↦ tensor⟬0.25⸴ 0.50⸴ 0.75⸴ 1.00⟭ ·
+    text sensory_description ↦ "Camera detected obstacle at 2m" ·
+    int64 semantic_category ↦ 7919 ·
+
+    modality sensor_mod as tensor_input from sensor_readings ·
+    modality text_mod as text_input from sensory_description ·
+    modality concept_mod as concept_input from semantic_category ·
+
+    reasoning_chain multimodal_log with logic_auth ⟦ capacity ↦ 20 · ⟧
+    cross_modal_reason multimodal_log deduce from ⟬sensor_mod⸴ text_mod⸴ concept_mod⟭ to "Obstacle confirmed: initiate braking maneuver" with 0.98 ·
+    emit "Stage 2: QECMA_BUNDLED" ·
+
+    // STAGE 3: PROOF-CARRYING REASONING & ABSTENTION (QERA + TTPCR)
+    certified_reason clinical deduce from "Patient presents severe acute respiratory distress" to "Pathology marker temp_gt_38_wbc_elevated" witness "clinical_guideline_temp_gt_38" confidence ↦ 0.96 ·
+    certified_reason clinical induce from "Pathology marker temp_gt_38_wbc_elevated" to "Order comprehensive microbiology panel" witness "pathology_protocol_wbc" confidence ↦ 0.94 ·
+    certified_reason clinical abduce from "Order comprehensive microbiology panel" to "Bacterial agent Streptococcus suspected" witness "microbiology_differential_wbc" confidence ↦ 0.91 ·
+    certified_reason clinical verify from "Bacterial agent Streptococcus suspected" to "Targeted antibiotic cephalosporin approved" witness "clinical_pharmacology_id" confidence ↦ 0.97 ·
+
+    abstain_check clinical threshold ↦ 0.85 mode ↦ refuse ·
+    emit "Stage 3: TTPCR_4_STEPS_CERTIFIED" ·
+
+    // STAGE 4: BYZANTINE-ROBUST FEDERATED GRADIENT UPDATE (BARAT + CDAGA)
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w0 ↦ tensor⟬⟬0.01⸴ 0.02⟭⸴ ⟬0.03⸴ 0.04⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w1 ↦ tensor⟬⟬0.02⸴ 0.02⟭⸴ ⟬0.02⸴ 0.02⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w2 ↦ tensor⟬⟬0.015⸴ 0.025⟭⸴ ⟬0.03⸴ 0.03⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w3 ↦ tensor⟬⟬0.02⸴ 0.01⟭⸴ ⟬0.025⸴ 0.035⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w4_poison ↦ tensor⟬⟬500.0⸴ 500.0⟭⸴ ⟬500.0⸴ 500.0⟭⟭ ·
+    tensor⟨float64⟩⟬2⸴ 2⟭ grad_w5_poison ↦ tensor⟬⟬500.0⸴ 500.0⟭⸴ ⟬500.0⸴ 500.0⟭⟭ ·
+
+    barat_submit 0 into barat_grp with grad_w0 ·
+    barat_submit 1 into barat_grp with grad_w1 ·
+    barat_submit 2 into barat_grp with grad_w2 ·
+    barat_submit 3 into barat_grp with grad_w3 ·
+    barat_submit 4 into barat_grp with grad_w4_poison ·
+    barat_submit 5 into barat_grp with grad_w5_poison ·
+
+    barat_aggregate barat_grp into agg_grad cert into b_cert ·
+    barat_verify b_cert into barat_valid ·
+
+    cdaga_record from ⟦grad_w0 ⸴ grad_w1⟧ into cdaga_rec ·
+    cdaga_verify cdaga_rec into cdaga_valid ·
+    emit "Stage 4: BARAT_AGGREGATED_AND_CDAGA_VERIFIED" ·
+
+    // STAGE 5: ACTIVE TAMPER INJECTION -> INSTANT QEEH DECOHERENCE
+    tensor⟨float64⟩⟬4⸴ 2⟭ x ↦ tensor⟬⟬0.0⸴ 0.0⟭⸴ ⟬0.0⸴ 1.0⟭⸴ ⟬1.0⸴ 0.0⟭⸴ ⟬1.0⸴ 1.0⟭⟭ ·
+    tensor⟨float64⟩⟬4⸴ 1⟭ y ↦ tensor⟬⟬0.0⟭⸴ ⟬1.0⟭⸴ ⟬1.0⟭⸴ ⟬0.0⟭⟭ ·
+    provenance prov ⟨ MeshModel ⟩ ·
+    learn MeshModel on x ⸴ y ⟦
+        loss mse ·
+        optimizer adam ·
+        lr ↦ 0.1 ·
+        epochs ↦ 10 ·
+    ⟧
+    certify prov ·
+    emit "Stage 5: MCTP_CERTIFIED" ·
+
+    emit ">>> INJECTING ADVERSARIAL TAMPER: Corrupting reasoning certificate commitment byte <<<" ·
+    corrupt_certificate clinical ·
+
+    // This verification MUST fail, trigger QEEH decoherence, and terminate with 0xDEADBEEF
+    verify_chain clinical ·
+
+    emit "FATAL_ERROR: TAMPER_WAS_NOT_DETECTED" ·
+    yield 0 ·
+⟧

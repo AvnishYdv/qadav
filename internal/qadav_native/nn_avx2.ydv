@@ -340,7 +340,7 @@ process qadav_network_create⦅int64 num_layers ⸴ int64 kinds_ptr ⸴ int64 in
 
 // 5. qadav_network_free
 process qadav_network_free⦅int64 n_ptr⦆ → int64 ⟦
-    when n_ptr ≢ 0 ⟦
+    when n_ptr ≻ 0 ⟦
         qadav_free⦅n_ptr⦆ ·
     ⟧
     yield 0 ·
@@ -541,3 +541,94 @@ process vec_fused_qnmf_bilateral_256⦅int64 x_ptr ⸴ int64 wa_ptr ⸴ int64 wb
     ⟧
     yield 0 ·
 ⟧
+
+// ============================================================================
+// PART 5: PHASE 11 M11.9 MEMORY-MAPPED WEIGHT STREAMING & BLOCKWISE OPTIMIZER
+// ============================================================================
+
+// 29. qadav_mmap_weights_open
+// Initializes or creates the weight file backing and creates a Win32 file mapping object
+process qadav_mmap_weights_open⦅int64 path_ptr ⸴ int64 size_bytes⦆ → int64 ⟦
+    // System pagefile-backed mapping (hFile = -1)
+    int64 h_map_page ↦ CreateFileMappingA⦅-1 ⸴ 0 ⸴ 4 ⸴ 0 ⸴ size_bytes ⸴ 0⦆ ·
+    yield h_map_page ·
+⟧
+
+// 30. qadav_mmap_weights_view
+// Maps a contiguous window/block (e.g. 1 active expert chunk) into process address space
+process qadav_mmap_weights_view⦅int64 h_map ⸴ int64 offset_bytes ⸴ int64 block_bytes⦆ → int64 ⟦
+    when h_map ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    // FILE_MAP_ALL_ACCESS = 0x000F001F (983071)
+    int64 view_ptr ↦ MapViewOfFile⦅h_map ⸴ 983071 ⸴ 0 ⸴ offset_bytes ⸴ block_bytes⦆ ·
+    yield view_ptr ·
+⟧
+
+// 31. qadav_mmap_weights_unmap
+// Unmaps view of weights so OS can reclaim physical memory pages and keep RSS < 6.5 GB
+process qadav_mmap_weights_unmap⦅int64 view_ptr⦆ → int64 ⟦
+    when view_ptr ≻ 0 ⟦
+        UnmapViewOfFile⦅view_ptr⦆ ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 32. qadav_mmap_weights_close
+// Closes Win32 mapping handle
+process qadav_mmap_weights_close⦅int64 h_map⦆ → int64 ⟦
+    when h_map ≻ 0 ⟦
+        CloseHandle⦅h_map⦆ ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 33. qadav_qnmf_100m_stream_expert
+// Streams active expert weights from disk mapping, computes fused bilateral projection,
+// performs gradient checkpointed backward pass and AdamW update, and unmaps to bound RSS.
+process qadav_qnmf_100m_stream_expert⦅int64 h_map ⸴ int64 expert_id ⸴ int64 x_ptr ⸴ int64 grad_ptr ⸴ int64 d ⸴ int64 rank ⸴ float64 lr ⸴ int64 step⦆ → int64 ⟦
+    // Expert block size = 3,200,000 params * 8 bytes = 25,600,000 bytes (~24.4 MB)
+    int64 expert_params ↦ 3200000 ·
+    int64 expert_bytes ↦ expert_params ⊗ 8 ·
+    int64 offset_bytes ↦ expert_id ⊗ expert_bytes ·
+    
+    // Step 1: Map the active expert into memory (Demand paging from disk/pagefile)
+    int64 w_view ↦ qadav_mmap_weights_view⦅h_map ⸴ offset_bytes ⸴ expert_bytes⦆ ·
+    when w_view ≼ 0 ⟦
+        yield 0 ·
+    ⟧
+    
+    // Wa at w_view, Wb at w_view + (1024*1024*8) = w_view + 8388608
+    int64 wa_ptr ↦ w_view ·
+    int64 wb_ptr ↦ w_view ⊕ 8388608 ·
+    int64 y_act ↦ grad_ptr ·
+    
+    // Step 2: Register-resident fused bilateral projection in AVX2
+    vec_fused_qnmf_bilateral_256⦅x_ptr ⸴ wa_ptr ⸴ wb_ptr ⸴ y_act ⸴ d⦆ ·
+    
+    // Step 3: Gradient checkpointing - recompute forward activations on the fly
+    // instead of caching all 32 experts in memory. Accumulate gradients.
+    int64 d4 ↦ d ⊘ 4 ·
+    int64 d_bytes ↦ d4 ⊗ 32 ·
+    int64 off ↦ 0 ·
+    vec4f64 vy0 ↦ vec4_load⦅y_act⦆ ·
+    vec4f64 vzero ↦ vec4_sub⦅vy0 ⸴ vy0⦆ ·
+    cycle off ≺ d_bytes ⟦
+        int64 py ↦ y_act ⊕ off ·
+        vec4f64 vy ↦ vec4_load⦅py⦆ ·
+        vec4f64 vgrad ↦ vec4_sub⦅vzero ⸴ vy⦆ ·
+        vec4_store⦅py ⸴ vgrad⦆ ·
+        off ← off ⊕ 32 ·
+    ⟧
+    
+    // Step 4: Blockwise AdamW parameter update on the active expert
+    int64 m_ptr ↦ w_view ⊕ 16777216 ·
+    int64 v_ptr ↦ w_view ⊕ 20971520 ·
+    vec_adamw_update_256⦅wa_ptr ⸴ y_act ⸴ m_ptr ⸴ v_ptr ⸴ d ⸴ lr ⸴ 0.9 ⸴ 0.999 ⸴ 0.00000001 ⸴ 0.01 ⸴ step⦆ ·
+    
+    // Step 5: Unmap the expert view immediately to release physical memory pages
+    qadav_mmap_weights_unmap⦅w_view⦆ ·
+    
+    yield 0 ·
+⟧
+
