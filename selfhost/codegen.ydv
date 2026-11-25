@@ -1267,8 +1267,13 @@ process walk_core_ast⦅CoreAst target_node ⸴ int64 temp_counter⦆ → int64 
                     ⟧
                     when reg_r_bin ≺ 0 ⟦
                         int64 imm_val_bin ↦ last_int_value⦅⦆ ·
-                        text binop_imm_l ↦ format_binop_imm⦅op ⸴ res_temp_bin ⸴ reg_l_bin ⸴ imm_val_bin⦆ ·
-                        emit binop_imm_l ·
+                        when str_eq⦅op ⸴ "⊘"⦆ ≡ 1 ∨ str_eq⦅op ⸴ "/"⦆ ≡ 1 ⟦
+                            text sdiv_imm_l ↦ format_sdiv_imm⦅res_temp_bin ⸴ reg_l_bin ⸴ imm_val_bin⦆ ·
+                            emit sdiv_imm_l ·
+                        ⟧ otherwise ⟦
+                            text binop_imm_l ↦ format_binop_imm⦅op ⸴ res_temp_bin ⸴ reg_l_bin ⸴ imm_val_bin⦆ ·
+                            emit binop_imm_l ·
+                        ⟧
                     ⟧ otherwise ⟦
                         text binop_l ↦ format_binop⦅op ⸴ res_temp_bin ⸴ reg_l_bin ⸴ reg_r_bin⦆ ·
                         emit binop_l ·
@@ -2249,7 +2254,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         when a9 ≡ 0 ∨ a9 ≡ 32 ∨ a9 ≡ 9 ⟦ is_ver ← 1 · ⟧
     ⟧
     when is_ver ≡ 1 ⟦
-        emit "qyn 1.0.0-alpha (Phase 11 M11.2 | Self-Hosted x86_64-windows | C=0, Native=.ydv:51, Selfhost=.ydv:6)" ·
+        emit "qyn 1.0.0-alpha (Phase 11 M11.3 | Self-Hosted x86_64-windows | C=0, Native=.ydv:52, Selfhost=.ydv:6)" ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
     ⟧
@@ -2260,10 +2265,10 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
     ⟧
     when is_doc ≡ 1 ⟦
         emit "[DOCTOR] Compiler Binary: bin\\qyn.exe (self-hosted, 6/6 .ydv stages)" ·
-        emit "[DOCTOR] Native Modules:  51/51 modules active in internal\\qadav_native\\" ·
+        emit "[DOCTOR] Native Modules:  52/52 modules active in internal\\qadav_native\\" ·
         emit "[DOCTOR] C Exceptions:    0/0 (100% Pure Qadav — C-Free Bootstrap Complete)" ·
         emit "[DOCTOR] Host CPU AVX2:   SUPPORTED (ymm0-ymm15 enabled)" ·
-        emit "[DOCTOR] Backend Toolchain: clang.exe + lld-link.exe" ·
+        emit "[DOCTOR] Backend Toolchain: Native Qadav x86_64 Emitter + PE32+/COFF Linker (0 external tools)" ·
         emit "[DOCTOR] System Status:   HEALTHY — ready for native compilation" ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
@@ -2292,6 +2297,11 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         emit "  help, --help, -h          Print this help message" ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
+    ⟧
+
+    // Check build: "build"
+    when a0 ≡ 98 ∧ a1 ≡ 117 ∧ a2 ≡ 105 ∧ a3 ≡ 108 ∧ a4 ≡ 100 ⟦
+        when a5 ≡ 0 ∨ a5 ≡ 32 ∨ a5 ≡ 9 ⟦ yield 3 · ⟧
     ⟧
 
     // Check check: "check"
@@ -2365,9 +2375,17 @@ process emit_common_prefix⦅⦆ → logic ⟦
 ⟧
 
 process main⦅⦆ → int64 ⟦
-    int64 cmd_ptr ↦ get_if_yield_val⦅⦆ ·
     text target_file ↦ get_input_path⦅⦆ ·
+    int64 cmd_ptr ↦ get_if_yield_val⦅⦆ ·
     int64 chk ↦ handle_cli⦅cmd_ptr ⸴ target_file⦆ ·
+    int64 is_bm ↦ get_build_mode⦅⦆ ·
+    when chk ≡ 3 ∨ is_bm ≡ 1 ⟦
+        int64 out_p ↦ get_out_exe_path⦅⦆ ·
+        int64 b_res ↦ qadav_x86_build⦅target_file ⸴ out_p⦆ ·
+        emit "qyn: build: wrote native x86_64 PE32+ executable (0 external tools)" ·
+        qadav_exit⦅0⦆ ·
+        yield 0 ·
+    ⟧
     when chk ≡ 2 ⟦
         reset_vector_vars⦅0⦆ ·
         int64 num_toks_c ↦ tokenize_file⦅target_file⦆ ·

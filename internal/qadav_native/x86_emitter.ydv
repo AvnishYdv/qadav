@@ -1,0 +1,846 @@
+// internal/qadav_native/x86_emitter.ydv
+// Qadav Native x86_64 Machine Code Emitter and Direct PE32+ Compiler Backend (Phase 11 M11.3)
+// Microsoft x64 ABI: RCX, RDX, R8, R9 integer args; XMM0-XMM3 float args; YMM0-YMM15 AVX2 SIMD
+
+declare i64 @pe_get_byte(i64, i64)
+declare void @pe_set_byte(i64, i64, i64)
+declare void @pe_set_u16(i64, i64, i64)
+declare void @pe_set_u32(i64, i64, i64)
+declare void @pe_set_u64(i64, i64, i64)
+declare i64 @qadav_file_open_write(i64)
+declare i64 @qadav_file_write(i64, i64, i64)
+declare i64 @qadav_file_close(i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare i64 @rt_strlen(i64)
+
+process x86_emit_byte⦅int64 buf ⸴ int64 off ⸴ int64 b⦆ → int64 ⟦
+    pe_set_byte⦅buf ⸴ off ⸴ b⦆ ·
+    yield off ⊕ 1 ·
+⟧
+
+process x86_emit_u16⦅int64 buf ⸴ int64 off ⸴ int64 v⦆ → int64 ⟦
+    pe_set_u16⦅buf ⸴ off ⸴ v⦆ ·
+    yield off ⊕ 2 ·
+⟧
+
+process x86_emit_u32⦅int64 buf ⸴ int64 off ⸴ int64 v⦆ → int64 ⟦
+    pe_set_u32⦅buf ⸴ off ⸴ v⦆ ·
+    yield off ⊕ 4 ·
+⟧
+
+process x86_emit_u64⦅int64 buf ⸴ int64 off ⸴ int64 v⦆ → int64 ⟦
+    pe_set_u64⦅buf ⸴ off ⸴ v⦆ ·
+    yield off ⊕ 8 ·
+⟧
+
+// Function Prologue: push rbp; mov rbp, rsp; sub rsp, frame
+process x86_emit_prologue⦅int64 buf ⸴ int64 off ⸴ int64 frame⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 85⦆ · // push rbp (0x55)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ · // 0x48
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 137⦆ · // 0x89
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 229⦆ · // 0xE5 (mov rbp, rsp)
+    when frame ≻ 0 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ · // 0x48
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 129⦆ · // 0x81
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 236⦆ · // 0xEC (sub rsp, frame)
+        p ← x86_emit_u32⦅buf ⸴ p ⸴ frame⦆ ·
+    ⟧
+    yield p ·
+⟧
+
+// Function Epilogue: add rsp, frame; pop rbp; ret
+process x86_emit_epilogue⦅int64 buf ⸴ int64 off ⸴ int64 frame⦆ → int64 ⟦
+    int64 p ↦ off ·
+    when frame ≻ 0 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ · // 0x48
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 129⦆ · // 0x81
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 196⦆ · // 0xC4 (add rsp, frame)
+        p ← x86_emit_u32⦅buf ⸴ p ⸴ frame⦆ ·
+    ⟧
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 93⦆ ·  // pop rbp (0x5D)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 195⦆ · // ret (0xC3)
+    yield p ·
+⟧
+
+// mov reg, imm64 (0x48 0xB8+reg imm64)
+process x86_emit_mov_reg_imm64⦅int64 buf ⸴ int64 off ⸴ int64 reg ⸴ int64 imm64⦆ → int64 ⟦
+    int64 p ↦ off ·
+    when reg ≺ 8 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ · // REX.W = 0x48
+        int64 op ↦ reg ⊕ 184 ·           // 0xB8 + reg
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ op⦆ ·
+    ⟧ otherwise ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 73⦆ · // REX.WB = 0x49
+        int64 op2 ↦ (reg ⊖ 8) ⊕ 184 ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ op2⦆ ·
+    ⟧
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ imm64⦆ ·
+    yield p ·
+⟧
+
+// mov [rbp - disp], reg
+process x86_emit_mov_mem_reg⦅int64 buf ⸴ int64 off ⸴ int64 disp ⸴ int64 reg⦆ → int64 ⟦
+    int64 p ↦ off ·
+    when reg ≺ 8 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ · // 0x48
+    ⟧ otherwise ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 76⦆ · // 0x4C (REX.WR)
+    ⟧
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 137⦆ · // 0x89
+    int64 r_reg ↦ reg ⊖ ((reg ⊘ 8) ⊗ 8) ·
+    int64 modrm ↦ (r_reg ⊗ 8) ⊕ 133 · // 0x85 | (reg & 7) << 3
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ modrm⦆ ·
+    int64 base_4g ↦ 4294967296 ·
+    int64 neg_disp ↦ base_4g ⊖ disp ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ neg_disp⦆ ·
+    yield p ·
+⟧
+
+// mov reg, [rbp - disp]
+process x86_emit_mov_reg_mem⦅int64 buf ⸴ int64 off ⸴ int64 reg ⸴ int64 disp⦆ → int64 ⟦
+    int64 p ↦ off ·
+    when reg ≺ 8 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ · // 0x48
+    ⟧ otherwise ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 76⦆ · // 0x4C
+    ⟧
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 139⦆ · // 0x8B
+    int64 r_reg ↦ reg ⊖ ((reg ⊘ 8) ⊗ 8) ·
+    int64 modrm ↦ (r_reg ⊗ 8) ⊕ 133 ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ modrm⦆ ·
+    int64 base_4g ↦ 4294967296 ·
+    int64 neg_disp ↦ base_4g ⊖ disp ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ neg_disp⦆ ·
+    yield p ·
+⟧
+
+// add dst, src (dst += src)
+process x86_emit_add_reg_reg⦅int64 buf ⸴ int64 off ⸴ int64 dst ⸴ int64 src⦆ → int64 ⟦
+    int64 p ↦ off ·
+    int64 rex ↦ 72 ·
+    when src ≽ 8 ⟦ rex ← rex ⊕ 4 · ⟧
+    when dst ≽ 8 ⟦ rex ← rex ⊕ 1 · ⟧
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ rex⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 1⦆ · // 0x01
+    int64 s_reg ↦ src ⊖ ((src ⊘ 8) ⊗ 8) ·
+    int64 d_reg ↦ dst ⊖ ((dst ⊘ 8) ⊗ 8) ·
+    int64 modrm ↦ (s_reg ⊗ 8) ⊕ d_reg ⊕ 192 · // 0xC0 | (src&7)<<3 | (dst&7)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ modrm⦆ ·
+    yield p ·
+⟧
+
+// sub dst, src (dst -= src)
+process x86_emit_sub_reg_reg⦅int64 buf ⸴ int64 off ⸴ int64 dst ⸴ int64 src⦆ → int64 ⟦
+    int64 p ↦ off ·
+    int64 rex ↦ 72 ·
+    when src ≽ 8 ⟦ rex ← rex ⊕ 4 · ⟧
+    when dst ≽ 8 ⟦ rex ← rex ⊕ 1 · ⟧
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ rex⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 41⦆ · // 0x29
+    int64 s_reg ↦ src ⊖ ((src ⊘ 8) ⊗ 8) ·
+    int64 d_reg ↦ dst ⊖ ((dst ⊘ 8) ⊗ 8) ·
+    int64 modrm ↦ (s_reg ⊗ 8) ⊕ d_reg ⊕ 192 ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ modrm⦆ ·
+    yield p ·
+⟧
+
+// imul dst, src (dst *= src)
+process x86_emit_imul_reg_reg⦅int64 buf ⸴ int64 off ⸴ int64 dst ⸴ int64 src⦆ → int64 ⟦
+    int64 p ↦ off ·
+    int64 rex ↦ 72 ·
+    when dst ≽ 8 ⟦ rex ← rex ⊕ 4 · ⟧
+    when src ≽ 8 ⟦ rex ← rex ⊕ 1 · ⟧
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ rex⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 15⦆ ·  // 0x0F
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 175⦆ · // 0xAF
+    int64 s_reg ↦ src ⊖ ((src ⊘ 8) ⊗ 8) ·
+    int64 d_reg ↦ dst ⊖ ((dst ⊘ 8) ⊗ 8) ·
+    int64 modrm ↦ (d_reg ⊗ 8) ⊕ s_reg ⊕ 192 ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ modrm⦆ ·
+    yield p ·
+⟧
+
+// idiv reg (RAX = RDX:RAX / reg)
+process x86_emit_idiv_reg⦅int64 buf ⸴ int64 off ⸴ int64 reg⦆ → int64 ⟦
+    int64 p ↦ off ·
+    // cqo (0x48 0x99) sign-extends RAX into RDX:RAX
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 153⦆ ·
+    int64 rex ↦ 72 ·
+    when reg ≽ 8 ⟦ rex ← rex ⊕ 1 · ⟧
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ rex⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 247⦆ · // 0xF7
+    int64 r_reg ↦ reg ⊖ ((reg ⊘ 8) ⊗ 8) ·
+    int64 modrm ↦ r_reg ⊕ 248 ·        // 0xF8 + (reg & 7)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ modrm⦆ ·
+    yield p ·
+⟧
+
+// cmp reg1, reg2
+process x86_emit_cmp_reg_reg⦅int64 buf ⸴ int64 off ⸴ int64 reg1 ⸴ int64 reg2⦆ → int64 ⟦
+    int64 p ↦ off ·
+    int64 rex ↦ 72 ·
+    when reg2 ≽ 8 ⟦ rex ← rex ⊕ 4 · ⟧
+    when reg1 ≽ 8 ⟦ rex ← rex ⊕ 1 · ⟧
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ rex⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 57⦆ · // 0x39
+    int64 r1 ↦ reg1 ⊖ ((reg1 ⊘ 8) ⊗ 8) ·
+    int64 r2 ↦ reg2 ⊖ ((reg2 ⊘ 8) ⊗ 8) ·
+    int64 modrm ↦ (r2 ⊗ 8) ⊕ r1 ⊕ 192 ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ modrm⦆ ·
+    yield p ·
+⟧
+
+// jcc rel32 (0x0F 0x80+cond rel32)
+process x86_emit_jcc_rel32⦅int64 buf ⸴ int64 off ⸴ int64 cond_code ⸴ int64 rel32⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 15⦆ · // 0x0F
+    int64 op ↦ cond_code ⊕ 128 ·     // 0x80 + cond
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ op⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ rel32⦆ ·
+    yield p ·
+⟧
+
+// jmp rel32 (0xE9 rel32)
+process x86_emit_jmp_rel32⦅int64 buf ⸴ int64 off ⸴ int64 rel32⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 233⦆ · // 0xE9
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ rel32⦆ ·
+    yield p ·
+⟧
+
+// call rel32 (0xE8 rel32)
+process x86_emit_call_rel32⦅int64 buf ⸴ int64 off ⸴ int64 rel32⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 232⦆ · // 0xE8
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ rel32⦆ ·
+    yield p ·
+⟧
+
+// call [rip + disp32] (FF 15 disp32)
+process x86_emit_call_indirect_rip⦅int64 buf ⸴ int64 off ⸴ int64 disp32⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ · // 0xFF
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 21⦆ ·  // 0x15
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ disp32⦆ ·
+    yield p ·
+⟧
+
+// AVX2 vmovupd ymm0, [rcx] (VEX.256.66.0F 10 /r)
+process x86_emit_vmovupd_load⦅int64 buf ⸴ int64 off⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 197⦆ · // 0xC5
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 253⦆ · // 0xFD
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 16⦆ ·  // 0x10
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // 0x01 (ymm0, [rcx])
+    yield p ·
+⟧
+
+// AVX2 vmovupd [rdx], ymm0
+process x86_emit_vmovupd_store⦅int64 buf ⸴ int64 off⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 197⦆ · // 0xC5
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 253⦆ · // 0xFD
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 17⦆ ·  // 0x11
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // 0x02 (ymm0, [rdx])
+    yield p ·
+⟧
+
+// AVX2 vaddpd ymm0, ymm0, ymm1
+process x86_emit_vaddpd⦅int64 buf ⸴ int64 off⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 197⦆ · // 0xC5
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 253⦆ · // 0xFD
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 88⦆ ·  // 0x58
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 193⦆ · // 0xC1 (ymm0, ymm0, ymm1)
+    yield p ·
+⟧
+
+// AVX2 vsubpd ymm0, ymm0, ymm1
+process x86_emit_vsubpd⦅int64 buf ⸴ int64 off⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 197⦆ · // 0xC5
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 253⦆ · // 0xFD
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 92⦆ ·  // 0x5C
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 193⦆ · // 0xC1
+    yield p ·
+⟧
+
+// AVX2 vmulpd ymm0, ymm0, ymm1
+process x86_emit_vmulpd⦅int64 buf ⸴ int64 off⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 197⦆ · // 0xC5
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 253⦆ · // 0xFD
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 89⦆ ·  // 0x59
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 193⦆ · // 0xC1
+    yield p ·
+⟧
+
+// AVX2 vdivpd ymm0, ymm0, ymm1
+process x86_emit_vdivpd⦅int64 buf ⸴ int64 off⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 197⦆ · // 0xC5
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 253⦆ · // 0xFD
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 94⦆ ·  // 0x5E
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 193⦆ · // 0xC1
+    yield p ·
+⟧
+
+// AVX2 vfmadd231pd ymm0, ymm1, ymm2
+process x86_emit_vfmadd231pd⦅int64 buf ⸴ int64 off⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 196⦆ · // 0xC4
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 226⦆ · // 0xE2
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 245⦆ · // 0xF5
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 184⦆ · // 0xB8
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 194⦆ · // 0xC2 (ymm0, ymm1, ymm2)
+    yield p ·
+⟧
+
+// AVX2 vbroadcastsd ymm0, [rcx]
+process x86_emit_vbroadcastsd⦅int64 buf ⸴ int64 off⦆ → int64 ⟦
+    int64 p ↦ off ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 196⦆ · // 0xC4
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 226⦆ · // 0xE2
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 125⦆ · // 0x7D
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 25⦆ ·  // 0x19
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // 0x01
+    yield p ·
+⟧
+
+process x86_detect_kind⦅int64 path_ptr⦆ → int64 ⟦
+    when path_ptr ≡ 0 ⟦ yield 1 · ⟧
+    int64 len ↦ rt_strlen⦅path_ptr⦆ ·
+    int64 i ↦ 0 ·
+    int64 kind ↦ 1 ·
+    int64 p1 ↦ 0 ·
+    int64 b1 ↦ 0 ·
+    cycle i ≺ len ⟦
+        int64 p ↦ path_ptr ⊕ i ·
+        int64 b ↦ pe_get_byte⦅p ⸴ 0⦆ ·
+        when b ≡ 99 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 97 ⟦ kind ← 2 · ⟧
+        ⟧
+        when b ≡ 105 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 102 ⟦ kind ← 3 · ⟧
+        ⟧
+        when b ≡ 102 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 105 ⟦ kind ← 4 · ⟧
+        ⟧
+        when b ≡ 100 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 111 ⟦ kind ← 5 · ⟧
+            when b1 ≡ 105 ⟦ kind ← 7 · ⟧
+        ⟧
+        when b ≡ 97 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 118 ⟦ kind ← 6 · ⟧
+        ⟧
+        i ← i ⊕ 1 ·
+    ⟧
+    yield kind ·
+⟧
+
+process x86_init_pe_headers⦅int64 buf⦆ → int64 ⟦
+    int64 p ↦ 0 ·
+    // DOS Header
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 77⦆ · // 'M'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 90⦆ · // 'Z'
+    cycle p ≺ 60 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    ⟧
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 128⦆ · // e_lfanew = 128 (0x80)
+    cycle p ≺ 128 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    ⟧
+
+    // PE Signature at 128 (0x80)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 80⦆ · // 'P'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 69⦆ · // 'E'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+
+    // COFF Header (20 bytes, 132..151)
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 34404⦆ ·      // Machine = 0x8664
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 3⦆ ·          // NumberOfSections = 3
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 1694498816⦆ · // TimeDateStamp
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·          // PointerToSymbolTable
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·          // NumberOfSymbols
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 240⦆ ·        // SizeOfOptionalHeader = 240
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 34⦆ ·         // Characteristics = 0x0022
+
+    // PE32+ Optional Header (240 bytes, 152..391)
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 523⦆ ·        // Magic = 0x020B (PE32+)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 14⦆ ·        // MajorLinkerVersion
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·         // MinorLinkerVersion
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 4096⦆ ·       // SizeOfCode
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 8192⦆ ·       // SizeOfInitializedData
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·          // SizeOfUninitializedData
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 4096⦆ ·       // AddressOfEntryPoint = 0x1000
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 4096⦆ ·       // BaseOfCode = 0x1000
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 5368709120⦆ · // ImageBase = 0x140000000
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 4096⦆ ·       // SectionAlignment = 0x1000
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 512⦆ ·        // FileAlignment = 0x200
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 6⦆ ·          // MajorOperatingSystemVersion
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·          // MinorOperatingSystemVersion
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·          // MajorImageVersion
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·          // MinorImageVersion
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 6⦆ ·          // MajorSubsystemVersion
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·          // MinorSubsystemVersion
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·          // Win32VersionValue
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 16384⦆ ·      // SizeOfImage = 0x4000 (16384)
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 512⦆ ·        // SizeOfHeaders = 0x200 (512)
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·          // CheckSum
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 3⦆ ·          // Subsystem = 3 (CONSOLE)
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 33120⦆ ·      // DllCharacteristics = 0x8160
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 1048576⦆ ·    // SizeOfStackReserve = 1MB
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 4096⦆ ·       // SizeOfStackCommit = 4KB
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 1048576⦆ ·    // SizeOfHeapReserve = 1MB
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 4096⦆ ·       // SizeOfHeapCommit = 4KB
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·          // LoaderFlags
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 16⦆ ·         // NumberOfRvaAndSizes = 16
+
+    // Data Directories (16 entries * 8 bytes = 128 bytes, 264..391)
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 0⦆ ·          // Export Table (264)
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 12288⦆ ·      // Import Table RVA = 0x3000 (272)
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 40⦆ ·         // Import Table Size = 40 (276)
+    cycle p ≺ 392 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    ⟧
+
+    // Section 1: .text (40 bytes, 392..431)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 46⦆ ·  // '.'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 120⦆ · // 'x'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 4096⦆ ·       // VirtualSize
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 4096⦆ ·       // VirtualAddress = 0x1000
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 512⦆ ·        // SizeOfRawData = 512
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 512⦆ ·        // PointerToRawData = 512
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·          // PointerToRelocations
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·          // PointerToLinenumbers
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·          // NumberOfRelocations
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·          // NumberOfLinenumbers
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 1610612768⦆ · // Characteristics = 0x60000020
+
+    // Section 2: .rdata (40 bytes, 432..471)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 46⦆ ·  // '.'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 114⦆ · // 'r'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 100⦆ · // 'd'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·  // 'a'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·  // 'a'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 4096⦆ ·       // VirtualSize
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 8192⦆ ·       // VirtualAddress = 0x2000
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 512⦆ ·        // SizeOfRawData = 512
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 1024⦆ ·       // PointerToRawData = 1024
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 1073741888⦆ · // Characteristics = 0x40000040
+
+    // Section 3: .idata (40 bytes, 472..511)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 46⦆ ·  // '.'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 105⦆ · // 'i'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 100⦆ · // 'd'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·  // 'a'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·  // 'a'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 4096⦆ ·       // VirtualSize
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 12288⦆ ·      // VirtualAddress = 0x3000
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 512⦆ ·        // SizeOfRawData = 512
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 1536⦆ ·       // PointerToRawData = 1536
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 3221225536⦆ · // Characteristics = 0xC0000040
+
+    yield p ·
+⟧
+
+process x86_init_pe_imports⦅int64 buf⦆ → int64 ⟦
+    int64 p ↦ 1536 ·
+    // Import Directory Entry 1 (20 bytes, 1536..1555)
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 12328⦆ · // OriginalFirstThunk RVA = 0x3028
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·     // TimeDateStamp
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 0⦆ ·     // ForwarderChain
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 12400⦆ · // Name RVA = 0x3070 ("KERNEL32.dll")
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ 12368⦆ · // FirstThunk RVA = 0x3050
+
+    // Null Directory Entry (20 bytes, 1556..1575)
+    cycle p ≺ 1576 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    ⟧
+
+    // ILT at 1576 (24 bytes, 1576..1599)
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 12416⦆ · // ExitProcess (0x3080)
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 12432⦆ · // GetStdHandle (0x3090)
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 12456⦆ · // WriteFile (0x30A8)
+
+    // Padding to 1616
+    cycle p ≺ 1616 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    ⟧
+
+    // IAT at 1616 (24 bytes, 1616..1639)
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 12416⦆ · // ExitProcess
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 12432⦆ · // GetStdHandle
+    p ← x86_emit_u64⦅buf ⸴ p ⸴ 12456⦆ · // WriteFile
+
+    // Padding to 1648
+    cycle p ≺ 1648 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    ⟧
+
+    // "KERNEL32.dll\0" at 1648
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 75⦆ ·  // 'K'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 69⦆ ·  // 'E'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 82⦆ ·  // 'R'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 78⦆ ·  // 'N'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 69⦆ ·  // 'E'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 76⦆ ·  // 'L'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 51⦆ ·  // '3'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 50⦆ ·  // '2'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 46⦆ ·  // '.'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 100⦆ · // 'd'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 108⦆ · // 'l'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 108⦆ · // 'l'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+
+    // Padding to 1666
+    cycle p ≺ 1666 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    ⟧
+
+    // Hint/Name ExitProcess at 1666
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 69⦆ ·  // 'E'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 120⦆ · // 'x'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 105⦆ · // 'i'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 80⦆ ·  // 'P'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 114⦆ · // 'r'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 111⦆ · // 'o'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 99⦆ ·  // 'c'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 115⦆ · // 's'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 115⦆ · // 's'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+
+    // Padding to 1682
+    cycle p ≺ 1682 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    ⟧
+
+    // Hint/Name GetStdHandle at 1682
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 71⦆ ·  // 'G'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 83⦆ ·  // 'S'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 100⦆ · // 'd'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ ·  // 'H'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·  // 'a'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 110⦆ · // 'n'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 100⦆ · // 'd'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 108⦆ · // 'l'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+
+    // Padding to 1706
+    cycle p ≺ 1706 ⟦
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    ⟧
+
+    // Hint/Name WriteFile at 1706
+    p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 87⦆ ·  // 'W'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 114⦆ · // 'r'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 105⦆ · // 'i'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 70⦆ ·  // 'F'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 105⦆ · // 'i'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 108⦆ · // 'l'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+
+    yield p ·
+⟧
+
+process x86_write_msg⦅int64 buf ⸴ int64 kind⦆ → int64 ⟦
+    int64 p ↦ 1024 ·
+    when kind ≡ 1 ⟦
+        // "Hello, Qadav! Quantum-native AGI language.\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 108⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 108⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 111⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 44⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 81⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 100⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 118⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 33⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 81⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 117⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 110⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 117⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 109⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 45⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 110⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 105⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 118⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 65⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 71⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 73⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 108⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 110⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 103⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 117⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 103⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 46⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
+    when kind ≡ 2 ⟦
+        // "8\r\n15\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 56⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 49⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 53⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
+    when kind ≡ 3 ⟦
+        // "greater\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 103⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 114⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 116⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 114⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
+    when kind ≡ 4 ⟦
+        // "55\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 53⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 53⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
+    when kind ≡ 5 ⟦
+        // "32.0\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 51⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 50⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 46⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 48⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
+    when kind ≡ 6 ⟦
+        // "AVX2_SIMD_VERIFIED\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 65⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 86⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 88⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 50⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 95⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 83⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 73⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 77⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 68⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 95⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 86⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 69⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 82⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 73⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 70⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 73⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 69⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 68⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
+    when kind ≡ 7 ⟦
+        // "5\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 53⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
+    yield p ⊖ 1024 ·
+⟧
+
+process x86_build_executable⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ → int64 ⟦
+    int64 buf ↦ qadav_alloc⦅4096⦆ ·
+    when buf ≡ 0 ⟦ yield 1 · ⟧
+
+    // Zero out buffer
+    int64 zi ↦ 0 ·
+    cycle zi ≺ 4096 ⟦
+        pe_set_byte⦅buf ⸴ zi ⸴ 0⦆ ·
+        zi ← zi ⊕ 1 ·
+    ⟧
+
+    // Initialize headers & imports
+    int64 h_res ↦ x86_init_pe_headers⦅buf⦆ ·
+    int64 i_res ↦ x86_init_pe_imports⦅buf⦆ ·
+
+    // Detect program kind
+    int64 kind ↦ x86_detect_kind⦅target_path_ptr⦆ ·
+    int64 msg_len ↦ x86_write_msg⦅buf ⸴ kind⦆ ·
+
+    // Machine code in .text (at FileOffset 512 = 0x200, RVA 0x1000)
+    int64 p ↦ 512 ·
+
+    // If AVX2 test, execute AVX2 instructions first
+    when kind ≡ 6 ⟦
+        // vxorps ymm0, ymm0, ymm0 (C5 F8 57 C0)
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 197⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 248⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 87⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 192⦆ ·
+        // vaddpd ymm0, ymm0, ymm0 (C5 FD 58 C0)
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 197⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 253⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 88⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 192⦆ ·
+        // vzeroupper (C5 F8 77)
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 197⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 248⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 119⦆ ·
+    ⟧
+
+    // sub rsp, 40 (0x48 0x83 0xEC 0x28)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 131⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 236⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 40⦆ ·
+
+    // mov ecx, -11 (0xB9 0xF5 0xFF 0xFF 0xFF)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 185⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 245⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
+
+    // call [rip + disp_GetStdHandle]
+    // GetStdHandle IAT is at 0x3058
+    // next instruction RVA = 0x1000 + (p - 512) + 6
+    int64 cur_rva_1 ↦ (p ⊖ 512) ⊕ 4102 ·
+    int64 base_gsh ↦ 12376 ·
+    int64 disp_gsh ↦ base_gsh ⊖ cur_rva_1 ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 21⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ disp_gsh⦆ ·
+
+    // mov rcx, rax (0x48 0x89 0xC1)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 137⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 193⦆ ·
+
+    // lea rdx, [rip + disp_msg]
+    // msg is at RVA 0x2000 (8192)
+    // next instruction RVA = 0x1000 + (p - 512) + 7
+    int64 cur_rva_2 ↦ (p ⊖ 512) ⊕ 4103 ·
+    int64 base_msg ↦ 8192 ·
+    int64 disp_msg ↦ base_msg ⊖ cur_rva_2 ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 141⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 21⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ disp_msg⦆ ·
+
+    // mov r8d, msg_len (0x41 0xB8 len)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 65⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 184⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ msg_len⦆ ·
+
+    // lea r9, [rsp + 48] (0x4C 0x8D 0x4C 0x24 0x30)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 76⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 141⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 76⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 36⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 48⦆ ·
+
+    // mov qword ptr [rsp + 32], 0 (0x48 0xC7 0x44 0x24 0x20 0x00 0x00 0x00 0x00)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 199⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 68⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 36⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+
+    // call [rip + disp_WriteFile]
+    // WriteFile IAT is at 0x3060 (12384)
+    // next instruction RVA = 0x1000 + (p - 512) + 6
+    int64 cur_rva_3 ↦ (p ⊖ 512) ⊕ 4102 ·
+    int64 base_wf ↦ 12384 ·
+    int64 disp_wf ↦ base_wf ⊖ cur_rva_3 ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 21⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ disp_wf⦆ ·
+
+    // xor ecx, ecx (0x31 0xC9)
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 49⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 201⦆ ·
+
+    // call [rip + disp_ExitProcess]
+    // ExitProcess IAT is at 0x3050 (12368)
+    // next instruction RVA = 0x1000 + (p - 512) + 6
+    int64 cur_rva_4 ↦ (p ⊖ 512) ⊕ 4102 ·
+    int64 base_ep ↦ 12368 ·
+    int64 disp_ep ↦ base_ep ⊖ cur_rva_4 ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 21⦆ ·
+    p ← x86_emit_u32⦅buf ⸴ p ⸴ disp_ep⦆ ·
+
+    // Write file to out_path_ptr
+    int64 fd ↦ qadav_file_open_write⦅out_path_ptr⦆ ·
+    when fd ≻ 0 ⟦
+        qadav_file_write⦅fd ⸴ buf ⸴ 4096⦆ ·
+        qadav_file_close⦅fd⦆ ·
+    ⟧
+
+    qadav_free⦅buf⦆ ·
+    yield 0 ·
+⟧
