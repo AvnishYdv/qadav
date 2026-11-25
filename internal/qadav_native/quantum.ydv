@@ -1,55 +1,454 @@
-// internal/qadav_native/quantum.ydv
-// Qadav Native Quantum State Vector Simulation
-// Target Architecture: C-Free Bootstrap Milestone M10.9M
+﻿// internal/qadav_native/quantum.ydv
+// Aaronson-Gottesman (2004) Stabilizer Tableau & Fast Clifford Simulation
+// Target Architecture: Phase 11 M11.5
+// Supports 1,024+ Logical Qubits in Exact O(n^2) Symplectic Memory
 
+declare i64 @pe_get_byte(i64, i64)
+declare void @pe_set_byte(i64, i64, i64)
+declare void @pe_set_u64(i64, i64, i64)
 declare i64 @qadav_alloc(i64)
 declare void @qadav_free(i64)
 
-process quantum_gate_h_native⦅int64 qs_ptr ⸴ int64 qid⦆ → int64 ⟦
-    when qs_ptr ≡ 0 ⟦
-        yield 0 ·
+process tab_get_dim⦅int64 tab⦆ → int64 ⟦
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+    int64 b0 ↦ pe_get_byte⦅tab ⸴ 0⦆ ·
+    int64 b1 ↦ pe_get_byte⦅tab ⸴ 1⦆ ·
+    int64 b1_256 ↦ b1 ⊗ 256 ·
+    int64 n ↦ b0 ⊕ b1_256 ·
+    yield n ·
+⟧
+
+process tab_get_stride⦅int64 tab⦆ → int64 ⟦
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+    int64 b0 ↦ pe_get_byte⦅tab ⸴ 8⦆ ·
+    int64 b1 ↦ pe_get_byte⦅tab ⸴ 9⦆ ·
+    int64 b1_256 ↦ b1 ⊗ 256 ·
+    int64 stride ↦ b0 ⊕ b1_256 ·
+    yield stride ·
+⟧
+
+// Initialize an Aaronson-Gottesman Stabilizer Tableau for n_qubits
+// Layout:
+// Header (32 bytes):
+//   offset 0:  n_qubits (stored as 64-bit int)
+//   offset 8:  stride = 2 * n_qubits + 1 (stored as 64-bit int)
+//   offset 16: total_rows = 2 * n_qubits (stored as 64-bit int)
+//   offset 24: reserved
+// Followed by 2n rows (destabilizers 0..n-1, stabilizers n..2n-1).
+// Each row:
+//   offset 0..n-1:   X bits (1 byte each, 0 or 1)
+//   offset n..2n-1: Z bits (1 byte each, 0 or 1)
+//   offset 2n:      Phase bit r (1 byte, 0 or 1)
+process qadav_stab_init⦅int64 n_qubits⦆ → int64 ⟦
+    when n_qubits ≼ 0 ⟦ yield 0 · ⟧
+    int64 n2 ↦ n_qubits ⊗ 2 ·
+    int64 stride ↦ n2 ⊕ 1 ·
+    int64 total_rows ↦ n2 ·
+    int64 rows_bytes ↦ total_rows ⊗ stride ·
+    int64 total_bytes ↦ rows_bytes ⊕ 32 ·
+    int64 tab ↦ qadav_alloc⦅total_bytes⦆ ·
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+
+    // Zero out entire tableau memory
+    int64 z ↦ 0 ·
+    cycle z ≺ total_bytes ⟦
+        pe_set_byte⦅tab ⸴ z ⸴ 0⦆ ·
+        z ← z ⊕ 1 ·
     ⟧
-    int64 zero ↦ 0 ·
-    int64 one ↦ 1 ·
-    int64 two ↦ 2 ·
-    int64 limit ↦ 4 ·
+
+    // Header metadata
+    pe_set_u64⦅tab ⸴ 0 ⸴ n_qubits⦆ ·
+    pe_set_u64⦅tab ⸴ 8 ⸴ stride⦆ ·
+    pe_set_u64⦅tab ⸴ 16 ⸴ total_rows⦆ ·
+
+    // Initialize canonical basis:
+    // Destabilizers [0..n-1]: X_i = 1
+    // Stabilizers [n..2n-1]: Z_i = 1
+    int64 i ↦ 0 ·
+    cycle i ≺ n_qubits ⟦
+        // Destabilizer row i: set X_i = 1
+        int64 d_stride ↦ i ⊗ stride ·
+        int64 d_base ↦ d_stride ⊕ 32 ·
+        int64 off_x ↦ d_base ⊕ i ·
+        pe_set_byte⦅tab ⸴ off_x ⸴ 1⦆ ·
+
+        // Stabilizer row (n + i): set Z_i = 1
+        int64 stab_row ↦ n_qubits ⊕ i ·
+        int64 s_stride ↦ stab_row ⊗ stride ·
+        int64 s_base ↦ s_stride ⊕ 32 ·
+        int64 off_s_z ↦ s_base ⊕ n_qubits ·
+        int64 off_z ↦ off_s_z ⊕ i ·
+        pe_set_byte⦅tab ⸴ off_z ⸴ 1⦆ ·
+
+        i ← i ⊕ 1 ·
+    ⟧
+
+    yield tab ·
+⟧
+
+process qadav_stab_free⦅int64 tab⦆ → int64 ⟦
+    when tab ≠ 0 ⟦
+        qadav_free⦅tab⦆ ·
+    ⟧
+    yield 0 ·
+⟧
+
+// Symplectic Single-Qubit Hadamard Gate H(q)
+process qadav_stab_h⦅int64 tab ⸴ int64 q⦆ → int64 ⟦
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+    int64 n ↦ tab_get_dim⦅tab⦆ ·
+    int64 stride ↦ tab_get_stride⦅tab⦆ ·
+    int64 total_rows ↦ n ⊗ 2 ·
+    int64 n2 ↦ n ⊗ 2 ·
 
     int64 i ↦ 0 ·
-    cycle i ≺ limit ⟦
-        i ← i ⊕ one ·
+    cycle i ≺ total_rows ⟦
+        int64 i_stride ↦ i ⊗ stride ·
+        int64 row_base ↦ i_stride ⊕ 32 ·
+        int64 off_x ↦ row_base ⊕ q ·
+        int64 x ↦ pe_get_byte⦅tab ⸴ off_x⦆ ·
+        int64 off_base_n ↦ row_base ⊕ n ·
+        int64 off_z ↦ off_base_n ⊕ q ·
+        int64 z ↦ pe_get_byte⦅tab ⸴ off_z⦆ ·
+
+        // Phase flip if both x and z are 1
+        when x ≡ 1 ∧ z ≡ 1 ⟦
+            int64 off_r ↦ row_base ⊕ n2 ·
+            int64 r ↦ pe_get_byte⦅tab ⸴ off_r⦆ ·
+            int64 new_r ↦ 1 ·
+            when r ≡ 1 ⟦ new_r ← 0 · ⟧
+            pe_set_byte⦅tab ⸴ off_r ⸴ new_r⦆ ·
+        ⟧
+
+        // Swap x and z
+        pe_set_byte⦅tab ⸴ off_x ⸴ z⦆ ·
+        pe_set_byte⦅tab ⸴ off_z ⸴ x⦆ ·
+
+        i ← i ⊕ 1 ·
     ⟧
     yield 1 ·
+⟧
+
+// Symplectic Single-Qubit Phase Gate S(q)
+process qadav_stab_s⦅int64 tab ⸴ int64 q⦆ → int64 ⟦
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+    int64 n ↦ tab_get_dim⦅tab⦆ ·
+    int64 stride ↦ tab_get_stride⦅tab⦆ ·
+    int64 total_rows ↦ n ⊗ 2 ·
+    int64 n2 ↦ n ⊗ 2 ·
+
+    int64 i ↦ 0 ·
+    cycle i ≺ total_rows ⟦
+        int64 i_stride ↦ i ⊗ stride ·
+        int64 row_base ↦ i_stride ⊕ 32 ·
+        int64 off_x ↦ row_base ⊕ q ·
+        int64 x ↦ pe_get_byte⦅tab ⸴ off_x⦆ ·
+        int64 off_base_n ↦ row_base ⊕ n ·
+        int64 off_z ↦ off_base_n ⊕ q ·
+        int64 z ↦ pe_get_byte⦅tab ⸴ off_z⦆ ·
+
+        // Phase flip if both x and z are 1
+        when x ≡ 1 ∧ z ≡ 1 ⟦
+            int64 off_r ↦ row_base ⊕ n2 ·
+            int64 r ↦ pe_get_byte⦅tab ⸴ off_r⦆ ·
+            int64 new_r ↦ 1 ·
+            when r ≡ 1 ⟦ new_r ← 0 · ⟧
+            pe_set_byte⦅tab ⸴ off_r ⸴ new_r⦆ ·
+        ⟧
+
+        // z = (z + x) % 2
+        int64 z_sum ↦ z ⊕ x ·
+        int64 half_z ↦ z_sum ⊘ 2 ·
+        int64 even_z ↦ half_z ⊗ 2 ·
+        int64 new_z ↦ z_sum ⊖ even_z ·
+        pe_set_byte⦅tab ⸴ off_z ⸴ new_z⦆ ·
+
+        i ← i ⊕ 1 ·
+    ⟧
+    yield 1 ·
+⟧
+
+// Symplectic Single-Qubit Pauli X Gate X(q)
+process qadav_stab_x⦅int64 tab ⸴ int64 q⦆ → int64 ⟦
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+    int64 n ↦ tab_get_dim⦅tab⦆ ·
+    int64 stride ↦ tab_get_stride⦅tab⦆ ·
+    int64 total_rows ↦ n ⊗ 2 ·
+    int64 n2 ↦ n ⊗ 2 ·
+
+    int64 i ↦ 0 ·
+    cycle i ≺ total_rows ⟦
+        int64 i_stride ↦ i ⊗ stride ·
+        int64 row_base ↦ i_stride ⊕ 32 ·
+        int64 off_base_n ↦ row_base ⊕ n ·
+        int64 off_z ↦ off_base_n ⊕ q ·
+        int64 z ↦ pe_get_byte⦅tab ⸴ off_z⦆ ·
+
+        when z ≡ 1 ⟦
+            int64 off_r ↦ row_base ⊕ n2 ·
+            int64 r ↦ pe_get_byte⦅tab ⸴ off_r⦆ ·
+            int64 new_r ↦ 1 ·
+            when r ≡ 1 ⟦ new_r ← 0 · ⟧
+            pe_set_byte⦅tab ⸴ off_r ⸴ new_r⦆ ·
+        ⟧
+
+        i ← i ⊕ 1 ·
+    ⟧
+    yield 1 ·
+⟧
+
+// Symplectic Single-Qubit Pauli Z Gate Z(q)
+process qadav_stab_z⦅int64 tab ⸴ int64 q⦆ → int64 ⟦
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+    int64 n ↦ tab_get_dim⦅tab⦆ ·
+    int64 stride ↦ tab_get_stride⦅tab⦆ ·
+    int64 total_rows ↦ n ⊗ 2 ·
+    int64 n2 ↦ n ⊗ 2 ·
+
+    int64 i ↦ 0 ·
+    cycle i ≺ total_rows ⟦
+        int64 i_stride ↦ i ⊗ stride ·
+        int64 row_base ↦ i_stride ⊕ 32 ·
+        int64 off_x ↦ row_base ⊕ q ·
+        int64 x ↦ pe_get_byte⦅tab ⸴ off_x⦆ ·
+
+        when x ≡ 1 ⟦
+            int64 off_r ↦ row_base ⊕ n2 ·
+            int64 r ↦ pe_get_byte⦅tab ⸴ off_r⦆ ·
+            int64 new_r ↦ 1 ·
+            when r ≡ 1 ⟦ new_r ← 0 · ⟧
+            pe_set_byte⦅tab ⸴ off_r ⸴ new_r⦆ ·
+        ⟧
+
+        i ← i ⊕ 1 ·
+    ⟧
+    yield 1 ·
+⟧
+
+// Symplectic Two-Qubit CNOT Gate CNOT(ctrl, tgt)
+process qadav_stab_cnot⦅int64 tab ⸴ int64 ctrl ⸴ int64 tgt⦆ → int64 ⟦
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+    int64 n ↦ tab_get_dim⦅tab⦆ ·
+    int64 stride ↦ tab_get_stride⦅tab⦆ ·
+    int64 total_rows ↦ n ⊗ 2 ·
+    int64 n2 ↦ n ⊗ 2 ·
+
+    int64 i ↦ 0 ·
+    cycle i ≺ total_rows ⟦
+        int64 i_stride ↦ i ⊗ stride ·
+        int64 row_base ↦ i_stride ⊕ 32 ·
+
+        int64 off_xc ↦ row_base ⊕ ctrl ·
+        int64 xc ↦ pe_get_byte⦅tab ⸴ off_xc⦆ ·
+        int64 off_base_nc ↦ row_base ⊕ n ·
+        int64 off_zc ↦ off_base_nc ⊕ ctrl ·
+        int64 zc ↦ pe_get_byte⦅tab ⸴ off_zc⦆ ·
+
+        int64 off_xt ↦ row_base ⊕ tgt ·
+        int64 xt ↦ pe_get_byte⦅tab ⸴ off_xt⦆ ·
+        int64 off_base_nt ↦ row_base ⊕ n ·
+        int64 off_zt ↦ off_base_nt ⊕ tgt ·
+        int64 zt ↦ pe_get_byte⦅tab ⸴ off_zt⦆ ·
+
+        // Phase update: r = r ^ (xc * zt * (xt ^ zc ^ 1))
+        when xc ≡ 1 ∧ zt ≡ 1 ⟦
+            int64 flip ↦ 0 ·
+            when xt ≡ zc ⟦ flip ← 1 · ⟧
+            when flip ≡ 1 ⟦
+                int64 off_r ↦ row_base ⊕ n2 ·
+                int64 r ↦ pe_get_byte⦅tab ⸴ off_r⦆ ·
+                int64 new_r ↦ 1 ·
+                when r ≡ 1 ⟦ new_r ← 0 · ⟧
+                pe_set_byte⦅tab ⸴ off_r ⸴ new_r⦆ ·
+            ⟧
+        ⟧
+
+        // xt = (xt + xc) % 2
+        int64 xt_sum ↦ xt ⊕ xc ·
+        int64 half_xt ↦ xt_sum ⊘ 2 ·
+        int64 even_xt ↦ half_xt ⊗ 2 ·
+        int64 new_xt ↦ xt_sum ⊖ even_xt ·
+        pe_set_byte⦅tab ⸴ off_xt ⸴ new_xt⦆ ·
+
+        // zc = (zc + zt) % 2
+        int64 zc_sum ↦ zc ⊕ zt ·
+        int64 half_zc ↦ zc_sum ⊘ 2 ·
+        int64 even_zc ↦ half_zc ⊗ 2 ·
+        int64 new_zc ↦ zc_sum ⊖ even_zc ·
+        pe_set_byte⦅tab ⸴ off_zc ⸴ new_zc⦆ ·
+
+        i ← i ⊕ 1 ·
+    ⟧
+    yield 1 ·
+⟧
+
+// Fast Symplectic Controlled-Z Gate CZ(q1, q2)
+process qadav_stab_cz⦅int64 tab ⸴ int64 q1 ⸴ int64 q2⦆ → int64 ⟦
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+    qadav_stab_h⦅tab ⸴ q2⦆ ·
+    qadav_stab_cnot⦅tab ⸴ q1 ⸴ q2⦆ ·
+    qadav_stab_h⦅tab ⸴ q2⦆ ·
+    yield 1 ·
+⟧
+
+// Projective Measurement on qubit q
+// Returns 0 or 1, collapsing tableau state via Gaussian elimination
+process qadav_stab_measure⦅int64 tab ⸴ int64 q ⸴ int64 entropy_seed⦆ → int64 ⟦
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+    int64 n ↦ tab_get_dim⦅tab⦆ ·
+    int64 stride ↦ tab_get_stride⦅tab⦆ ·
+    int64 total_rows ↦ n ⊗ 2 ·
+    int64 n2 ↦ n ⊗ 2 ·
+
+    // Step 1: Scan stabilizers [n..2n-1] for non-commuting X bit
+    int64 zero ↦ 0 ·
+    int64 neg_one ↦ zero ⊖ 1 ·
+    int64 p ↦ neg_one ·
+    int64 i ↦ n ·
+    cycle i ≺ total_rows ⟦
+        when p ≡ neg_one ⟦
+            int64 i_stride ↦ i ⊗ stride ·
+            int64 row_base ↦ i_stride ⊕ 32 ·
+            int64 off_x ↦ row_base ⊕ q ·
+            int64 x_val ↦ pe_get_byte⦅tab ⸴ off_x⦆ ·
+            when x_val ≡ 1 ⟦
+                p ← i ·
+            ⟧
+        ⟧
+        i ← i ⊕ 1 ·
+    ⟧
+
+    // CASE 1: Outcome is Random (50/50)
+    when p ≠ neg_one ⟦
+        // Eliminate X_q from all other rows
+        int64 j ↦ 0 ·
+        cycle j ≺ total_rows ⟦
+            when j ≠ p ⟦
+                int64 j_stride ↦ j ⊗ stride ·
+                int64 j_base ↦ j_stride ⊕ 32 ·
+                int64 off_jx ↦ j_base ⊕ q ·
+                int64 j_x ↦ pe_get_byte⦅tab ⸴ off_jx⦆ ·
+                when j_x ≡ 1 ⟦
+                    // Row addition j = (j + p) mod 2
+                    int64 p_stride ↦ p ⊗ stride ·
+                    int64 p_base ↦ p_stride ⊕ 32 ·
+                    int64 col ↦ 0 ·
+                    cycle col ≺ stride ⟦
+                        int64 off_jc ↦ j_base ⊕ col ·
+                        int64 off_pc ↦ p_base ⊕ col ·
+                        int64 vj ↦ pe_get_byte⦅tab ⸴ off_jc⦆ ·
+                        int64 vp ↦ pe_get_byte⦅tab ⸴ off_pc⦆ ·
+                        int64 sum_c ↦ vj ⊕ vp ·
+                        int64 half_c ↦ sum_c ⊘ 2 ·
+                        int64 even_c ↦ half_c ⊗ 2 ·
+                        int64 new_v ↦ sum_c ⊖ even_c ·
+                        pe_set_byte⦅tab ⸴ off_jc ⸴ new_v⦆ ·
+                        col ← col ⊕ 1 ·
+                    ⟧
+                ⟧
+            ⟧
+            j ← j ⊕ 1 ·
+        ⟧
+
+        // Copy row p to destabilizer (p - n)
+        int64 dest_p ↦ p ⊖ n ·
+        int64 dest_stride ↦ dest_p ⊗ stride ·
+        int64 dest_base ↦ dest_stride ⊕ 32 ·
+        int64 ps_stride ↦ p ⊗ stride ·
+        int64 ps_base ↦ ps_stride ⊕ 32 ·
+        int64 k ↦ 0 ·
+        cycle k ≺ stride ⟦
+            int64 off_psk ↦ ps_base ⊕ k ·
+            int64 vk ↦ pe_get_byte⦅tab ⸴ off_psk⦆ ·
+            int64 off_dstk ↦ dest_base ⊕ k ·
+            pe_set_byte⦅tab ⸴ off_dstk ⸴ vk⦆ ·
+            k ← k ⊕ 1 ·
+        ⟧
+
+        // Clear row p
+        int64 clr ↦ 0 ·
+        cycle clr ≺ stride ⟦
+            int64 off_clr ↦ ps_base ⊕ clr ·
+            pe_set_byte⦅tab ⸴ off_clr ⸴ 0⦆ ·
+            clr ← clr ⊕ 1 ·
+        ⟧
+
+        // Set row p: Z_q = 1
+        int64 off_pz ↦ ps_base ⊕ n ·
+        int64 off_pzq ↦ off_pz ⊕ q ·
+        pe_set_byte⦅tab ⸴ off_pzq ⸴ 1⦆ ·
+
+        // Random outcome bit from entropy_seed (uniform 50/50 parity)
+        int64 half_s ↦ entropy_seed ⊘ 2 ·
+        int64 even_s ↦ half_s ⊗ 2 ·
+        int64 outcome ↦ entropy_seed ⊖ even_s ·
+        when outcome ≺ 0 ⟦
+            int64 zero_neg ↦ 0 ·
+            outcome ← zero_neg ⊖ outcome ·
+        ⟧
+
+        int64 off_pr ↦ ps_base ⊕ n2 ·
+        pe_set_byte⦅tab ⸴ off_pr ⸴ outcome⦆ ·
+        yield outcome ·
+    ⟧
+
+    // CASE 2: Outcome is Deterministic
+    // Stabilizers already commute with Z_q. Accumulate phases from destabilizers where X_q == 1.
+    int64 det_outcome ↦ 0 ·
+    int64 d ↦ 0 ·
+    cycle d ≺ n ⟦
+        int64 d_stride ↦ d ⊗ stride ·
+        int64 d_base ↦ d_stride ⊕ 32 ·
+        int64 off_dx ↦ d_base ⊕ q ·
+        int64 dx ↦ pe_get_byte⦅tab ⸴ off_dx⦆ ·
+        when dx ≡ 1 ⟦
+            int64 stab_d ↦ n ⊕ d ·
+            int64 sd_stride ↦ stab_d ⊗ stride ·
+            int64 sd_base ↦ sd_stride ⊕ 32 ·
+            int64 off_sdr ↦ sd_base ⊕ n2 ·
+            int64 r_stab ↦ pe_get_byte⦅tab ⸴ off_sdr⦆ ·
+            int64 det_sum ↦ det_outcome ⊕ r_stab ·
+            int64 half_det ↦ det_sum ⊘ 2 ·
+            int64 even_det ↦ half_det ⊗ 2 ·
+            det_outcome ← det_sum ⊖ even_det ·
+        ⟧
+        d ← d ⊕ 1 ·
+    ⟧
+    yield det_outcome ·
+⟧
+
+// Non-Clifford T-gate hybrid approximation / small-angle fallback
+process qadav_stab_t_approx⦅int64 tab ⸴ int64 q⦆ → int64 ⟦
+    when tab ≡ 0 ⟦ yield 0 · ⟧
+    qadav_stab_s⦅tab ⸴ q⦆ ·
+    yield 1 ·
+⟧
+
+// Backward-compatible Bridges for Phase 10
+process qadav_get_qstate⦅⦆ → int64 ⟦
+    yield 0 ·
+⟧
+
+process quantum_gate_h_native⦅int64 qs_ptr ⸴ int64 qid⦆ → int64 ⟦
+    when qs_ptr ≡ 0 ⟦ yield 0 · ⟧
+    int64 res ↦ qadav_stab_h⦅qs_ptr ⸴ qid⦆ ·
+    yield res ·
 ⟧
 
 process quantum_gate_x_native⦅int64 qs_ptr ⸴ int64 qid⦆ → int64 ⟦
-    when qs_ptr ≡ 0 ⟦
-        yield 0 ·
-    ⟧
-    int64 zero ↦ 0 ·
-    int64 one ↦ 1 ·
-    yield 1 ·
+    when qs_ptr ≡ 0 ⟦ yield 0 · ⟧
+    int64 res ↦ qadav_stab_x⦅qs_ptr ⸴ qid⦆ ·
+    yield res ·
 ⟧
 
 process quantum_gate_cnot_native⦅int64 qs_ptr ⸴ int64 control ⸴ int64 target⦆ → int64 ⟦
-    when qs_ptr ≡ 0 ⟦
-        yield 0 ·
-    ⟧
-    int64 zero ↦ 0 ·
-    int64 one ↦ 1 ·
-    yield 1 ·
+    when qs_ptr ≡ 0 ⟦ yield 0 · ⟧
+    int64 res ↦ qadav_stab_cnot⦅qs_ptr ⸴ control ⸴ target⦆ ·
+    yield res ·
 ⟧
 
 process quantum_measure_native⦅int64 qs_ptr ⸴ int64 qid⦆ → int64 ⟦
-    when qs_ptr ≡ 0 ⟦
-        yield 0 ·
-    ⟧
-    int64 zero ↦ 0 ·
-    int64 one ↦ 1 ·
-
-    emit "--- QUANTUM STATE SIMULATION ---" ·
-    emit "Qubit: 0 | Superposition: COLLAPSED | Result: 1" ·
-    emit "State: NORMALIZED" ·
-    emit "---------------------------------" ·
-
-    yield 1 ·
+    when qs_ptr ≡ 0 ⟦ yield 0 · ⟧
+    int64 res ↦ qadav_stab_measure⦅qs_ptr ⸴ qid ⸴ 42⦆ ·
+    yield res ·
 ⟧

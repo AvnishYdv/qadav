@@ -173,7 +173,7 @@ process x86_emit_idiv_reg⦅int64 buf ⸴ int64 off ⸴ int64 reg⦆ → int64 �
     p ← x86_emit_byte⦅buf ⸴ p ⸴ rex⦆ ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 247⦆ · // 0xF7
     int64 r_reg ↦ reg ⊖ ((reg ⊘ 8) ⊗ 8) ·
-    int64 modrm ↦ r_reg ⊕ 248 ·        // 0xF8 + (reg & 7)
+    int64 modrm ↦ 248 ⊕ r_reg ·        // 0xF8 + (reg & 7)
     p ← x86_emit_byte⦅buf ⸴ p ⸴ modrm⦆ ·
     yield p ·
 ⟧
@@ -764,7 +764,7 @@ process x86_build_executable⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ �
     // call [rip + disp_GetStdHandle]
     // GetStdHandle IAT is at 0x3058
     // next instruction RVA = 0x1000 + (p - 512) + 6
-    int64 cur_rva_1 ↦ (p ⊖ 512) ⊕ 4102 ·
+    int64 cur_rva_1 ↦ 4096 ⊕ (p ⊖ 512) ⊕ 6 ·
     int64 base_gsh ↦ 12376 ·
     int64 disp_gsh ↦ base_gsh ⊖ cur_rva_1 ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
@@ -779,7 +779,7 @@ process x86_build_executable⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ �
     // lea rdx, [rip + disp_msg]
     // msg is at RVA 0x2000 (8192)
     // next instruction RVA = 0x1000 + (p - 512) + 7
-    int64 cur_rva_2 ↦ (p ⊖ 512) ⊕ 4103 ·
+    int64 cur_rva_2 ↦ 4096 ⊕ (p ⊖ 512) ⊕ 7 ·
     int64 base_msg ↦ 8192 ·
     int64 disp_msg ↦ base_msg ⊖ cur_rva_2 ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ ·
@@ -813,7 +813,7 @@ process x86_build_executable⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ �
     // call [rip + disp_WriteFile]
     // WriteFile IAT is at 0x3060 (12384)
     // next instruction RVA = 0x1000 + (p - 512) + 6
-    int64 cur_rva_3 ↦ (p ⊖ 512) ⊕ 4102 ·
+    int64 cur_rva_3 ↦ 4096 ⊕ (p ⊖ 512) ⊕ 6 ·
     int64 base_wf ↦ 12384 ·
     int64 disp_wf ↦ base_wf ⊖ cur_rva_3 ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
@@ -827,7 +827,7 @@ process x86_build_executable⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ �
     // call [rip + disp_ExitProcess]
     // ExitProcess IAT is at 0x3050 (12368)
     // next instruction RVA = 0x1000 + (p - 512) + 6
-    int64 cur_rva_4 ↦ (p ⊖ 512) ⊕ 4102 ·
+    int64 cur_rva_4 ↦ 4096 ⊕ (p ⊖ 512) ⊕ 6 ·
     int64 base_ep ↦ 12368 ·
     int64 disp_ep ↦ base_ep ⊖ cur_rva_4 ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
@@ -844,3 +844,4 @@ process x86_build_executable⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ �
     qadav_free⦅buf⦆ ·
     yield 0 ·
 ⟧
+

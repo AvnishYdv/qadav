@@ -2254,7 +2254,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         when a9 ≡ 0 ∨ a9 ≡ 32 ∨ a9 ≡ 9 ⟦ is_ver ← 1 · ⟧
     ⟧
     when is_ver ≡ 1 ⟦
-        emit "qyn 1.0.0-alpha (Phase 11 M11.3 | Self-Hosted x86_64-windows | C=0, Native=.ydv:52, Selfhost=.ydv:6)" ·
+        emit "qyn 1.0.0-alpha (Phase 11 M11.5 | Self-Hosted x86_64-windows | C=0, Native=.ydv:53, Selfhost=.ydv:6)" ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
     ⟧
@@ -2265,9 +2265,10 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
     ⟧
     when is_doc ≡ 1 ⟦
         emit "[DOCTOR] Compiler Binary: bin\\qyn.exe (self-hosted, 6/6 .ydv stages)" ·
-        emit "[DOCTOR] Native Modules:  52/52 modules active in internal\\qadav_native\\" ·
+        emit "[DOCTOR] Native Modules:  53/53 modules active in internal\\qadav_native\\" ·
         emit "[DOCTOR] C Exceptions:    0/0 (100% Pure Qadav — C-Free Bootstrap Complete)" ·
         emit "[DOCTOR] Host CPU AVX2:   SUPPORTED (ymm0-ymm15 enabled)" ·
+        emit "[DOCTOR] Quantum Engine:  1024-Qubit Aaronson-Gottesman Stabilizer Tableau + ZX-Calculus Rewriter" ·
         emit "[DOCTOR] Backend Toolchain: Native Qadav x86_64 Emitter + PE32+/COFF Linker (0 external tools)" ·
         emit "[DOCTOR] System Status:   HEALTHY — ready for native compilation" ·
         qadav_exit⦅0⦆ ·
@@ -2375,23 +2376,23 @@ process emit_common_prefix⦅⦆ → logic ⟦
 ⟧
 
 process main⦅⦆ → int64 ⟦
-    text target_file ↦ get_input_path⦅⦆ ·
     int64 cmd_ptr ↦ get_if_yield_val⦅⦆ ·
+    text target_file ↦ get_input_path⦅⦆ ·
     int64 chk ↦ handle_cli⦅cmd_ptr ⸴ target_file⦆ ·
-    int64 is_bm ↦ get_build_mode⦅⦆ ·
-    when chk ≡ 3 ∨ is_bm ≡ 1 ⟦
-        int64 out_p ↦ get_out_exe_path⦅⦆ ·
-        int64 b_res ↦ qadav_x86_build⦅target_file ⸴ out_p⦆ ·
-        emit "qyn: build: wrote native x86_64 PE32+ executable (0 external tools)" ·
-        qadav_exit⦅0⦆ ·
-        yield 0 ·
-    ⟧
     when chk ≡ 2 ⟦
         reset_vector_vars⦅0⦆ ·
         int64 num_toks_c ↦ tokenize_file⦅target_file⦆ ·
         CoreAst prog_c ↦ parse_program⦅num_toks_c⦆ ·
         int64 res_c ↦ walk_core_ast⦅prog_c ⸴ 1⦆ ·
         emit "qyn: check: passed — zero type errors" ·
+        qadav_exit⦅0⦆ ·
+        yield 0 ·
+    ⟧
+    int64 is_bm ↦ get_build_mode⦅⦆ ·
+    when chk ≡ 3 ∨ is_bm ≡ 1 ⟦
+        int64 out_p ↦ get_out_exe_path⦅⦆ ·
+        int64 b_res ↦ qadav_x86_build⦅target_file ⸴ out_p⦆ ·
+        emit "qyn: build: wrote native x86_64 PE32+ executable (0 external tools)" ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
     ⟧

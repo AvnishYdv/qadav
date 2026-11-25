@@ -1,0 +1,397 @@
+﻿// internal/qadav_native/zx_calculus.ydv
+// Qadav Native ZX-Calculus Quantum Circuit Optimization Pass (Phase 11 M11.5)
+// Operates on ZX-diagram spider graph representations using rewrite rules:
+//   1. Spider Fusion: Z(alpha) - Z(beta) -> Z(alpha + beta mod 8)
+//   2. Identity Removal: Z(0) -> Wire, X(0) -> Wire
+//   3. Self-Inverse Cancellation: H - H -> Wire, X - X -> Wire, CNOT - CNOT -> Wire, CZ - CZ -> Wire
+//   4. Color Change (Hadamard Conjugation): H - Z(alpha) - H -> X(alpha)
+
+declare i64 @pe_get_byte(i64, i64)
+declare void @pe_set_byte(i64, i64, i64)
+declare void @pe_set_u64(i64, i64, i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+
+// Gate representation in packed 64-bit words:
+// word 0: gate kind
+//   0: identity / deleted
+//   1: H (Hadamard)
+//   2: S (Z-spider phase pi/2, phase=2)
+//   3: T (Z-spider phase pi/4, phase=1)
+//   4: Z (Z-spider phase pi,   phase=4)
+//   5: X (X-spider phase pi,   phase=4)
+//   6: CNOT (2-qubit)
+//   7: CZ (2-qubit)
+// word 1: qubit1
+// word 2: qubit2 (for 2-qubit gates, or -1)
+// word 3: phase (0..7 units of pi/4 mod 8)
+
+process zx_get_u64⦅int64 buf ⸴ int64 word_idx⦆ → int64 ⟦
+    int64 off ↦ word_idx ⊗ 8 ·
+    int64 b0 ↦ pe_get_byte⦅buf ⸴ off⦆ ·
+    int64 off1 ↦ off ⊕ 1 ·
+    int64 b1 ↦ pe_get_byte⦅buf ⸴ off1⦆ ·
+    int64 off2 ↦ off ⊕ 2 ·
+    int64 b2 ↦ pe_get_byte⦅buf ⸴ off2⦆ ·
+    int64 off3 ↦ off ⊕ 3 ·
+    int64 b3 ↦ pe_get_byte⦅buf ⸴ off3⦆ ·
+    int64 off4 ↦ off ⊕ 4 ·
+    int64 b4 ↦ pe_get_byte⦅buf ⸴ off4⦆ ·
+    int64 off5 ↦ off ⊕ 5 ·
+    int64 b5 ↦ pe_get_byte⦅buf ⸴ off5⦆ ·
+    int64 off6 ↦ off ⊕ 6 ·
+    int64 b6 ↦ pe_get_byte⦅buf ⸴ off6⦆ ·
+    int64 off7 ↦ off ⊕ 7 ·
+    int64 b7 ↦ pe_get_byte⦅buf ⸴ off7⦆ ·
+
+    int64 s1 ↦ b1 ⊗ 256 ·
+    int64 s2 ↦ b2 ⊗ 65536 ·
+    int64 s3 ↦ b3 ⊗ 16777216 ·
+    int64 s4 ↦ b4 ⊗ 4294967296 ·
+    int64 s5 ↦ b5 ⊗ 1099511627776 ·
+    int64 s6 ↦ b6 ⊗ 281474976710656 ·
+    int64 s7 ↦ b7 ⊗ 72057594037927936 ·
+
+    int64 v01 ↦ b0 ∨ s1 ·
+    int64 v02 ↦ v01 ∨ s2 ·
+    int64 v03 ↦ v02 ∨ s3 ·
+    int64 v04 ↦ v03 ∨ s4 ·
+    int64 v05 ↦ v04 ∨ s5 ·
+    int64 v06 ↦ v05 ∨ s6 ·
+    int64 v ↦ v06 ∨ s7 ·
+    yield v ·
+⟧
+
+process zx_set_u64⦅int64 buf ⸴ int64 word_idx ⸴ int64 val⦆ → int64 ⟦
+    int64 off ↦ word_idx ⊗ 8 ·
+    pe_set_u64⦅buf ⸴ off ⸴ val⦆ ·
+    yield 0 ·
+⟧
+
+process zx_circuit_create⦅int64 max_gates⦆ → int64 ⟦
+    int64 mg4 ↦ max_gates ⊗ 4 ·
+    int64 total_words ↦ mg4 ⊕ 2 ·
+    int64 total_bytes ↦ total_words ⊗ 8 ·
+    int64 buf ↦ qadav_alloc⦅total_bytes⦆ ·
+    when buf ≡ 0 ⟦ yield 0 · ⟧
+    zx_set_u64⦅buf ⸴ 0 ⸴ 0⦆ ·
+    zx_set_u64⦅buf ⸴ 1 ⸴ max_gates⦆ ·
+    yield buf ·
+⟧
+
+process zx_circuit_free⦅int64 circ⦆ → int64 ⟦
+    when circ ≠ 0 ⟦ qadav_free⦅circ⦆ · ⟧
+    yield 0 ·
+⟧
+
+process zx_circuit_get_count⦅int64 circ⦆ → int64 ⟦
+    when circ ≡ 0 ⟦ yield 0 · ⟧
+    int64 c ↦ zx_get_u64⦅circ ⸴ 0⦆ ·
+    yield c ·
+⟧
+
+process zx_circuit_add_gate⦅int64 circ ⸴ int64 kind ⸴ int64 q1 ⸴ int64 q2 ⸴ int64 phase⦆ → int64 ⟦
+    when circ ≡ 0 ⟦ yield 0 · ⟧
+    int64 count ↦ zx_get_u64⦅circ ⸴ 0⦆ ·
+    int64 c4 ↦ count ⊗ 4 ·
+    int64 base ↦ c4 ⊕ 2 ·
+    zx_set_u64⦅circ ⸴ base ⸴ kind⦆ ·
+    int64 off1 ↦ base ⊕ 1 ·
+    zx_set_u64⦅circ ⸴ off1 ⸴ q1⦆ ·
+    int64 off2 ↦ base ⊕ 2 ·
+    zx_set_u64⦅circ ⸴ off2 ⸴ q2⦆ ·
+    int64 off3 ↦ base ⊕ 3 ·
+    zx_set_u64⦅circ ⸴ off3 ⸴ phase⦆ ·
+    int64 next_count ↦ count ⊕ 1 ·
+    zx_set_u64⦅circ ⸴ 0 ⸴ next_count⦆ ·
+    yield next_count ·
+⟧
+
+// Main ZX-Calculus Rewriting Pass
+process zx_optimize_circuit⦅int64 circ⦆ → int64 ⟦
+    when circ ≡ 0 ⟦ yield 0 · ⟧
+    int64 n_gates ↦ zx_get_u64⦅circ ⸴ 0⦆ ·
+    when n_gates ≼ 1 ⟦ yield n_gates · ⟧
+
+    int64 changed ↦ 1 ·
+    int64 i ↦ 0 ·
+    int64 i4 ↦ 0 ·
+    int64 b_i ↦ 0 ·
+    int64 k_i ↦ 0 ·
+    int64 off_q1 ↦ 0 ·
+    int64 q1_i ↦ 0 ·
+    int64 off_q2 ↦ 0 ·
+    int64 q2_i ↦ 0 ·
+    int64 off_p ↦ 0 ·
+    int64 p_i ↦ 0 ·
+
+    int64 is_phase_id ↦ 0 ·
+    int64 j ↦ 0 ·
+    int64 zero ↦ 0 ·
+    int64 neg_one ↦ zero ⊖ 1 ·
+    int64 next_j ↦ neg_one ·
+    int64 j4 ↦ 0 ·
+    int64 b_j ↦ 0 ·
+    int64 k_j_scan ↦ 0 ·
+    int64 off_j_q1 ↦ 0 ·
+    int64 q1_j_scan ↦ 0 ·
+    int64 off_j_q2 ↦ 0 ·
+    int64 q2_j_scan ↦ 0 ·
+    int64 matches ↦ 0 ·
+
+    int64 nj4 ↦ 0 ·
+    int64 b_nj ↦ 0 ·
+    int64 k_j ↦ 0 ·
+    int64 off_nj_q1 ↦ 0 ·
+    int64 q1_j ↦ 0 ·
+    int64 off_nj_q2 ↦ 0 ·
+    int64 q2_j ↦ 0 ·
+    int64 off_nj_p ↦ 0 ·
+    int64 p_j ↦ 0 ·
+
+    int64 is_z_i ↦ 0 ·
+    int64 is_z_j ↦ 0 ·
+    int64 p_sum ↦ 0 ·
+    int64 div8 ↦ 0 ·
+    int64 mul8 ↦ 0 ·
+    int64 p_mod8 ↦ 0 ·
+    int64 new_kind ↦ 0 ·
+
+    int64 k_idx ↦ 0 ·
+    int64 next_k ↦ neg_one ·
+    int64 k4 ↦ 0 ·
+    int64 b_k ↦ 0 ·
+    int64 kind_k ↦ 0 ·
+    int64 off_k_q1 ↦ 0 ·
+    int64 q1_k ↦ 0 ·
+    int64 nk4 ↦ 0 ·
+    int64 b_nk ↦ 0 ·
+    int64 kind_nk ↦ 0 ·
+
+    int64 write_idx ↦ 0 ·
+    int64 r ↦ 0 ·
+    int64 r4 ↦ 0 ·
+    int64 b_r ↦ 0 ·
+    int64 kind_r ↦ 0 ·
+    int64 w4 ↦ 0 ·
+    int64 b_w ↦ 0 ·
+    int64 off_rq1 ↦ 0 ·
+    int64 q1_r ↦ 0 ·
+    int64 off_wq1 ↦ 0 ·
+    int64 off_rq2 ↦ 0 ·
+    int64 q2_r ↦ 0 ·
+    int64 off_wq2 ↦ 0 ·
+    int64 off_rp ↦ 0 ·
+    int64 p_r ↦ 0 ·
+    int64 off_wp ↦ 0 ·
+
+    cycle changed ≡ 1 ⟦
+        changed ← 0 ·
+        i ← 0 ·
+        cycle i ≺ n_gates ⟦
+            i4 ← i ⊗ 4 ·
+            b_i ← i4 ⊕ 2 ·
+            k_i ← zx_get_u64⦅circ ⸴ b_i⦆ ·
+
+            when k_i ≠ 0 ⟦
+                off_q1 ← b_i ⊕ 1 ·
+                q1_i ← zx_get_u64⦅circ ⸴ off_q1⦆ ·
+                off_q2 ← b_i ⊕ 2 ·
+                q2_i ← zx_get_u64⦅circ ⸴ off_q2⦆ ·
+                off_p ← b_i ⊕ 3 ·
+                p_i ← zx_get_u64⦅circ ⸴ off_p⦆ ·
+
+                // Rule 2: Identity Removal (phase == 0 for phase gates)
+                is_phase_id ← 0 ·
+                when k_i ≡ 2 ⟦ when p_i ≡ 0 ⟦ is_phase_id ← 1 · ⟧ ⟧
+                when k_i ≡ 3 ⟦ when p_i ≡ 0 ⟦ is_phase_id ← 1 · ⟧ ⟧
+                when k_i ≡ 4 ⟦ when p_i ≡ 0 ⟦ is_phase_id ← 1 · ⟧ ⟧
+                when k_i ≡ 5 ⟦ when p_i ≡ 0 ⟦ is_phase_id ← 1 · ⟧ ⟧
+                when is_phase_id ≡ 1 ⟦
+                    zx_set_u64⦅circ ⸴ b_i ⸴ 0⦆ ·
+                    changed ← 1 ·
+                    k_i ← 0 ·
+                ⟧
+
+                when k_i ≠ 0 ⟦
+                    // Find next non-cancelled gate affecting qubit q1_i
+                    j ← i ⊕ 1 ·
+                    next_j ← neg_one ·
+                    cycle j ≺ n_gates ⟦
+                        when next_j ≡ neg_one ⟦
+                            j4 ← j ⊗ 4 ·
+                            b_j ← j4 ⊕ 2 ·
+                            k_j_scan ← zx_get_u64⦅circ ⸴ b_j⦆ ·
+                            when k_j_scan ≠ 0 ⟦
+                                off_j_q1 ← b_j ⊕ 1 ·
+                                q1_j_scan ← zx_get_u64⦅circ ⸴ off_j_q1⦆ ·
+                                off_j_q2 ← b_j ⊕ 2 ·
+                                q2_j_scan ← zx_get_u64⦅circ ⸴ off_j_q2⦆ ·
+                                matches ← 0 ·
+                                when q1_j_scan ≡ q1_i ⟦ matches ← 1 · ⟧
+                                when q2_j_scan ≡ q1_i ⟦ matches ← 1 · ⟧
+                                when matches ≡ 1 ⟦ next_j ← j · ⟧
+                            ⟧
+                        ⟧
+                        j ← j ⊕ 1 ·
+                    ⟧
+
+                    // Rewrite interactions if next gate found on same qubit
+                    when next_j ≠ neg_one ⟦
+                        nj4 ← next_j ⊗ 4 ·
+                        b_nj ← nj4 ⊕ 2 ·
+                        k_j ← zx_get_u64⦅circ ⸴ b_nj⦆ ·
+                        off_nj_q1 ← b_nj ⊕ 1 ·
+                        q1_j ← zx_get_u64⦅circ ⸴ off_nj_q1⦆ ·
+                        off_nj_q2 ← b_nj ⊕ 2 ·
+                        q2_j ← zx_get_u64⦅circ ⸴ off_nj_q2⦆ ·
+                        off_nj_p ← b_nj ⊕ 3 ·
+                        p_j ← zx_get_u64⦅circ ⸴ off_nj_p⦆ ·
+
+                        // Rule 3: Self-Inverse Cancellation
+                        // 1: H-H cancel
+                        when k_i ≡ 1 ∧ k_j ≡ 1 ⟦
+                            zx_set_u64⦅circ ⸴ b_i ⸴ 0⦆ ·
+                            zx_set_u64⦅circ ⸴ b_nj ⸴ 0⦆ ·
+                            changed ← 1 ·
+                        ⟧
+
+                        // 5: X-X cancel
+                        when k_i ≡ 5 ∧ k_j ≡ 5 ⟦
+                            zx_set_u64⦅circ ⸴ b_i ⸴ 0⦆ ·
+                            zx_set_u64⦅circ ⸴ b_nj ⸴ 0⦆ ·
+                            changed ← 1 ·
+                        ⟧
+
+                        // 4: Z-Z cancel
+                        when k_i ≡ 4 ∧ k_j ≡ 4 ⟦
+                            zx_set_u64⦅circ ⸴ b_i ⸴ 0⦆ ·
+                            zx_set_u64⦅circ ⸴ b_nj ⸴ 0⦆ ·
+                            changed ← 1 ·
+                        ⟧
+
+                        // 6: CNOT-CNOT cancel
+                        when k_i ≡ 6 ∧ k_j ≡ 6 ⟦
+                            when q1_i ≡ q1_j ∧ q2_i ≡ q2_j ⟦
+                                zx_set_u64⦅circ ⸴ b_i ⸴ 0⦆ ·
+                                zx_set_u64⦅circ ⸴ b_nj ⸴ 0⦆ ·
+                                changed ← 1 ·
+                            ⟧
+                        ⟧
+
+                        // 7: CZ-CZ cancel
+                        when k_i ≡ 7 ∧ k_j ≡ 7 ⟦
+                            when q1_i ≡ q1_j ∧ q2_i ≡ q2_j ⟦
+                                zx_set_u64⦅circ ⸴ b_i ⸴ 0⦆ ·
+                                zx_set_u64⦅circ ⸴ b_nj ⸴ 0⦆ ·
+                                changed ← 1 ·
+                            ⟧
+                        ⟧
+
+                        // Rule 1: Spider Fusion
+                        // Z-spiders (S, T, Z) fuse phases
+                        is_z_i ← 0 ·
+                        when k_i ≡ 2 ⟦ is_z_i ← 1 · ⟧
+                        when k_i ≡ 3 ⟦ is_z_i ← 1 · ⟧
+                        when k_i ≡ 4 ⟦ is_z_i ← 1 · ⟧
+
+                        is_z_j ← 0 ·
+                        when k_j ≡ 2 ⟦ is_z_j ← 1 · ⟧
+                        when k_j ≡ 3 ⟦ is_z_j ← 1 · ⟧
+                        when k_j ≡ 4 ⟦ is_z_j ← 1 · ⟧
+
+                        when is_z_i ≡ 1 ∧ is_z_j ≡ 1 ⟦
+                            p_sum ← p_i ⊕ p_j ·
+                            div8 ← p_sum ⊘ 8 ·
+                            mul8 ← div8 ⊗ 8 ·
+                            p_mod8 ← p_sum ⊖ mul8 ·
+                            when p_mod8 ≡ 0 ⟦
+                                // Cancels to identity wire
+                                zx_set_u64⦅circ ⸴ b_i ⸴ 0⦆ ·
+                                zx_set_u64⦅circ ⸴ b_nj ⸴ 0⦆ ·
+                            ⟧ otherwise ⟦
+                                // Fuse into gate i, delete gate j
+                                new_kind ← 4 · // default Z
+                                when p_mod8 ≡ 2 ⟦ new_kind ← 2 · ⟧ // S
+                                when p_mod8 ≡ 1 ⟦ new_kind ← 3 · ⟧ // T
+                                zx_set_u64⦅circ ⸴ b_i ⸴ new_kind⦆ ·
+                                zx_set_u64⦅circ ⸴ off_p ⸴ p_mod8⦆ ·
+                                zx_set_u64⦅circ ⸴ b_nj ⸴ 0⦆ ·
+                            ⟧
+                            changed ← 1 ·
+                        ⟧
+
+                        // Rule 4: Color Change (Hadamard Conjugation)
+                        // Pattern: H(q) - Z_spider(q, p) - H(q) -> X_spider(q, p)
+                        when k_i ≡ 1 ∧ is_z_j ≡ 1 ⟦
+                            // Look for following H gate
+                            k_idx ← next_j ⊕ 1 ·
+                            next_k ← neg_one ·
+                            cycle k_idx ≺ n_gates ⟦
+                                when next_k ≡ neg_one ⟦
+                                    k4 ← k_idx ⊗ 4 ·
+                                    b_k ← k4 ⊕ 2 ·
+                                    kind_k ← zx_get_u64⦅circ ⸴ b_k⦆ ·
+                                    when kind_k ≠ 0 ⟦
+                                        off_k_q1 ← b_k ⊕ 1 ·
+                                        q1_k ← zx_get_u64⦅circ ⸴ off_k_q1⦆ ·
+                                        when q1_k ≡ q1_i ⟦ next_k ← k_idx · ⟧
+                                    ⟧
+                                ⟧
+                                k_idx ← k_idx ⊕ 1 ·
+                            ⟧
+                            when next_k ≠ neg_one ⟦
+                                nk4 ← next_k ⊗ 4 ·
+                                b_nk ← nk4 ⊕ 2 ·
+                                kind_nk ← zx_get_u64⦅circ ⸴ b_nk⦆ ·
+                                when kind_nk ≡ 1 ⟦
+                                    // Transform Z to X spider
+                                    zx_set_u64⦅circ ⸴ b_i ⸴ 0⦆ ·
+                                    zx_set_u64⦅circ ⸴ b_nj ⸴ 5⦆ · // X gate
+                                    zx_set_u64⦅circ ⸴ b_nk ⸴ 0⦆ ·
+                                    changed ← 1 ·
+                                ⟧
+                            ⟧
+                        ⟧
+                    ⟧
+                ⟧
+            ⟧
+
+            i ← i ⊕ 1 ·
+        ⟧
+    ⟧
+
+    // Compact circuit: remove deleted gates (kind == 0)
+    write_idx ← 0 ·
+    r ← 0 ·
+    cycle r ≺ n_gates ⟦
+        r4 ← r ⊗ 4 ·
+        b_r ← r4 ⊕ 2 ·
+        kind_r ← zx_get_u64⦅circ ⸴ b_r⦆ ·
+        when kind_r ≠ 0 ⟦
+            when write_idx ≠ r ⟦
+                w4 ← write_idx ⊗ 4 ·
+                b_w ← w4 ⊕ 2 ·
+                zx_set_u64⦅circ ⸴ b_w ⸴ kind_r⦆ ·
+                off_rq1 ← b_r ⊕ 1 ·
+                q1_r ← zx_get_u64⦅circ ⸴ off_rq1⦆ ·
+                off_wq1 ← b_w ⊕ 1 ·
+                zx_set_u64⦅circ ⸴ off_wq1 ⸴ q1_r⦆ ·
+                off_rq2 ← b_r ⊕ 2 ·
+                q2_r ← zx_get_u64⦅circ ⸴ off_rq2⦆ ·
+                off_wq2 ← b_w ⊕ 2 ·
+                zx_set_u64⦅circ ⸴ off_wq2 ⸴ q2_r⦆ ·
+                off_rp ← b_r ⊕ 3 ·
+                p_r ← zx_get_u64⦅circ ⸴ off_rp⦆ ·
+                off_wp ← b_w ⊕ 3 ·
+                zx_set_u64⦅circ ⸴ off_wp ⸴ p_r⦆ ·
+            ⟧
+            write_idx ← write_idx ⊕ 1 ·
+        ⟧
+        r ← r ⊕ 1 ·
+    ⟧
+
+    // Update new gate count in circuit header
+    zx_set_u64⦅circ ⸴ 0 ⸴ write_idx⦆ ·
+    yield write_idx ·
+⟧
