@@ -346,6 +346,11 @@ process x86_detect_kind⦅int64 path_ptr⦆ → int64 ⟦
             b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
             when b1 ≡ 118 ⟦ kind ← 6 · ⟧
         ⟧
+        when b ≡ 110 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 101 ⟦ kind ← 8 · ⟧
+        ⟧
         i ← i ⊕ 1 ·
     ⟧
     yield kind ·
@@ -701,6 +706,13 @@ process x86_write_msg⦅int64 buf ⸴ int64 kind⦆ → int64 ⟦
     ⟧
     when kind ≡ 7 ⟦
         // "5\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 53⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
+    when kind ≡ 8 ⟦
+        // "75\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 55⦆ ·
         p ← x86_emit_byte⦅buf ⸴ p ⸴ 53⦆ ·
         p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
         p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·

@@ -322,6 +322,10 @@ process parse_expression⦅int64 idx⦆ → CoreAst ⟦
             left_call ← ast_call0⦅cname⦆ ·
         ⟧ otherwise ⟦
             int64 n_commas ↦ 0 ·
+            int64 first_comma ↦ 0 ·
+            int64 second_comma ↦ 0 ·
+            int64 third_comma ↦ 0 ·
+            int64 fourth_comma ↦ 0 ·
             int64 sc ↦ idx ⊕ 2 ·
             int64 p_depth ↦ 0 ·
             cycle sc ≺ close_p ⟦
@@ -333,6 +337,18 @@ process parse_expression⦅int64 idx⦆ → CoreAst ⟦
                         p_depth ← p_depth ⊖ 1 ·
                     ⟧ otherwise ⟦
                         when kc_sc ≡ 25 ∧ p_depth ≡ 0 ⟦
+                            when n_commas ≡ 0 ⟦
+                                first_comma ← sc ·
+                            ⟧
+                            when n_commas ≡ 1 ⟦
+                                second_comma ← sc ·
+                            ⟧
+                            when n_commas ≡ 2 ⟦
+                                third_comma ← sc ·
+                            ⟧
+                            when n_commas ≡ 3 ⟦
+                                fourth_comma ← sc ·
+                            ⟧
                             n_commas ← n_commas ⊕ 1 ·
                         ⟧
                     ⟧
@@ -344,30 +360,30 @@ process parse_expression⦅int64 idx⦆ → CoreAst ⟦
                 left_call ← ast_call1⦅cname ⸴ a_expr⦆ ·
             ⟧ otherwise ⟦
                 when n_commas ≡ 1 ⟦
-                    CoreAst a1_2 ↦ parse_primary⦅idx ⊕ 2⦆ ·
-                    CoreAst a2_2 ↦ parse_expression⦅idx ⊕ 4⦆ ·
+                    CoreAst a1_2 ↦ parse_expression⦅idx ⊕ 2⦆ ·
+                    CoreAst a2_2 ↦ parse_expression⦅first_comma ⊕ 1⦆ ·
                     left_call ← ast_call2⦅cname ⸴ a1_2 ⸴ a2_2⦆ ·
                 ⟧ otherwise ⟦
                     when n_commas ≡ 2 ⟦
-                        CoreAst a1_3 ↦ parse_primary⦅idx ⊕ 2⦆ ·
-                        CoreAst a2_3 ↦ parse_primary⦅idx ⊕ 4⦆ ·
-                        CoreAst a3_3 ↦ parse_expression⦅idx ⊕ 6⦆ ·
+                        CoreAst a1_3 ↦ parse_expression⦅idx ⊕ 2⦆ ·
+                        CoreAst a2_3 ↦ parse_expression⦅first_comma ⊕ 1⦆ ·
+                        CoreAst a3_3 ↦ parse_expression⦅second_comma ⊕ 1⦆ ·
                         CoreAst c3 ↦ variant_init CoreAst ⦅Call3Decl ↦ cname ⸴ a1_3 ⸴ a2_3 ⸴ a3_3⦆ ·
                         left_call ← c3 ·
                     ⟧ otherwise ⟦
                         when n_commas ≡ 3 ⟦
-                            CoreAst a1_4 ↦ parse_primary⦅idx ⊕ 2⦆ ·
-                            CoreAst a2_4 ↦ parse_primary⦅idx ⊕ 4⦆ ·
-                            CoreAst a3_4 ↦ parse_primary⦅idx ⊕ 6⦆ ·
-                            CoreAst a4_4 ↦ parse_expression⦅idx ⊕ 8⦆ ·
+                            CoreAst a1_4 ↦ parse_expression⦅idx ⊕ 2⦆ ·
+                            CoreAst a2_4 ↦ parse_expression⦅first_comma ⊕ 1⦆ ·
+                            CoreAst a3_4 ↦ parse_expression⦅second_comma ⊕ 1⦆ ·
+                            CoreAst a4_4 ↦ parse_expression⦅third_comma ⊕ 1⦆ ·
                             CoreAst c4 ↦ variant_init CoreAst ⦅Call4Decl ↦ cname ⸴ a1_4 ⸴ a2_4 ⸴ a3_4 ⸴ a4_4⦆ ·
                             left_call ← c4 ·
                         ⟧ otherwise ⟦
-                            CoreAst a1_5 ↦ parse_primary⦅idx ⊕ 2⦆ ·
-                            CoreAst a2_5 ↦ parse_primary⦅idx ⊕ 4⦆ ·
-                            CoreAst a3_5 ↦ parse_primary⦅idx ⊕ 6⦆ ·
-                            CoreAst a4_5 ↦ parse_primary⦅idx ⊕ 8⦆ ·
-                            CoreAst a5_5 ↦ parse_expression⦅idx ⊕ 10⦆ ·
+                            CoreAst a1_5 ↦ parse_expression⦅idx ⊕ 2⦆ ·
+                            CoreAst a2_5 ↦ parse_expression⦅first_comma ⊕ 1⦆ ·
+                            CoreAst a3_5 ↦ parse_expression⦅second_comma ⊕ 1⦆ ·
+                            CoreAst a4_5 ↦ parse_expression⦅third_comma ⊕ 1⦆ ·
+                            CoreAst a5_5 ↦ parse_expression⦅fourth_comma ⊕ 1⦆ ·
                             CoreAst c5 ↦ variant_init CoreAst ⦅Call5Decl ↦ cname ⸴ a1_5 ⸴ a2_5 ⸴ a3_5 ⸴ a4_5 ⸴ a5_5⦆ ·
                             left_call ← c5 ·
                         ⟧

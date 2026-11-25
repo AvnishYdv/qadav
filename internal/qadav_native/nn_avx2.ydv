@@ -550,7 +550,9 @@ process vec_fused_qnmf_bilateral_256⦅int64 x_ptr ⸴ int64 wa_ptr ⸴ int64 wb
 // Initializes or creates the weight file backing and creates a Win32 file mapping object
 process qadav_mmap_weights_open⦅int64 path_ptr ⸴ int64 size_bytes⦆ → int64 ⟦
     // System pagefile-backed mapping (hFile = -1)
-    int64 h_map_page ↦ CreateFileMappingA⦅-1 ⸴ 0 ⸴ 4 ⸴ 0 ⸴ size_bytes ⸴ 0⦆ ·
+    int64 zero ↦ 0 ·
+    int64 neg_one ↦ zero ⊖ 1 ·
+    int64 h_map_page ↦ CreateFileMappingA⦅neg_one ⸴ zero ⸴ 4 ⸴ zero ⸴ size_bytes ⸴ zero⦆ ·
     yield h_map_page ·
 ⟧
 

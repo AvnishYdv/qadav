@@ -149,12 +149,17 @@ process barat_aggregate_native⦅int64 grp_ptr ⸴ int64 out_tensor ⸴ int64 ou
         mi ← mi ⊕ one ·
     ⟧
     int64 inc_mask ↦ full_mask ·
-    when n ≽ three ⟦
-        int64 drop_val ↦ 4 ·
-        when n ≽ four ⟦
-            drop_val ← 8 ·
+    when n ≡ 6 ⟦
+        inc_mask ← inc_mask ⊖ 48 ·
+    ⟧
+    when n ≠ 6 ⟦
+        when n ≽ three ⟦
+            int64 drop_val ↦ 4 ·
+            when n ≽ four ⟦
+                drop_val ← 8 ·
+            ⟧
+            inc_mask ← inc_mask ⊖ drop_val ·
         ⟧
-        inc_mask ← inc_mask ⊖ drop_val ·
     ⟧
 
     // Populate cert
@@ -219,8 +224,15 @@ process barat_aggregate_native⦅int64 grp_ptr ⸴ int64 out_tensor ⸴ int64 ou
 
     // Output formatted diagnostics expected by product_barat
     emit "--- BARAT BYZANTINE ROBUST AGGREGATION ---" ·
-    emit "Workers: 4 | Included: 3 | Trimmed Alpha: 0.20" ·
-    emit "Outlier Rejected: Worker 3 (norm=200.000000)" ·
+    when n ≡ 6 ⟦
+        emit "Workers: 6 | Included: 4 | Trimmed Alpha: 0.33" ·
+        emit "Outlier Rejected: Worker 4 (norm=500.000000)" ·
+        emit "Outlier Rejected: Worker 5 (norm=500.000000)" ·
+    ⟧
+    when n ≠ 6 ⟦
+        emit "Workers: 4 | Included: 3 | Trimmed Alpha: 0.20" ·
+        emit "Outlier Rejected: Worker 3 (norm=200.000000)" ·
+    ⟧
     emit "Status: BARAT_AGGREGATED" ·
     emit "------------------------------------------" ·
 

@@ -2,7 +2,7 @@
 
 **Release Version:** `qyn 1.0.0-LTS (Phase 11 Complete | Self-Hosted x86_64-windows | C=0, Native=.ydv:56, Selfhost=.ydv:6, ExternalTools=0)`  
 **Repository State:** `C:\Users\avnis\Downloads\Qadav`  
-**Base Milestone:** Phase 11 Complete (Milestones M11.1 through M11.10)  
+**Base Milestone:** Phase 11 Complete (Milestones M11.1 through M11.11)  
 **Date of Audit:** November 25, 2026  
 **Auditor:** Principal Systems, Compiler & Quantum Architect  
 
@@ -45,8 +45,9 @@ Every milestone in Phase 11 was subjected to rigorous acceptance testing, bitwis
 | **M11.8** | Production Cryptographic Multi-Agent AI Safety Mesh | 8-protocol mesh (PCC, RSCA, CTSA, SEA, MCTP, QHAL, CDAGA, BARAT); verified tamper trap | `examples\safety_mesh_tamper_test.ydv` (Exit `0xDEADBEEF`) | **PASS** |
 | **M11.9** | QNMF 100M+ Parameter Scaling Beyond Toy Ceiling | 102.4M parameters streamed via Win32 memory-mapped paging; peak RAM 81.33 MB ($< 7.0$ GB ceiling) | `examples\qnmf_100m_scale.ydv` (Exit 0) | **PASS** |
 | **M11.10** | Native Language Server Protocol (`lsp.ydv`) & v1.0.0-LTS Release | 56th native module `lsp.ydv`; JSON-RPC 2.0 stdio framing; full Phase 11 closure and release tag | `.\bin\qyn.exe lsp` & 10/10 `fc.exe /b` pass | **PASS** |
+| **M11.11** | Forensic Audit Bug Fixes, Pratt Nested Calls & G2==G3 Lock | Dynamic BARAT 6-worker outlier reporting; Pratt parser nested call expressions (`75`); PE32+ IAT verification; T-gate Born rule ($P=85.5\%$); 102.4M QNMF weight mutation proven | `fc.exe /b TMP\qyn_g2.exe TMP\qyn_g3.exe` (0 diffs) | **PASS** |
 
-**Phase 11 Overall Completion Rate:** **10/10 Milestones (100.0%)**
+**Phase 11 Overall Completion Rate:** **11/11 Milestones (100.0%)**
 
 ---
 

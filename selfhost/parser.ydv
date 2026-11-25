@@ -749,19 +749,8 @@ process parse_statement⦅int64 cur_idx⦆ → CoreAst ⟦
         ⟧
 
         when vk ≡ 2 ∧ token_kind_code⦅val_start ⊕ 1⦆ ≡ 22 ⟦
-            text cname ↦ token_literal⦅val_start⦆ ·
-            int64 arg_tok ↦ val_start ⊕ 2 ·
-            when token_kind_code⦅arg_tok⦆ ≡ 23 ⟦
-                yield ast_bind⦅name ⸴ typ ⸴ ast_call0⦅cname⦆⦆ ·
-            ⟧
-            int64 comma_tok ↦ val_start ⊕ 3 ·
-            when token_kind_code⦅comma_tok⦆ ≡ 25 ⟦
-                CoreAst ca1 ↦ ast_ident⦅token_literal⦅arg_tok⦆⦆ ·
-                CoreAst ca2 ↦ ast_ident⦅token_literal⦅val_start ⊕ 4⦆⦆ ·
-                yield ast_bind⦅name ⸴ typ ⸴ ast_call2⦅cname ⸴ ca1 ⸴ ca2⦆⦆ ·
-            ⟧
-            CoreAst ca ↦ parse_primary⦅arg_tok⦆ ·
-            yield ast_bind⦅name ⸴ typ ⸴ ast_call1⦅cname ⸴ ca⦆⦆ ·
+            CoreAst expr_c ↦ parse_expression⦅val_start⦆ ·
+            yield ast_bind⦅name ⸴ typ ⸴ expr_c⦆ ·
         ⟧
 
         CoreAst expr ↦ parse_expression⦅val_start⦆ ·
