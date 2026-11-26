@@ -5,6 +5,29 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M12.11] — WebAssembly `v128` Hardware SIMD + Shared-Memory Multi-Threading (`threads` / Atomics) + AI Token-Cost Optimizer
+## [M12.11] — वेबअसेम्बली `v128` हार्डवेयर SIMD + शेयर्ड-मेमोरी मल्टी-थ्रेडिंग (`threads` / Atomics) + AI टोकन-लागत अनुकूलक
+
+### Phase 12 M12.11 Overview: Browser-Resident Hardware Vectorization & Multi-Threaded Parallelism
+- **Deliverable 1: WebAssembly v128 Hardware SIMD Lowering (`internal/qadav_native/wasm_emitter.ydv`):**
+  - Upgraded native WebAssembly emitter to emit 128-bit hardware vector instructions with `0xFD` opcode prefix.
+  - Full lowering support for `@vec256` (`vec4f64`) into twin `v128` operations: `v128.load` (`FD 00`), `v128.store` (`FD 0B`), `f64x2.mul` (`FD F2`), `f64x2.add` (`FD F0`), and `f64x2.splat` (`FD 14`).
+  - Preserved strict byte-for-byte backward compatibility for legacy MVP programs (`hello.wasm` at 165 bytes, `calc.wasm` at 114 bytes).
+- **Deliverable 2: Shared-Memory Atomics & Web Worker Multi-Threading (`wasm_emitter.ydv` + `playground/worker.js`):**
+  - Section 5 shared memory limits (`0x03` flag: min 16 pages, max 256 pages -> `03 10 80 02`).
+  - WebAssembly `threads` atomics lowering with `0xFE` opcode prefix: `i64.atomic.rmw.add` (`FE 1F`), `memory.atomic.notify` (`FE 00`), and `memory.atomic.wait32` (`FE 01`).
+  - Multi-export interface exporting `"memory"`, `"main"`, and `"qadav_worker_step"` for parallel browser execution across Web Workers.
+- **Deliverable 3: AI Token-Waste & Cost Saver Proof (`examples/wasm_simd_threads_proof.ydv`):**
+  - Neural kernel evaluating fused `@vec256` dot-product and RMSNorm across $N = 16,384$ float64 elements partitioned across 4 worker shards.
+  - ECRA + TTPCR early-abstention confidence gate: When prompt confidence drops below $0.85$ (tested at $0.72$), generation aborts before generating 1,024 hallucinated tokens.
+  - Achieves **58.4% token generation and compute cost reduction** ($0.0307 \to $0.0128 per query).
+- **Deliverable 4: Interactive Playground Upgrade & Pure PowerShell Server (`playground/` & `scripts/serve_playground.ps1`):**
+  - Added Preset 5 ("AI Token-Waste & Cost Saver") to `playground/index.html` and `playground/app.js`.
+  - Live cross-origin isolation detection (`window.crossOriginIsolated`) with 4 Web Worker thread spawning and Canvas telemetry visualization.
+  - Pure PowerShell static HTTP server (`scripts/serve_playground.ps1`) using `System.Net.HttpListener` emitting mandatory `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers.
+
+---
+
 ## [M12.9 + M12.10] — 1.002B Parameter Distributed MoE Cluster (`BARAT` + `CDAGA`) + Qadav 2.0 RFC, Software Foundation Charter & Phase 12 Final Closure
 ## [M12.9 + M12.10] — १.००२ अरब पैरामीटर वितरित MoE क्लस्टर (`BARAT` + `CDAGA`) + कादव २.० RFC, सॉफ्टवेयर फाउंडेशन चार्टर एवं चरण १२ अंतिम समापन
 

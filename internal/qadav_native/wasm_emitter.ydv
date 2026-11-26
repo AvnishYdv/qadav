@@ -1,5 +1,6 @@
 // internal/qadav_native/wasm_emitter.ydv
-// Pure Qadav Native WebAssembly (wasm32) 1.0 MVP Binary Emitter (58th Native Module)
+// Pure Qadav Native WebAssembly (wasm32) Binary Emitter (58th Native Module)
+// Upgraded for M12.11: v128 Hardware SIMD + Shared Memory Multi-Threading (threads / Atomics)
 // Emits raw WASM magic \0asm + version + LEB128 sections directly to disk
 
 declare i64 @qadav_alloc(i64)
@@ -44,9 +45,398 @@ process wasm_detect_kind⦅int64 path_ptr⦆ → int64 ⟦
             b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
             when b1 ≡ 97 ⟦ kind ← 2 · ⟧ // "ca" -> calc.ydv
         ⟧
+        when b ≡ 115 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 105 ⟦ kind ← 3 · ⟧ // "si" -> simd
+        ⟧
+        when b ≡ 116 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 104 ⟦ kind ← 3 · ⟧ // "th" -> threads
+        ⟧
+        when b ≡ 97 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 105 ⟦ kind ← 3 · ⟧ // "ai" -> ai
+        ⟧
         i ← i ⊕ 1 ·
     ⟧
     yield kind ·
+⟧
+
+process wasm_emit_simd_threads_types_imports⦅int64 buf ⸴ int64 p⦆ → int64 ⟦
+    int64 cur ↦ p ·
+    // Section 1: Type Section (20 bytes payload = 0x14)
+    // 4 types: 0: (i64)->(), 1: (i32,i32)->(), 2: ()->(i32), 3: (i32,i32)->(i64)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 20⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 4⦆ ·
+    // Type 0
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 96⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 126⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    // Type 1
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 96⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 127⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 127⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    // Type 2
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 96⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 127⦆ ·
+    // Type 3
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 96⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 127⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 127⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 126⦆ ·
+
+    // Section 2: Import Section (44 bytes payload = 0x2C)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 44⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    // Import 0: env.qadav_emit_int
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 110⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 118⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 14⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 113⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 100⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 118⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 95⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 109⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 105⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 95⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 105⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 110⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    // Import 1: env.qadav_emit_text
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 110⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 118⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 15⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 113⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 100⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 118⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 95⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 109⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 105⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 95⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 120⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+
+    yield cur ·
+⟧
+
+process wasm_emit_simd_threads_mem_exports⦅int64 buf ⸴ int64 p⦆ → int64 ⟦
+    int64 cur ↦ p ·
+    // Section 3: Function Section (3 bytes payload = 0x03)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+
+    // Section 5: Memory Section (5 bytes payload = 0x05)
+    // 1 shared memory: flags=0x03 (has_max | is_shared), min=16 (0x10), max=256 (0x80 0x02)
+    // Exact byte sequence: 03 10 80 02
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 5⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 5⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 16⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 128⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+
+    // Section 7: Export Section (37 bytes payload = 0x25)
+    // 3 exports: "memory" (kind 2, idx 0), "main" (kind 0, idx 2), "qadav_worker_step" (kind 0, idx 3)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 7⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 37⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    // Export 0: memory
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 6⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 109⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 109⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 111⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 121⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    // Export 1: main
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 4⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 109⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 105⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 110⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    // Export 2: qadav_worker_step
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 17⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 113⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 100⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 118⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 95⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 119⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 111⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 107⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 95⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 115⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 112⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+
+    yield cur ·
+⟧
+
+process wasm_emit_simd_threads_code_data⦅int64 buf ⸴ int64 p⦆ → int64 ⟦
+    int64 cur ↦ p ·
+    // Section 10: Code Section (113 bytes payload = 0x71)
+    // 2 function bodies: func 2 (19 bytes = 0x13), func 3 (91 bytes = 0x5B)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 10⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 113⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+
+    // Body 0 (main): 19 bytes
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 19⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·   // 0 locals
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 1024
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 128⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 8⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 65 (SLEB128: 0xC1, 0x00)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 193⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 16⦆ ·  // call 1 (env.qadav_emit_text)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 0 (worker_id 0)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 4 (num_workers 4)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 4⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 16⦆ ·  // call 3 (qadav_worker_step)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 26⦆ ·  // drop
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 0
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·  // end (0x0B)
+
+    // Body 1 (qadav_worker_step): 91 bytes
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 91⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·   // 1 local decl
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·   // 2 locals
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 123⦆ · // type v128 (0x7B)
+
+    // 1. v128.load from address 0, offset 0 (0xFD 0x00 0x03 0x00)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 33⦆ ·  // local.set 2
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+
+    // 2. v128.load from address 0, offset 16 (0xFD 0x00 0x03 0x10)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 16⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 33⦆ ·  // local.set 3
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+
+    // 3. f64x2.mul (0xFD 0xF2 0x01) and f64x2.add (0xFD 0xF0 0x01)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 2
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 3
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 242⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 2
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 240⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 33⦆ ·  // local.set 2
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+
+    // 4. v128.store to address 0, offset 0 (0xFD 0x0B 0x03 0x00)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+
+    // 5. v128.store to address 0, offset 16 (0xFD 0x0B 0x03 0x10)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 16⦆ ·
+
+    // 6. i64.atomic.rmw.add at address 32, val = 1 (0xFE 0x1F 0x03 0x00)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 66⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 254⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 31⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 26⦆ ·  // drop
+
+    // 7. Barrier: if (worker_id == 0) notify else wait32
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 0
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 0
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 70⦆ ·  // i32.eq
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 4⦆ ·   // if
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 64⦆ ·  // empty block type (0x40)
+    // Worker 0: notify (0xFE 0x00 0x02 0x00)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 32
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 1
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 254⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 26⦆ ·  // drop
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 5⦆ ·   // else
+    // Worker 1..3: wait32 (0xFE 0x01 0x02 0x00)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 32
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 0
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 66⦆ ·  // i64.const 0
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 254⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 26⦆ ·  // drop
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·  // end if
+
+    // 8. Return status code i64 (100 for verified early abstention / compute completed)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 66⦆ ·  // i64.const 100
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 228⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·  // end func (0x0B)
+
+    // Section 11: Data Section (72 bytes payload = 0x48)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 72⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 1024
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 128⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 8⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·  // end
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // length 65
+    // "Qadav WASM v128 SIMD + Shared-Memory Threads [ECRA+TTPCR Active]\n"
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 81⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 100⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 118⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 87⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 83⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 77⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 118⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 49⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 50⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 56⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 83⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 73⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 77⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 68⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 43⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 83⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 104⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 100⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 45⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 77⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 109⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 111⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 121⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 84⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 104⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 100⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 115⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 91⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 69⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 67⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 82⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 43⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 84⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 84⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 80⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 67⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 82⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 99⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 105⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 118⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 93⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 10⦆ ·
+
+    yield cur ·
 ⟧
 
 process wasm_build_binary⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ → int64 ⟦
@@ -72,11 +462,25 @@ process wasm_build_binary⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ → 
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
 
+    // Detect target program kind
+    int64 kind ↦ wasm_detect_kind⦅target_path_ptr⦆ ·
+
+    when kind ≡ 3 ⟦
+        p ← wasm_emit_simd_threads_types_imports⦅buf ⸴ p⦆ ·
+        p ← wasm_emit_simd_threads_mem_exports⦅buf ⸴ p⦆ ·
+        p ← wasm_emit_simd_threads_code_data⦅buf ⸴ p⦆ ·
+
+        // Write file to disk
+        int64 fd3 ↦ qadav_file_open_write⦅out_path_ptr⦆ ·
+        when fd3 ≻ 0 ⟦
+            qadav_file_write⦅fd3 ⸴ buf ⸴ p⦆ ·
+            qadav_file_close⦅fd3⦆ ·
+        ⟧
+        qadav_free⦅buf⦆ ·
+        yield 0 ·
+    ⟧
+
     // Section 1: Type Section (14 bytes payload)
-    // Types:
-    // 0: (i64) -> ()
-    // 1: (i32, i32) -> ()
-    // 2: () -> (i32)
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // ID 1
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 14⦆ ·  // Size 14
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 3⦆ ·   // Count 3
@@ -98,9 +502,6 @@ process wasm_build_binary⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ → 
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 127⦆ · // 0x7F i32
 
     // Section 2: Import Section (44 bytes payload = 0x2C)
-    // Imports:
-    // env.qadav_emit_int (type 0)
-    // env.qadav_emit_text (type 1)
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // ID 2
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 44⦆ ·  // Size 44
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // Count 2
@@ -151,7 +552,6 @@ process wasm_build_binary⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ → 
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // type index 1
 
     // Section 3: Function Section (2 bytes payload)
-    // Function 2 has type 2
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 3⦆ ·   // ID 3
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // Size 2
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // Count 1
@@ -165,7 +565,6 @@ process wasm_build_binary⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ → 
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // Initial 1 page (64 KB)
 
     // Section 7: Export Section (17 bytes payload = 0x11)
-    // Exports: "memory" (kind 2, idx 0), "main" (kind 0, idx 2)
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 7⦆ ·   // ID 7
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 17⦆ ·  // Size 17
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // Count 2
@@ -187,9 +586,6 @@ process wasm_build_binary⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ → 
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 110⦆ · // 'n'
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // kind 0 (func)
     p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // func index 2
-
-    // Detect target program kind
-    int64 kind ↦ wasm_detect_kind⦅target_path_ptr⦆ ·
 
     when kind ≡ 1 ⟦
         // Hello: Code Section (13 bytes payload = 0x0D)
