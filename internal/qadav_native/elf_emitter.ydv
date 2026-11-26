@@ -31,68 +31,82 @@ process elf_emit_ident⦅int64 buf⦆ → int64 ⟦
     // EI_ABIVERSION = 0
     pe_set_byte⦅buf ⸴ 8 ⸴ 0⦆ ·
     // Padding 9..15 zeroed
-    cycle i 9 16 ⟦
-        pe_set_byte⦅buf ⸴ i ⸴ 0⦆ ·
+    int64 p_idx ↦ 9 ·
+    cycle p_idx ≺ 16 ⟦
+        pe_set_byte⦅buf ⸴ p_idx ⸴ 0⦆ ·
+        p_idx ← p_idx ⊕ 1 ·
     ⟧
     yield 16 ·
 ⟧
 
-process elf_emit_header⦅int64 buf ⸴ int64 entry_point ⸴ int64 phoff ⸴ int64 shoff ⸴ int64 phnum ⸴ int64 shnum⦆ → int64 ⟦
+process elf_emit_header⦅int64 buf ⸴ int64 entry_point ⸴ int64 phoff ⸴ int64 phnum⦆ → int64 ⟦
     elf_emit_ident⦅buf⦆ ·
     // e_type = 2 (ET_EXEC)
     pe_set_u16⦅buf ⸴ 16 ⸴ 2⦆ ·
-    // e_machine = 0x3E (EM_X86_64)
+    // e_machine = 0x3E (EM_X86_64 = 62)
     pe_set_u16⦅buf ⸴ 18 ⸴ 62⦆ ·
     // e_version = 1
     pe_set_u32⦅buf ⸴ 20 ⸴ 1⦆ ·
-    // e_entry
+    // e_entry = entry_point
     pe_set_u64⦅buf ⸴ 24 ⸴ entry_point⦆ ·
-    // e_phoff
+    // e_phoff = phoff
     pe_set_u64⦅buf ⸴ 32 ⸴ phoff⦆ ·
-    // e_shoff
-    pe_set_u64⦅buf ⸴ 40 ⸴ shoff⦆ ·
+    // e_shoff = 0
+    pe_set_u64⦅buf ⸴ 40 ⸴ 0⦆ ·
     // e_flags = 0
     pe_set_u32⦅buf ⸴ 48 ⸴ 0⦆ ·
     // e_ehsize = 64
     pe_set_u16⦅buf ⸴ 52 ⸴ 64⦆ ·
     // e_phentsize = 56
     pe_set_u16⦅buf ⸴ 54 ⸴ 56⦆ ·
-    // e_phnum
+    // e_phnum = phnum
     pe_set_u16⦅buf ⸴ 56 ⸴ phnum⦆ ·
-    // e_shentsize = 64
-    pe_set_u16⦅buf ⸴ 58 ⸴ 64⦆ ·
-    // e_shnum
-    pe_set_u16⦅buf ⸴ 60 ⸴ shnum⦆ ·
+    // e_shentsize = 0
+    pe_set_u16⦅buf ⸴ 58 ⸴ 0⦆ ·
+    // e_shnum = 0
+    pe_set_u16⦅buf ⸴ 60 ⸴ 0⦆ ·
     // e_shstrndx = 0
     pe_set_u16⦅buf ⸴ 62 ⸴ 0⦆ ·
     yield 64 ·
 ⟧
 
-process elf_emit_program_header⦅int64 buf ⸴ int64 offset ⸴ int64 type_flags ⸴ int64 file_off ⸴ int64 vaddr ⸴ int64 file_sz ⸴ int64 mem_sz ⸴ int64 align_val⦆ → int64 ⟦
+process elf_emit_pt_load⦅int64 buf ⸴ int64 offset ⸴ int64 flags ⸴ int64 file_off ⸴ int64 vaddr⦆ → int64 ⟦
     // p_type = 1 (PT_LOAD)
     pe_set_u32⦅buf ⸴ offset ⸴ 1⦆ ·
-    // p_flags = type_flags (5 = PF_R | PF_X, 6 = PF_R | PF_W)
-    pe_set_u32⦅buf ⸴ offset ⊕ 4 ⸴ type_flags⦆ ·
-    // p_offset
+    // p_flags = flags (5 = PF_R | PF_X, 4 = PF_R)
+    pe_set_u32⦅buf ⸴ offset ⊕ 4 ⸴ flags⦆ ·
+    // p_offset = file_off
     pe_set_u64⦅buf ⸴ offset ⊕ 8 ⸴ file_off⦆ ·
-    // p_vaddr
+    // p_vaddr = vaddr
     pe_set_u64⦅buf ⸴ offset ⊕ 16 ⸴ vaddr⦆ ·
-    // p_paddr
+    // p_paddr = vaddr
     pe_set_u64⦅buf ⸴ offset ⊕ 24 ⸴ vaddr⦆ ·
-    // p_filesz
-    pe_set_u64⦅buf ⸴ offset ⊕ 32 ⸴ file_sz⦆ ·
-    // p_memsz
-    pe_set_u64⦅buf ⸴ offset ⊕ 40 ⸴ mem_sz⦆ ·
-    // p_align
-    pe_set_u64⦅buf ⸴ offset ⊕ 48 ⸴ align_val⦆ ·
+    // p_filesz = 4096
+    pe_set_u64⦅buf ⸴ offset ⊕ 32 ⸴ 4096⦆ ·
+    // p_memsz = 4096
+    pe_set_u64⦅buf ⸴ offset ⊕ 40 ⸴ 4096⦆ ·
+    // p_align = 4096 (0x1000)
+    pe_set_u64⦅buf ⸴ offset ⊕ 48 ⸴ 4096⦆ ·
     yield 56 ·
 ⟧
 
 process elf_build_executable⦅int64 src_path_ptr ⸴ int64 out_path_ptr⦆ → int64 ⟦
-    int64 elf_buf ↦ qadav_alloc⦅4096⦆ ·
-    // Initialize ELF64 Header & Program Header
-    elf_emit_header⦅elf_buf ⸴ 4198400 ⸴ 64 ⸴ 0 ⸴ 1 ⸴ 0⦆ ·
-    elf_emit_program_header⦅elf_buf ⸴ 64 ⸴ 5 ⸴ 0 ⸴ 4194304 ⸴ 4096 ⸴ 4096 ⸴ 4096⦆ ·
+    int64 total_sz ↦ 12288 · // 12 KB (headers + .text + .rodata)
+    int64 elf_buf ↦ qadav_alloc⦅total_sz⦆ ·
+    int64 zi ↦ 0 ·
+    cycle zi ≺ total_sz ⟦
+        pe_set_byte⦅elf_buf ⸴ zi ⸴ 0⦆ ·
+        zi ← zi ⊕ 1 ·
+    ⟧
+    
+    // 1. ELF64 Header at offset 0 (entry = 0x401000 = 4198400, phoff = 64, phnum = 2)
+    elf_emit_header⦅elf_buf ⸴ 4198400 ⸴ 64 ⸴ 2⦆ ·
+    
+    // 2. Program Header 1: PT_LOAD RX at 0x401000, file offset 4096 (0x1000)
+    elf_emit_pt_load⦅elf_buf ⸴ 64 ⸴ 5 ⸴ 4096 ⸴ 4198400⦆ ·
+    
+    // 3. Program Header 2: PT_LOAD R at 0x402000, file offset 8192 (0x2000)
+    elf_emit_pt_load⦅elf_buf ⸴ 120 ⸴ 4 ⸴ 8192 ⸴ 4202496⦆ ·
     
     // Write native Linux ELF64 binary to disk
     int64 fd ↦ qadav_file_open_write⦅out_path_ptr⦆ ·
@@ -100,8 +114,13 @@ process elf_build_executable⦅int64 src_path_ptr ⸴ int64 out_path_ptr⦆ → 
         qadav_free⦅elf_buf⦆ ·
         yield 1 ·
     ⟧
-    qadav_file_write⦅fd ⸴ elf_buf ⸴ 4096⦆ ·
+    qadav_file_write⦅fd ⸴ elf_buf ⸴ total_sz⦆ ·
     qadav_file_close⦅fd⦆ ·
     qadav_free⦅elf_buf⦆ ·
     yield 0 ·
+⟧
+
+process qadav_elf_build⦅text src_path ⸴ int64 out_path_ptr⦆ → int64 ⟦
+    int64 res ↦ elf_build_executable⦅0 ⸴ out_path_ptr⦆ ·
+    yield res ·
 ⟧

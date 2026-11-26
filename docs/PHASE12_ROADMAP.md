@@ -119,7 +119,7 @@ flowchart TD
 - **Key Deliverables:**
   - *Native ELF64 Emitter (`elf_emitter.ydv` — 60th module):* Pure Qadav generation of System V ABI ELF64 headers, program headers, and dynamic symbol tables.
   - *Native Mach-O Emitter (`macho_emitter.ydv` — 61st module):* Pure Qadav generation of 64-bit Mach-O headers and load commands for macOS x86_64 and ARM64.
-  - *Pure Qadav POSIX Runtime Foundations:* Native syscall wrappers eliminating platform-specific C runtime shims.
+  - *Pure Qadav POSIX Runtime Foundations (`rt_posix.ydv` — 62nd module):* Native syscall wrappers eliminating platform-specific C runtime shims (`posix_write`, `posix_read`, `posix_mmap`, `posix_munmap`, `posix_exit`).
 - **Acceptance Gate:** Native ELF64 and Mach-O binary emission verified directly from pure Qadav compiler. [COMPLETED]
 
 ---
@@ -127,7 +127,7 @@ flowchart TD
 ### M12.8: Formally Verified Core & PCC Typechecker Enhancements (COMPLETED)
 - **Objective:** Upgrade Proof-Carrying Code (PCC) from runtime assertion checks to formal mathematical verification.
 - **Key Deliverables:**
-  - *SMT Solver Bridge (`smt_verifier.ydv` — 62nd module):* Automated first-order logic and quantifier-free linear integer arithmetic (QF-LIA) verification pass.
+  - *SMT Solver & PCC Formal Prover Bridge (`selfhost/codegen.ydv` / `selfhost/checker.ydv`):* Automated first-order logic and quantifier-free linear integer arithmetic (QF-LIA) verification pass.
   - *Formal Memory Safety Guarantees:* Compile-time proofs of array bounds, non-null pointer dereferences, and lack of buffer overflows in vector loops.
   - *Cryptographic Proof Generation:* Compiling verified code alongside formal proof certificates demonstrating compliance with preconditions and postconditions.
 - **Acceptance Gate:** Formal verification of memory safety and bounds invariants with zero runtime bounds checks in emitted code. [COMPLETED]

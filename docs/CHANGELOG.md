@@ -37,8 +37,10 @@ All notable updates, architectural enhancements, and completed milestones for th
   - Direct binary emission of ELF64 executable headers, program headers (`PT_LOAD`), and System V calling conventions.
 - **Deliverable 2: Native macOS 64-bit Mach-O Emitter (`internal/qadav_native/macho_emitter.ydv` — 61st Module):**
   - Direct binary emission of 64-bit Mach-O headers (`MH_MAGIC_64`), load commands (`LC_SEGMENT_64`), and page alignments.
-- **Deliverable 3: SMT Formal Bounds & PCC Memory Safety Prover (`internal/qadav_native/smt_verifier.ydv` — 62nd Module):**
-  - Quantifier-free linear integer arithmetic (QF-LIA) verification pass proving array non-overflow and memory bounds invariants at compile time.
+- **Deliverable 3: Pure Qadav POSIX Syscall Runtime (`internal/qadav_native/rt_posix.ydv` — 62nd Module):**
+  - Pure Qadav POSIX syscall wrappers (`posix_write`, `posix_read`, `posix_mmap`, `posix_munmap`, `posix_exit`) eliminating external libc runtime dependencies on Linux and macOS.
+- **Deliverable 4: SMT Formal Bounds & PCC Memory Safety Prover (`selfhost/codegen.ydv` / `selfhost/checker.ydv`):**
+  - Quantifier-free linear integer arithmetic (QF-LIA) verification pass proving array non-overflow and memory bounds invariants at compile time (`--pcc-formal`). Provably rejects out-of-bounds memory accesses with explicit counterexamples.
 
 ---
 

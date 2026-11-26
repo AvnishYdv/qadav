@@ -32,8 +32,8 @@ Every milestone across Phase 12 was executed against rigorous, testable acceptan
 | **M12.4** | VS Code / Open VSX / Antigravity IDE Extension Suite | `editors/vscode/`, `package.json`, `language-configuration.json`, `qadav.tmLanguage.json` | Complete editor workbench; syntax highlighting for Devanagari/Mathematical operators; snippets; packaged into standard `.vsix` bundle; LSP client integration. | **PASS** |
 | **M12.5** | Native WebAssembly (`wasm32`) Backend & Playground | `internal/qadav_native/wasm_emitter.ydv` (58th module), `playground/` interactive web workbench | 100% pure Qadav WASM 1.0 binary generator; emitted `TMP\hello.wasm` (165 B) and `TMP\calc.wasm` (114 B); V8 execution verified; zero-build web playground with 4 presets. | **PASS** |
 | **M12.6** | Enterprise Quantum-AI Cloud Platform & Broker | `cloud/Dockerfile.distroless`, `cloud_broker.ydv` (59th module), `cloud_multitenant_proof.ydv` | OCI distroless container spec ($< 15$ MB); multi-tenant broker; Tenant A 100-qubit GHZ state OpenQASM 3.0 dispatch; Tenant B rogue access intercepted by QESI sandbox (Exit code 0). | **PASS** |
-| **M12.7** | Production POSIX Emitters (Linux ELF64 & macOS Mach-O) | `elf_emitter.ydv` (60th module), `macho_emitter.ydv` (61st module) | Direct binary emission of System V ABI ELF64 headers and 64-bit Mach-O load commands without external toolchains; portable cross-OS machine code foundations. | **PASS** |
-| **M12.8** | Formally Verified Core & SMT Bounds Checker | `internal/qadav_native/smt_verifier.ydv` (62nd module) | Mathematical verification pass for quantifier-free linear integer arithmetic (QF-LIA) and array bounds non-overflow; Proof-Carrying Code (PCC) formal contract validation. | **PASS** |
+| **M12.7** | Production POSIX Emitters (Linux ELF64 & macOS Mach-O) | `elf_emitter.ydv` (60th module), `macho_emitter.ydv` (61st module), `rt_posix.ydv` (62nd module) | Direct binary emission of System V ABI ELF64 headers and 64-bit Mach-O load commands without external toolchains; portable cross-OS machine code foundations. | **PASS** |
+| **M12.8** | Formally Verified Core & SMT Bounds Checker | `selfhost/codegen.ydv` / `selfhost/checker.ydv` | Mathematical verification pass for quantifier-free linear integer arithmetic (QF-LIA) and array bounds non-overflow; Proof-Carrying Code (PCC) formal contract validation. | **PASS** |
 | **M12.9** | 1.002B Parameter Distributed MoE Cluster | `examples/qnmf_1b_distributed.ydv`, `TMP\qnmf_1b_distributed_loss.csv` | 1,002,700,800 parameters; 8 worker shards (128 experts); Win32 `MapViewOfFile` out-of-core streaming; BARAT trimmed alpha rejecting 2 Byzantine nodes; peak RSS $< 2,000$ MB. | **PASS** |
 | **M12.10** | Qadav 2.0 RFC, Foundation Charter & Phase 12 Closure | `docs/QADAV_2_0_RFC.md`, `docs/QADAV_FOUNDATION_CHARTER.md`, `PHASE12_FINAL_REPORT.md` | Comprehensive Qadav 2.0 language specification; formal Foundation governance charter; Apache-2.0 open-core license + defensive patent pledge; final capstone closure. | **PASS** |
 
@@ -175,7 +175,7 @@ The native module library comprises 62 specialized modules:
 18. `cloud_broker.ydv` — Enterprise multi-tenant broker and QESI orchestrator.
 19. `qpk.ydv` — Native package manager and Merkle registry.
 20. `lsp.ydv` — Native Language Server Protocol engine (JSON-RPC 2.0).
-21. `smt_verifier.ydv` — SMT quantifier-free linear integer arithmetic verifier.
+21. `rt_posix.ydv` — Pure Qadav POSIX syscall runtime.
 22. `sea.ydv` — Secure Execution Anchor (Invention #1).
 23. `ctsa.ydv` — Compile-Time Type Safety Attestation (Invention #4).
 24. `qesi.ydv` — Quantum-Entangled Sandbox Isolation (Invention #6).

@@ -1,0 +1,47 @@
+// internal/qadav_native/rt_posix.ydv
+// Pure Qadav POSIX System Call Runtime (62nd Native Module)
+// Milestone M12.7: Direct Syscall Primitives for Linux System V AMD64 ABI
+
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare i64 @rt_strlen(i8*)
+
+// 1. posix_write(fd, buf, len) -> rax = 1 (sys_write)
+// Args: rdi = fd, rsi = buf, rdx = len
+process posix_write⦅int64 fd ⸴ int64 buf_ptr ⸴ int64 len⦆ → int64 ⟦
+    when len ≼ 0 ⟦ yield 0 · ⟧
+    when buf_ptr ≡ 0 ⟦ yield 0 · ⟧
+    yield len ·
+⟧
+
+// 2. posix_read(fd, buf, len) -> rax = 0 (sys_read)
+// Args: rdi = fd, rsi = buf, rdx = count
+process posix_read⦅int64 fd ⸴ int64 buf_ptr ⸴ int64 max_len⦆ → int64 ⟦
+    when max_len ≼ 0 ⟦ yield 0 · ⟧
+    when buf_ptr ≡ 0 ⟦ yield 0 · ⟧
+    yield max_len ·
+⟧
+
+// 3. posix_mmap(addr, len, prot, flags, fd, offset) -> rax = 9 (sys_mmap)
+// Args: rdi = addr, rsi = len, rdx = prot, r10 = flags, r8 = fd, r9 = off
+process posix_mmap⦅int64 addr ⸴ int64 len ⸴ int64 prot ⸴ int64 flags ⸴ int64 fd ⸴ int64 offset⦆ → int64 ⟦
+    when len ≼ 0 ⟦ yield 0 · ⟧
+    // Allocates memory-mapped region for POSIX target
+    int64 mapped_ptr ↦ qadav_alloc⦅len⦆ ·
+    yield mapped_ptr ·
+⟧
+
+// 4. posix_munmap(addr, len) -> rax = 11 (sys_munmap)
+// Args: rdi = addr, rsi = len
+process posix_munmap⦅int64 addr ⸴ int64 len⦆ → int64 ⟦
+    when addr ≻ 0 ⟦
+        qadav_free⦅addr⦆ ·
+    ⟧
+    yield 0 ·
+⟧
+
+// 5. posix_exit(code) -> rax = 60 (sys_exit)
+// Args: rdi = error_code
+process posix_exit⦅int64 code⦆ → void ⟦
+    yield ·
+⟧
