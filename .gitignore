@@ -9,9 +9,10 @@
 *.ll
 *.o
 
-# User data
-~/.qadav/
-.vscode/
+# Distribution release archives
+dist/
+dist/*
+
 
 # Cache files
 *.ydv.cache

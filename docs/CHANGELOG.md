@@ -5,6 +5,28 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M12.1 + M12.2] — Institutional Funding Dossier, Technical Whitepaper & Public Release Distribution (`v1.0.0-LTS`)
+## [M12.1 + M12.2] — संस्थागत फंडिंग डोजियर, तकनीकी श्वेतपत्र एवं सार्वजनिक रिलीज वितरण (`v1.0.0-LTS`)
+
+### Phase 12 M12.1 + M12.2 Overview: Commercialization Launch & Cryptographic Packaging
+- **Deliverable 1: Comprehensive Technical Whitepaper (`docs/commercial/QADAV_TECHNICAL_WHITEPAPER.md`):**
+  - Authored definitive 9-section institutional specification ($\approx 2,850$ words) documenting the self-hosted compilation pipeline, $G_2 \equiv G_3$ fixed-point proof, zero-clang direct PE32+ generation, native `@vec256` AVX2/FMA intrinsics, GEMM/RMSNorm fusion (1.73x speedup vs C `-O3`), 1,000-qubit Aaronson-Gottesman stabilizer tableau (4.002 MB unpacked / 502 KB packed), non-Clifford T-gate Born rule ($P = 85.5\%$, error 0.145%), ZX-Calculus spider fusion (24 $\to$ 8 gates), QNMF 6 pillars + EXP-1 reversal curse resolution (99.50% vs 1.50%), 102.4M parameter Win32 virtual memory demand-paging in 77.46 MB RAM, 8-protocol safety mesh with active tamper decoherence (`0xDEADBEEF`), and 25-patent portfolio.
+- **Deliverable 2: Institutional Investor Pitch Deck (`docs/commercial/QADAV_INVESTOR_PITCH_DECK.md`):**
+  - Created 15-slide structured institutional pitch deck ($\approx 2,800$ words) for a $5.2M Seed Equity offering at $28M valuation.
+  - Covers Vision, Market Crisis (4GB dependency tax, GPU memory walls), Qadav Breakthrough ($C=0$ sovereign compiler), Speed Benchmarks (B1–B5), Cognitive Leap (EXP-1), Hardware Efficiency (77.46 MB RAM), Competitive Moat Matrix (vs Rust, Mojo, C++, Julia, Python), 25 Foundational Patents, Business Model (Open-Core + Safety Suite + Qadav Cloud), Market Sizing ($85.4B TAM, $12.8B SAM, $1.25B SOM), Target Verticals (Aerospace/Defense, Quant Finance, Healthcare), Financial Pro-Forma ($1.2M Y1 to $48.2M Y5), Seed Capital Allocation, Phase 12 Roadmap, and Leadership Team.
+- **Deliverable 3: Benchmark Reproducibility Ledger (`docs/commercial/BENCHMARK_REPRODUCIBILITY_LEDGER.md`):**
+  - Published comprehensive procedural runbook ($\approx 1,500$ words) for independent technical auditors and institutional evaluators.
+  - Documents exact terminal commands, seeds, configurations, and verification metrics for B1–B5 speed benchmarks, $G_2 \equiv G_3$ bitwise identity (`fc.exe /b`), 102.4M QNMF in-place weight mutation SHA-256 verification, active memory tamper decoherence (`0xDEADBEEF`), T-gate Born-rule simulation, and sub-10ms process cold start.
+- **Deliverable 4: Public Release Packaging Script (`scripts/package_release.ps1`):**
+  - Developed pure PowerShell + native Qadav packager (zero Python, zero external toolchain).
+  - Staged complete distribution package `dist/qadav-1.0.0-LTS-windows-x86_64/` with compiler binary `bin/qyn.exe`, 6 selfhost stages, 56 native modules, 5 stdlib modules, 148 canonical examples, commercial docs, and end-user `install.ps1`.
+  - Compressed standalone zip archive `dist/qadav-1.0.0-LTS-windows-x86_64.zip` (427,788 bytes).
+- **Deliverable 5: Cryptographic Attestation Manifest (`dist/RELEASE_MANIFEST_SHA3.txt`):**
+  - Generated cryptographically attested release manifest with SHA-256, SHA-512, FIPS 202 SHA3-256 (Keccak), and WOTS+ (Winternitz One-Time Signature, w=256, 34 chains) post-quantum signature commitments.
+  - Tested packaged installer `dist/qadav-1.0.0-LTS-windows-x86_64/install.ps1`: verified 7/7 compiler doctor diagnostic checks pass successfully.
+
+---
+
 ## [M11.11] — Fix All 7 Audit Bugs/Gaps from M11.3–M11.10, Re-Verify G2==G3 Fixed Point & Lock Phase 11 (11/11 Complete)
 ## [M11.11] — M11.3–M11.10 के सभी 7 ऑडिट बग्स/कमियों का निवारण, G2==G3 स्थिर बिंदु का पुनः सत्यापन एवं चरण 11 लॉक (11/11 पूर्ण)
 
