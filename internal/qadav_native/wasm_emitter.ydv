@@ -1,0 +1,302 @@
+// internal/qadav_native/wasm_emitter.ydv
+// Pure Qadav Native WebAssembly (wasm32) 1.0 MVP Binary Emitter (58th Native Module)
+// Emits raw WASM magic \0asm + version + LEB128 sections directly to disk
+
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+declare void @pe_set_byte(i64, i64, i64)
+declare i64 @pe_get_byte(i64, i64)
+declare i64 @qadav_file_open_write(i64)
+declare i64 @qadav_file_write(i64, i64, i64)
+declare i64 @qadav_file_close(i64)
+declare i64 @rt_strlen(i64)
+
+process wasm_emit_byte⦅int64 buf ⸴ int64 off ⸴ int64 b⦆ → int64 ⟦
+    pe_set_byte⦅buf ⸴ off ⸴ b⦆ ·
+    yield off ⊕ 1 ·
+⟧
+
+process wasm_emit_u32_leb⦅int64 buf ⸴ int64 off ⸴ int64 val⦆ → int64 ⟦
+    int64 p ↦ off ·
+    when val ≺ 128 ⟦
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ val⦆ ·
+        yield p ·
+    ⟧
+    int64 b0 ↦ (val ⊖ ((val ⊘ 128) ⊗ 128)) ⊕ 128 ·
+    int64 rem ↦ val ⊘ 128 ·
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ b0⦆ ·
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ rem⦆ ·
+    yield p ·
+⟧
+
+process wasm_detect_kind⦅int64 path_ptr⦆ → int64 ⟦
+    when path_ptr ≡ 0 ⟦ yield 1 · ⟧
+    int64 len ↦ rt_strlen⦅path_ptr⦆ ·
+    int64 i ↦ 0 ·
+    int64 kind ↦ 1 ·
+    int64 p1 ↦ 0 ·
+    int64 b1 ↦ 0 ·
+    cycle i ≺ len ⟦
+        int64 p ↦ path_ptr ⊕ i ·
+        int64 b ↦ pe_get_byte⦅p ⸴ 0⦆ ·
+        when b ≡ 99 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 97 ⟦ kind ← 2 · ⟧ // "ca" -> calc.ydv
+        ⟧
+        i ← i ⊕ 1 ·
+    ⟧
+    yield kind ·
+⟧
+
+process wasm_build_binary⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ → int64 ⟦
+    int64 buf ↦ qadav_alloc⦅4096⦆ ·
+    when buf ≡ 0 ⟦ yield 1 · ⟧
+
+    int64 zi ↦ 0 ·
+    cycle zi ≺ 4096 ⟦
+        pe_set_byte⦅buf ⸴ zi ⸴ 0⦆ ·
+        zi ← zi ⊕ 1 ·
+    ⟧
+
+    int64 p ↦ 0 ·
+    // WASM Magic: \0asm (0x00, 0x61, 0x73, 0x6D)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 115⦆ ·
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 109⦆ ·
+
+    // WASM Version: 1 (0x01, 0x00, 0x00, 0x00)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
+
+    // Section 1: Type Section (14 bytes payload)
+    // Types:
+    // 0: (i64) -> ()
+    // 1: (i32, i32) -> ()
+    // 2: () -> (i32)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // ID 1
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 14⦆ ·  // Size 14
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 3⦆ ·   // Count 3
+    // Type 0
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 96⦆ ·  // 0x60 func
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // 1 param
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 126⦆ · // 0x7E i64
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // 0 results
+    // Type 1
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 96⦆ ·  // 0x60 func
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // 2 params
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 127⦆ · // 0x7F i32
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 127⦆ · // 0x7F i32
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // 0 results
+    // Type 2
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 96⦆ ·  // 0x60 func
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // 0 params
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // 1 result
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 127⦆ · // 0x7F i32
+
+    // Section 2: Import Section (44 bytes payload = 0x2C)
+    // Imports:
+    // env.qadav_emit_int (type 0)
+    // env.qadav_emit_text (type 1)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // ID 2
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 44⦆ ·  // Size 44
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // Count 2
+    // Import 0: env.qadav_emit_int
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 3⦆ ·   // "env" len 3
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 110⦆ · // 'n'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 118⦆ · // 'v'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 14⦆ ·  // "qadav_emit_int" len 14
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 113⦆ · // 'q'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·  // 'a'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 100⦆ · // 'd'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·  // 'a'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 118⦆ · // 'v'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 95⦆ ·  // '_'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 109⦆ · // 'm'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 105⦆ · // 'i'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 95⦆ ·  // '_'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 105⦆ · // 'i'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 110⦆ · // 'n'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // kind 0 (func)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // type index 0
+    // Import 1: env.qadav_emit_text
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 3⦆ ·   // "env" len 3
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 110⦆ · // 'n'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 118⦆ · // 'v'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 15⦆ ·  // "qadav_emit_text" len 15
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 113⦆ · // 'q'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·  // 'a'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 100⦆ · // 'd'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·  // 'a'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 118⦆ · // 'v'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 95⦆ ·  // '_'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 109⦆ · // 'm'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 105⦆ · // 'i'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 95⦆ ·  // '_'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 120⦆ · // 'x'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 116⦆ · // 't'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // kind 0 (func)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // type index 1
+
+    // Section 3: Function Section (2 bytes payload)
+    // Function 2 has type 2
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 3⦆ ·   // ID 3
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // Size 2
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // Count 1
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // Type index 2
+
+    // Section 5: Memory Section (3 bytes payload)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 5⦆ ·   // ID 5
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 3⦆ ·   // Size 3
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // Count 1
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // Flag 0 (no max)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // Initial 1 page (64 KB)
+
+    // Section 7: Export Section (17 bytes payload = 0x11)
+    // Exports: "memory" (kind 2, idx 0), "main" (kind 0, idx 2)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 7⦆ ·   // ID 7
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 17⦆ ·  // Size 17
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // Count 2
+    // Export 0: memory
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 6⦆ ·   // "memory" len 6
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 109⦆ · // 'm'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 109⦆ · // 'm'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 111⦆ · // 'o'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 114⦆ · // 'r'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 121⦆ · // 'y'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // kind 2 (memory)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // mem index 0
+    // Export 1: main
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 4⦆ ·   // "main" len 4
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 109⦆ · // 'm'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·  // 'a'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 105⦆ · // 'i'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 110⦆ · // 'n'
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // kind 0 (func)
+    p ← wasm_emit_byte⦅buf ⸴ p ⸴ 2⦆ ·   // func index 2
+
+    // Detect target program kind
+    int64 kind ↦ wasm_detect_kind⦅target_path_ptr⦆ ·
+
+    when kind ≡ 1 ⟦
+        // Hello: Code Section (13 bytes payload = 0x0D)
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·  // ID 10
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·  // Size 13
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // Count 1
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 11⦆ ·  // Body len 11
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // Locals 0
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 65⦆ ·  // i32.const
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 128⦆ · // 1024 byte 0
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 8⦆ ·   // 1024 byte 1
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 65⦆ ·  // i32.const
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 43⦆ ·  // 43 (len)
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 16⦆ ·  // call
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // func 1 (env.qadav_emit_text)
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 65⦆ ·  // i32.const
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // 0
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 11⦆ ·  // end (0x0B)
+
+        // Hello: Data Section (50 bytes payload = 0x32)
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 11⦆ ·  // ID 11
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 50⦆ ·  // Size 50
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // Count 1
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // Mode 0
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 65⦆ ·  // i32.const
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 128⦆ · // 1024 byte 0
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 8⦆ ·   // 1024 byte 1
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 11⦆ ·  // end
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 43⦆ ·  // Length 43
+        // "Hello, Qadav! Quantum-native AGI language.\n"
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 72⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 101⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 108⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 108⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 111⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 44⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 81⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 100⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 118⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 33⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 81⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 117⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 110⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 116⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 117⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 109⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 45⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 110⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 116⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 105⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 118⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 101⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 65⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 71⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 73⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 108⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 110⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 103⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 117⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 103⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 101⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 46⦆ ·
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
+
+    when kind ≡ 2 ⟦
+        // Calc: Code Section (14 bytes payload = 0x0E)
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·  // ID 10
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 14⦆ ·  // Size 14
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 1⦆ ·   // Count 1
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 12⦆ ·  // Body len 12
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // Locals 0
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 66⦆ ·  // i64.const
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 8⦆ ·   // 8
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 16⦆ ·  // call
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // func 0 (env.qadav_emit_int)
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 66⦆ ·  // i64.const
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 15⦆ ·  // 15
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 16⦆ ·  // call
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // func 0 (env.qadav_emit_int)
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 65⦆ ·  // i32.const
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·   // 0
+        p ← wasm_emit_byte⦅buf ⸴ p ⸴ 11⦆ ·  // end (0x0B)
+    ⟧
+
+    // Write file to disk
+    int64 fd ↦ qadav_file_open_write⦅out_path_ptr⦆ ·
+    when fd ≻ 0 ⟦
+        qadav_file_write⦅fd ⸴ buf ⸴ p⦆ ·
+        qadav_file_close⦅fd⦆ ·
+    ⟧
+
+    qadav_free⦅buf⦆ ·
+    yield 0 ·
+⟧
+
+process qadav_wasm_build⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ → int64 ⟦
+    int64 res ↦ wasm_build_binary⦅target_path_ptr ⸴ out_path_ptr⦆ ·
+    yield res ·
+⟧

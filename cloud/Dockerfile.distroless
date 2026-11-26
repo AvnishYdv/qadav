@@ -1,0 +1,40 @@
+# cloud/Dockerfile.distroless
+# Production Enterprise Distroless Container for Qadav Runtime & Cloud Broker
+# Target Footprint: < 15 MB | Static Windows/Linux Cross-Built Architecture
+
+# --- Stage 1: Runtime Assembly ---
+FROM alpine:3.19 AS builder
+RUN apk add --no-cache ca-certificates
+
+WORKDIR /qadav
+# Copy standalone static binaries and core runtime subsystems
+COPY bin/ /qadav/bin/
+COPY internal/qadav_native/ /qadav/internal/qadav_native/
+COPY selfhost/ /qadav/selfhost/
+
+# --- Stage 2: Minimal Distroless Static Image ---
+FROM gcr.io/distroless/static-debian12:nonroot
+
+LABEL maintainer="Qadav Core Compiler & Systems Team <core@qadav.org>"
+LABEL description="Enterprise Zero-Libc Quantum-AI Runtime & Multi-Tenant Sandbox Broker"
+LABEL version="1.0.0-LTS"
+LABEL security.isolation="QESI-Hardware-Attested"
+
+WORKDIR /app
+
+# Copy binaries from assembly stage
+COPY --from=builder --chown=nonroot:nonroot /qadav/bin/qyn.exe /app/qyn
+COPY --from=builder --chown=nonroot:nonroot /qadav/bin/qpk.exe /app/qpk
+
+# Environment configuration
+ENV QADAV_HOME=/app
+ENV PATH="/app:${PATH}"
+ENV QADAV_CLOUD_ISOLATION=QESI_ACTIVE
+
+# Non-root user execution
+USER nonroot:nonroot
+
+EXPOSE 8080 9090
+
+ENTRYPOINT ["/app/qyn"]
+CMD ["doctor"]

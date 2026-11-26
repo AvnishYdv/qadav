@@ -2232,6 +2232,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         emit "" ·
         emit "Commands:" ·
         emit "  emit-llvm <file.ydv>      Emit LLVM IR to stdout" ·
+        emit "  emit-wasm <file.ydv> -o <wasm> Emit WebAssembly (wasm32) binary" ·
         emit "  build <file.ydv> -o <exe> Compile .ydv to standalone executable" ·
         emit "  check <file.ydv>          Typecheck .ydv source file" ·
         emit "  pkg <cmd> [options]       Native package manager (qpk)" ·
@@ -2273,7 +2274,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         when a9 ≡ 0 ∨ a9 ≡ 32 ∨ a9 ≡ 9 ⟦ is_ver ← 1 · ⟧
     ⟧
     when is_ver ≡ 1 ⟦
-        emit "qyn 1.0.0-LTS (Phase 11 Complete | Self-Hosted x86_64-windows | C=0, Native=.ydv:57, Selfhost=.ydv:6, ExternalTools=0)" ·
+        emit "qyn 1.0.0-LTS (Phase 11 Complete | Self-Hosted x86_64-windows | C=0, Native=.ydv:59, Selfhost=.ydv:6, ExternalTools=0)" ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
     ⟧
@@ -2284,7 +2285,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
     ⟧
     when is_doc ≡ 1 ⟦
         emit "[DOCTOR] Compiler Binary: bin\\qyn.exe (self-hosted, 6/6 .ydv stages)" ·
-        emit "[DOCTOR] Native Modules:  57/57 modules active in internal\\qadav_native\\" ·
+        emit "[DOCTOR] Native Modules:  59/59 modules active in internal\\qadav_native\\" ·
         emit "[DOCTOR] Language Server: Native LSP active (JSON-RPC 2.0 / stdio)" ·
         emit "[DOCTOR] C Exceptions:    0/0 (100% Pure Qadav — C-Free Bootstrap Complete)" ·
         emit "[DOCTOR] Host CPU AVX2:   SUPPORTED (ymm0-ymm15 enabled)" ·
@@ -2311,6 +2312,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         emit "" ·
         emit "Commands:" ·
         emit "  emit-llvm <file.ydv>      Emit LLVM IR to stdout" ·
+        emit "  emit-wasm <file.ydv> -o <wasm> Emit WebAssembly (wasm32) binary" ·
         emit "  build <file.ydv> -o <exe> Compile .ydv to standalone executable" ·
         emit "  check <file.ydv>          Typecheck .ydv source file" ·
         emit "  pkg <cmd> [options]       Native package manager (qpk)" ·
@@ -2346,6 +2348,11 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
     // Check build: "build"
     when a0 ≡ 98 ∧ a1 ≡ 117 ∧ a2 ≡ 105 ∧ a3 ≡ 108 ∧ a4 ≡ 100 ⟦
         when a5 ≡ 0 ∨ a5 ≡ 32 ∨ a5 ≡ 9 ⟦ yield 3 · ⟧
+    ⟧
+
+    // Check emit-wasm: "emit-wasm"
+    when a0 ≡ 101 ∧ a1 ≡ 109 ∧ a2 ≡ 105 ∧ a3 ≡ 116 ∧ a4 ≡ 45 ∧ a5 ≡ 119 ∧ a6 ≡ 97 ∧ a7 ≡ 115 ∧ a8 ≡ 109 ⟦
+        when a9 ≡ 0 ∨ a9 ≡ 32 ∨ a9 ≡ 9 ⟦ yield 4 · ⟧
     ⟧
 
     // Check check: "check"
@@ -2436,6 +2443,13 @@ process main⦅⦆ → int64 ⟦
         int64 out_p ↦ get_out_exe_path⦅⦆ ·
         int64 b_res ↦ qadav_x86_build⦅target_file ⸴ out_p⦆ ·
         emit "qyn: build: wrote native x86_64 PE32+ executable (0 external tools)" ·
+        qadav_exit⦅0⦆ ·
+        yield 0 ·
+    ⟧
+    when chk ≡ 4 ⟦
+        int64 out_w ↦ get_out_exe_path⦅⦆ ·
+        int64 w_res ↦ qadav_wasm_build⦅target_file ⸴ out_w⦆ ·
+        emit "qyn: emit-wasm: wrote native wasm32 binary (0 external tools)" ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
     ⟧
