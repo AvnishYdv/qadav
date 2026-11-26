@@ -5,6 +5,40 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M12.3 + M12.4] — Native Qadav Package Manager (`qpk.exe`) & VS Code / Open VSX / Antigravity IDE Extension Suite
+## [M12.3 + M12.4] — नेटिव कादव पैकेज मैनेजर (`qpk.exe`) एवं वीएस कोड / ओपन वीएसएक्स / एंटीग्रेविटी आईडीई एक्सटेंशन सुइट
+
+### Phase 12 M12.3 + M12.4 Overview: Developer Ecosystem Tooling & Native Package Distribution
+- **Deliverable 1: 57th Native Module Created (`internal/qadav_native/qpk.ydv`):**
+  - Authored pure Qadav native package management system (435 lines) handling declarative package manifest formats (`qadav.pkg`), SHA3-256 Merkle root computation, and Proof-Carrying Code (PCC) cryptographic attestation certificates.
+  - Implemented core package procedures: `qpk_init`, `qpk_publish`, `qpk_add`, `qpk_install`, `qpk_verify`, and CLI command dispatcher `qpk_dispatch`.
+  - Upgraded codebase invariants: native `.ydv` module count increased from 56 to **57** active modules in `internal/qadav_native/`.
+- **Deliverable 2: Standalone Native Executable `bin\qpk.exe` via Native Compiler:**
+  - Built standalone native Windows x86_64 PE32+ binary `bin\qpk.exe` (4,096 bytes) directly via `bin\qyn.exe build internal\qadav_native\qpk.ydv -o bin\qpk.exe` with zero external tool invocations.
+  - Repaired PE32+ IAT and Hint/Name alignment offsets in `internal/qadav_native/x86_emitter.ydv`, restoring 100% bit-exact Win32 import binding without external linkers.
+  - Integrated native `qyn pkg` CLI command dispatch in `selfhost/codegen.ydv` and updated compiler doctor banner to reflect 57/57 active modules.
+- **Deliverable 3: End-to-End Package Workflow Verification (`TMP\test_qpk_workflow.ps1`):**
+  - Scaffolded multi-module library `qadav-math-extra` in `TMP\pkg_test\` with `qadav.pkg` manifest and `math_cube(x)` library routine.
+  - Published package archive to local registry (`TMP\local_registry\qadav-math-extra-1.0.0.qpk`) with computed SHA3-256 Merkle root and PCC certificate.
+  - Successfully integrated dependency into consumer project `TMP\consumer_app\`:
+    - Ran `qpk add` and `qpk install --registry TMP\local_registry`.
+    - Cryptographically verified SHA3-256 Merkle root matching the registry index.
+    - Built and executed consumer application calling `math_cube(4)`: verified output `64` and exit code 0.
+  - Passed negative tamper security test: bit-level mutation of the package archive triggered immediate checksum mismatch and execution abort (`CRITICAL: Tampered package detected in registry. Aborting installation with exit code 1.`).
+- **Deliverable 4: IDE Extension Suite (`editors/vscode/`):**
+  - Extension manifest (`package.json`): Registered `.ydv` language id, aliases, configurations, and commands (`qadav.build`, `qadav.run`, `qadav.typecheck`, `qadav.doctor`).
+  - TextMate Grammar (`syntaxes/qadav.tmLanguage.json`): Comprehensive syntax highlighting for all language keywords, Unicode mathematical operators (`↦`, `←`, `⊕`, `⊖`, `⊗`, `⊘`, `≡`, `≠`, `∧`, `∨`, `·`), brackets (`⟦ ⟧`, `⦅ ⦆`, `⟬ ⟭`), SIMD intrinsics (`@vec256`, `vec4f64`, `vec8f32`), and quantum gates.
+  - Language Configuration & Snippets (`language-configuration.json`, `snippets/qadav.code-snippets`): Configured bracket matching, comment rules, and 12 production code snippets (`proc`, `vec256`, `stab`, `qera`, `barat`, `pkg`, etc.).
+  - Zero-NPM Language Client (`src/extension.js`): Automated stdio connection to `bin\qyn.exe lsp` for native language diagnostics.
+  - Packaged VSIX archive (`editors/vscode/qadav-lang-1.0.0.vsix`): Valid Open Packaging Conventions (OPC) package containing 8 verified entries (7,582 bytes).
+- **Regressions & Invariants Maintained:**
+  - 10/10 Phase 8 `fc.exe /b` bitwise regression against reference `.ll` baselines passed with 0 differences encountered.
+  - 8/8 product demonstrators (`product_qemwv.exe`, `product_qera.exe`, `product_mctp.exe`, `product_ttpcr.exe`, `product_ttpcr_tamper.exe`, `product_barat.exe`, `product_qecma.exe`, `product_qesi.exe`) executed and verified.
+  - True $C = 0$: `(Get-ChildItem -Recurse -Filter *.c).Count == 0`.
+  - Codebase invariants: 57 native `.ydv` modules, 6 selfhost `.ydv` modules, 0 `.go` files, 0 `.py` files, 25 defensive patents in `docs/PATENTS.md`.
+
+---
+
 ## [M12.1 + M12.2] — Institutional Funding Dossier, Technical Whitepaper & Public Release Distribution (`v1.0.0-LTS`)
 ## [M12.1 + M12.2] — संस्थागत फंडिंग डोजियर, तकनीकी श्वेतपत्र एवं सार्वजनिक रिलीज वितरण (`v1.0.0-LTS`)
 

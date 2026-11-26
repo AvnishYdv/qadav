@@ -1,0 +1,95 @@
+{
+  "name": "qadav-lang",
+  "displayName": "Qadav Language Support",
+  "description": "Rich language support, syntax highlighting, snippets, and native LSP integration for the Qadav (.ydv) quantum-native programming language.",
+  "version": "1.0.0",
+  "publisher": "qadav",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Linters"
+  ],
+  "keywords": [
+    "qadav",
+    "ydv",
+    "quantum",
+    "agi",
+    "simd",
+    "avx2"
+  ],
+  "activationEvents": [
+    "onLanguage:qadav"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "qadav",
+        "aliases": [
+          "Qadav",
+          "ydv"
+        ],
+        "extensions": [
+          ".ydv"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "qadav",
+        "scopeName": "source.ydv",
+        "path": "./syntaxes/qadav.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "qadav",
+        "path": "./snippets/qadav.code-snippets"
+      }
+    ],
+    "commands": [
+      {
+        "command": "qadav.build",
+        "title": "Qadav: Build Current File"
+      },
+      {
+        "command": "qadav.run",
+        "title": "Qadav: Run Current File"
+      },
+      {
+        "command": "qadav.typecheck",
+        "title": "Qadav: Typecheck File"
+      },
+      {
+        "command": "qadav.doctor",
+        "title": "Qadav: Run Doctor Diagnostics"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Qadav Configuration",
+      "properties": {
+        "qadav.compilerPath": {
+          "type": "string",
+          "default": "bin/qyn.exe",
+          "description": "Path to the Qadav compiler binary (qyn.exe)."
+        },
+        "qadav.packageManagerPath": {
+          "type": "string",
+          "default": "bin/qpk.exe",
+          "description": "Path to the Qadav package manager binary (qpk.exe)."
+        },
+        "qadav.enableLsp": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable native Language Server Protocol (LSP) diagnostics and completion."
+        }
+      }
+    }
+  }
+}

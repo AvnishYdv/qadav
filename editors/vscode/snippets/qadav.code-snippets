@@ -1,0 +1,141 @@
+{
+  "Process Definition": {
+    "prefix": "proc",
+    "body": [
+      "process ${1:name}⦅${2:int64 arg}⦆ → ${3:int64} ⟦",
+      "    ${0:// process body}",
+      "    yield ${4:0} ·",
+      "⟧"
+    ],
+    "description": "Define a Qadav process"
+  },
+  "Main Process": {
+    "prefix": "proc_main",
+    "body": [
+      "process main⦅⦆ → int64 ⟦",
+      "    emit \"${1:Hello, Qadav!}\" ·",
+      "    yield 0 ·",
+      "⟧"
+    ],
+    "description": "Standard Qadav main entrypoint"
+  },
+  "AVX2 Vector Block": {
+    "prefix": "vec256",
+    "body": [
+      "@vec256 ⟦",
+      "    vec4f64 ${1:v_a} ↦ vec4_load⦅${2:ptr_a} ⸴ ${3:offset}⦆ ·",
+      "    vec4f64 ${4:v_b} ↦ vec4_load⦅${5:ptr_b} ⸴ ${3:offset}⦆ ·",
+      "    vec4f64 ${6:v_out} ↦ vec4_fma⦅${1:v_a} ⸴ ${4:v_b} ⸴ vec4_splat⦅0.0⦆⦆ ·",
+      "    vec4_store⦅${7:ptr_out} ⸴ ${3:offset} ⸴ ${6:v_out}⦆ ·",
+      "⟧"
+    ],
+    "description": "Native AVX2 SIMD @vec256 vector computation block"
+  },
+  "When Condition": {
+    "prefix": "when",
+    "body": [
+      "when ${1:condition} ⟦",
+      "    ${0:// body}",
+      "⟧"
+    ],
+    "description": "Conditional branch statement"
+  },
+  "When-Otherwise": {
+    "prefix": "when_otherwise",
+    "body": [
+      "when ${1:condition} ⟦",
+      "    ${2:// affirm body}",
+      "⟧",
+      "otherwise ⟦",
+      "    ${0:// otherwise body}",
+      "⟧"
+    ],
+    "description": "Conditional branch with otherwise fallback"
+  },
+  "Cycle Loop": {
+    "prefix": "cycle",
+    "body": [
+      "cycle ${1:i} ≺ ${2:count} ⟦",
+      "    ${0:// loop body}",
+      "    ${1:i} ← ${1:i} ⊕ 1 ·",
+      "⟧"
+    ],
+    "description": "Bounded cycle iteration loop"
+  },
+  "Pattern Match": {
+    "prefix": "match",
+    "body": [
+      "match ${1:expr} ⟦",
+      "    case ${2:pattern1} ⟦ ${3:stmt1} · ⟧",
+      "    case ${4:pattern2} ⟦ ${5:stmt2} · ⟧",
+      "    otherwise ⟦ ${0:default_stmt} · ⟧",
+      "⟧"
+    ],
+    "description": "Exhaustive algebraic pattern match"
+  },
+  "Record Declaration": {
+    "prefix": "record",
+    "body": [
+      "record ${1:Name} ⟦",
+      "    ${2:int64 id} ·",
+      "    ${3:text label} ·",
+      "⟧"
+    ],
+    "description": "Typed record declaration"
+  },
+  "Variant Declaration": {
+    "prefix": "variant",
+    "body": [
+      "variant ${1:Option} ⟦",
+      "    ${2:Some⦅int64 value⦆}",
+      "    ${3:None}",
+      "⟧"
+    ],
+    "description": "Sum-type variant declaration"
+  },
+  "Quantum Stabilizer Tableau": {
+    "prefix": "stab",
+    "body": [
+      "qubit q[${1:4}] ·",
+      "superpose q[${2:0}] ·",
+      "entangle q[${2:0}] ⸴ q[${3:1}] ·",
+      "int64 m ↦ measure q[${2:0}] ·"
+    ],
+    "description": "Aaronson-Gottesman stabilizer tableau and projective measurement"
+  },
+  "QERA Epistemic Reasoning": {
+    "prefix": "qera",
+    "body": [
+      "process epistemic_audit⦅text claim ⸴ float64 threshold⦆ → logic ⟦",
+      "    logic valid ↦ cir_epistemic_propagate⦅claim ⸴ threshold⦆ ·",
+      "    yield valid ·",
+      "⟧"
+    ],
+    "description": "QERA epistemic reasoning block"
+  },
+  "BARAT Borda Voting": {
+    "prefix": "barat",
+    "body": [
+      "int64 winner ↦ barat_aggregate_native⦅ballots_ptr ⸴ num_agents ⸴ num_options⦆ ·",
+      "logic verified ↦ barat_verify_native⦅winner ⸴ proof_ptr⦆ ·"
+    ],
+    "description": "BARAT Borda-Rank Agreement Tournament aggregator"
+  },
+  "Package Manifest": {
+    "prefix": "pkg",
+    "body": [
+      "[package]",
+      "name = \"${1:package-name}\"",
+      "version = \"1.0.0\"",
+      "entry = \"src/main.ydv\"",
+      "requires_avx2 = ${2|true,false|}",
+      "",
+      "[dependencies]",
+      "",
+      "[integrity]",
+      "sha3_root = \"${3:9b2d3e4f8a1c5b7d9e2f4a6c8b0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d}\"",
+      "pcc_proof = \"${4:PCC-PROOF-PASS-TOKEN}\""
+    ],
+    "description": "Declarative Qadav package manifest template (qadav.pkg)"
+  }
+}

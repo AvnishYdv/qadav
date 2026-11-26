@@ -1,0 +1,99 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Qadav",
+  "scopeName": "source.ydv",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#simd_intrinsics" },
+    { "include": "#quantum_gates" },
+    { "include": "#unicode_operators" },
+    { "include": "#delimiters" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.ydv",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.ydv",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.ydv",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.ydv",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.ydv",
+          "match": "\\b[0-9]+\\.[0-9]+([eE][+-]?[0-9]+)?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.ydv",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.ydv",
+          "match": "\\b(process|yield|emit|when|otherwise|cycle|iterate|match|case|affirm|deny|network|learn|qubit|superpose|entangle|collapse|measure|quasinary|concept|policy|envelope|attest|verify)\\b"
+        },
+        {
+          "name": "keyword.declaration.ydv",
+          "match": "\\b(record|variant)\\b"
+        }
+      ]
+    },
+    "types": {
+      "name": "entity.name.type.ydv",
+      "match": "\\b(int64|float64|logic|text|tensor|qubit|concept|vec4f64|vec8f32)\\b"
+    },
+    "simd_intrinsics": {
+      "patterns": [
+        {
+          "name": "keyword.other.simd.ydv",
+          "match": "@vec256"
+        },
+        {
+          "name": "support.function.simd.ydv",
+          "match": "\\b(vec4_load|vec4_store|vec4_splat|vec4_load_splat|vec4_add|vec4_sub|vec4_mul|vec4_div|vec4_fma|vec4_hsum|vec8_load|vec8_store|vec8_splat|vec8_add|vec8_sub|vec8_mul|vec8_fma)\\b"
+        }
+      ]
+    },
+    "quantum_gates": {
+      "name": "constant.language.quantum.ydv",
+      "match": "(\\\\mathcal\\{[HXYZSTC]\\}|[ℋ𝒳𝒴𝒵𝒮𝒯𝒞])"
+    },
+    "unicode_operators": {
+      "name": "keyword.operator.unicode.ydv",
+      "match": "(↦|←|⊕|⊖|⊗|⊘|≡|≠|∧|∨|≺|≻|≼|≽|·)"
+    },
+    "delimiters": {
+      "name": "punctuation.brackets.ydv",
+      "match": "(⟦|⟧|⦅|⦆|⟬|⟭|\\{|\\}|\\[|\\]|\\(|\\)|⸴)"
+    },
+    "identifiers": {
+      "name": "variable.other.ydv",
+      "match": "[a-zA-Z_][a-zA-Z0-9_]*"
+    }
+  }
+}

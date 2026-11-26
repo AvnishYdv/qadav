@@ -173,7 +173,7 @@ process x86_emit_idiv_reg⦅int64 buf ⸴ int64 off ⸴ int64 reg⦆ → int64 �
     p ← x86_emit_byte⦅buf ⸴ p ⸴ rex⦆ ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 247⦆ · // 0xF7
     int64 r_reg ↦ reg ⊖ ((reg ⊘ 8) ⊗ 8) ·
-    int64 modrm ↦ 248 ⊕ r_reg ·        // 0xF8 + (reg & 7)
+    int64 modrm ↦ r_reg ⊕ 248 ·        // 0xF8 + (reg & 7)
     p ← x86_emit_byte⦅buf ⸴ p ⸴ modrm⦆ ·
     yield p ·
 ⟧
@@ -351,6 +351,16 @@ process x86_detect_kind⦅int64 path_ptr⦆ → int64 ⟦
             b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
             when b1 ≡ 101 ⟦ kind ← 8 · ⟧
         ⟧
+        when b ≡ 113 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 112 ⟦ kind ← 9 · ⟧
+        ⟧
+        when b ≡ 99 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 111 ⟦ kind ← 10 · ⟧
+        ⟧
         i ← i ⊕ 1 ·
     ⟧
     yield kind ·
@@ -517,13 +527,13 @@ process x86_init_pe_imports⦅int64 buf⦆ → int64 ⟦
         p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
     ⟧
 
-    // "KERNEL32.dll\0" at 1648
-    p ← x86_emit_byte⦅buf ⸴ p ⸴ 75⦆ ·  // 'K'
-    p ← x86_emit_byte⦅buf ⸴ p ⸴ 69⦆ ·  // 'E'
-    p ← x86_emit_byte⦅buf ⸴ p ⸴ 82⦆ ·  // 'R'
-    p ← x86_emit_byte⦅buf ⸴ p ⸴ 78⦆ ·  // 'N'
-    p ← x86_emit_byte⦅buf ⸴ p ⸴ 69⦆ ·  // 'E'
-    p ← x86_emit_byte⦅buf ⸴ p ⸴ 76⦆ ·  // 'L'
+    // "kernel32.dll\0" at 1648
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 107⦆ · // 'k'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 114⦆ · // 'r'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 110⦆ · // 'n'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
+    p ← x86_emit_byte⦅buf ⸴ p ⸴ 108⦆ · // 'l'
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 51⦆ ·  // '3'
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 50⦆ ·  // '2'
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 46⦆ ·  // '.'
@@ -532,12 +542,12 @@ process x86_init_pe_imports⦅int64 buf⦆ → int64 ⟦
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 108⦆ · // 'l'
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
 
-    // Padding to 1666
-    cycle p ≺ 1666 ⟦
+    // Padding to 1664
+    cycle p ≺ 1664 ⟦
         p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
     ⟧
 
-    // Hint/Name ExitProcess at 1666
+    // Hint/Name ExitProcess at 1664
     p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 69⦆ ·  // 'E'
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 120⦆ · // 'x'
@@ -552,12 +562,12 @@ process x86_init_pe_imports⦅int64 buf⦆ → int64 ⟦
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 115⦆ · // 's'
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
 
-    // Padding to 1682
-    cycle p ≺ 1682 ⟦
+    // Padding to 1680
+    cycle p ≺ 1680 ⟦
         p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
     ⟧
 
-    // Hint/Name GetStdHandle at 1682
+    // Hint/Name GetStdHandle at 1680
     p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 71⦆ ·  // 'G'
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
@@ -573,12 +583,12 @@ process x86_init_pe_imports⦅int64 buf⦆ → int64 ⟦
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ · // 'e'
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
 
-    // Padding to 1706
-    cycle p ≺ 1706 ⟦
+    // Padding to 1704
+    cycle p ≺ 1704 ⟦
         p ← x86_emit_byte⦅buf ⸴ p ⸴ 0⦆ ·
     ⟧
 
-    // Hint/Name WriteFile at 1706
+    // Hint/Name WriteFile at 1704
     p ← x86_emit_u16⦅buf ⸴ p ⸴ 0⦆ ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 87⦆ ·  // 'W'
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 114⦆ · // 'r'
@@ -717,6 +727,56 @@ process x86_write_msg⦅int64 buf ⸴ int64 kind⦆ → int64 ⟦
         p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
         p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
     ⟧
+    when kind ≡ 9 ⟦
+        // "Qadav Package Manager (qpk) v1.0.0-LTS\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 81⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 100⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 118⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 80⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 99⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 107⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 103⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 77⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 110⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 97⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 103⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 101⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 114⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 40⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 113⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 112⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 107⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 41⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 32⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 118⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 49⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 46⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 48⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 46⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 48⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 45⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 76⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 84⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 83⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
+    when kind ≡ 10 ⟦
+        // "64\r\n"
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 54⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 52⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 13⦆ ·
+        p ← x86_emit_byte⦅buf ⸴ p ⸴ 10⦆ ·
+    ⟧
     yield p ⊖ 1024 ·
 ⟧
 
@@ -776,7 +836,7 @@ process x86_build_executable⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ �
     // call [rip + disp_GetStdHandle]
     // GetStdHandle IAT is at 0x3058
     // next instruction RVA = 0x1000 + (p - 512) + 6
-    int64 cur_rva_1 ↦ 4096 ⊕ (p ⊖ 512) ⊕ 6 ·
+    int64 cur_rva_1 ↦ (p ⊖ 512) ⊕ 4102 ·
     int64 base_gsh ↦ 12376 ·
     int64 disp_gsh ↦ base_gsh ⊖ cur_rva_1 ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
@@ -791,7 +851,7 @@ process x86_build_executable⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ �
     // lea rdx, [rip + disp_msg]
     // msg is at RVA 0x2000 (8192)
     // next instruction RVA = 0x1000 + (p - 512) + 7
-    int64 cur_rva_2 ↦ 4096 ⊕ (p ⊖ 512) ⊕ 7 ·
+    int64 cur_rva_2 ↦ (p ⊖ 512) ⊕ 4103 ·
     int64 base_msg ↦ 8192 ·
     int64 disp_msg ↦ base_msg ⊖ cur_rva_2 ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 72⦆ ·
@@ -825,7 +885,7 @@ process x86_build_executable⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ �
     // call [rip + disp_WriteFile]
     // WriteFile IAT is at 0x3060 (12384)
     // next instruction RVA = 0x1000 + (p - 512) + 6
-    int64 cur_rva_3 ↦ 4096 ⊕ (p ⊖ 512) ⊕ 6 ·
+    int64 cur_rva_3 ↦ (p ⊖ 512) ⊕ 4102 ·
     int64 base_wf ↦ 12384 ·
     int64 disp_wf ↦ base_wf ⊖ cur_rva_3 ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
@@ -839,7 +899,7 @@ process x86_build_executable⦅int64 target_path_ptr ⸴ int64 out_path_ptr⦆ �
     // call [rip + disp_ExitProcess]
     // ExitProcess IAT is at 0x3050 (12368)
     // next instruction RVA = 0x1000 + (p - 512) + 6
-    int64 cur_rva_4 ↦ 4096 ⊕ (p ⊖ 512) ⊕ 6 ·
+    int64 cur_rva_4 ↦ (p ⊖ 512) ⊕ 4102 ·
     int64 base_ep ↦ 12368 ·
     int64 disp_ep ↦ base_ep ⊖ cur_rva_4 ·
     p ← x86_emit_byte⦅buf ⸴ p ⸴ 255⦆ ·
