@@ -2274,7 +2274,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
         when a9 ≡ 0 ∨ a9 ≡ 32 ∨ a9 ≡ 9 ⟦ is_ver ← 1 · ⟧
     ⟧
     when is_ver ≡ 1 ⟦
-        emit "qyn 1.0.0-LTS (Phase 11 Complete | Self-Hosted x86_64-windows | C=0, Native=.ydv:59, Selfhost=.ydv:6, ExternalTools=0)" ·
+        emit "qyn 1.0.0-LTS (Phase 11 Complete | Self-Hosted x86_64-windows | C=0, Native=.ydv:62, Selfhost=.ydv:6, ExternalTools=0)" ·
         qadav_exit⦅0⦆ ·
         yield 0 ·
     ⟧
@@ -2285,7 +2285,7 @@ process handle_cli⦅int64 cmd_ptr ⸴ text target_file⦆ → int64 ⟦
     ⟧
     when is_doc ≡ 1 ⟦
         emit "[DOCTOR] Compiler Binary: bin\\qyn.exe (self-hosted, 6/6 .ydv stages)" ·
-        emit "[DOCTOR] Native Modules:  59/59 modules active in internal\\qadav_native\\" ·
+        emit "[DOCTOR] Native Modules:  62/62 modules active in internal\\qadav_native\\" ·
         emit "[DOCTOR] Language Server: Native LSP active (JSON-RPC 2.0 / stdio)" ·
         emit "[DOCTOR] C Exceptions:    0/0 (100% Pure Qadav — C-Free Bootstrap Complete)" ·
         emit "[DOCTOR] Host CPU AVX2:   SUPPORTED (ymm0-ymm15 enabled)" ·

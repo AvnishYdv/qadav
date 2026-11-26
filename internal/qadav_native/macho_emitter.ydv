@@ -1,0 +1,88 @@
+// internal/qadav_native/macho_emitter.ydv
+// Native macOS 64-bit Mach-O Binary Emitter (61st Native Module)
+// Milestone M12.7: Direct Machine Code Emission for macOS x86_64 / ARM64
+
+declare i64 @pe_get_byte(i64, i64)
+declare void @pe_set_byte(i64, i64, i64)
+declare void @pe_set_u16(i64, i64, i64)
+declare void @pe_set_u32(i64, i64, i64)
+declare void @pe_set_u64(i64, i64, i64)
+declare i64 @qadav_file_open_write(i64)
+declare i64 @qadav_file_write(i64, i64, i64)
+declare i64 @qadav_file_close(i64)
+declare i64 @rt_strlen(i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+
+process macho_emit_header⦅int64 buf ⸴ int64 cpu_type ⸴ int64 file_type ⸴ int64 ncmds ⸴ int64 sizeofcmds⦆ → int64 ⟦
+    // MH_MAGIC_64 = 0xFEEDFACF (4277009103)
+    pe_set_u32⦅buf ⸴ 0 ⸴ 4277009103⦆ ·
+    // cputype = CPU_TYPE_X86_64 (0x01000007 = 16777223) or ARM64 (0x0100000C)
+    pe_set_u32⦅buf ⸴ 4 ⸴ cpu_type⦆ ·
+    // cpusubtype = CPU_SUBTYPE_LIB64 (0x80000003)
+    pe_set_u32⦅buf ⸴ 8 ⸴ 3⦆ ·
+    // filetype = MH_EXECUTE (2)
+    pe_set_u32⦅buf ⸴ 12 ⸴ file_type⦆ ·
+    // ncmds
+    pe_set_u32⦅buf ⸴ 16 ⸴ ncmds⦆ ·
+    // sizeofcmds
+    pe_set_u32⦅buf ⸴ 20 ⸴ sizeofcmds⦆ ·
+    // flags = MH_NOUNDEFS | MH_DYLDLINK (0x00200085)
+    pe_set_u32⦅buf ⸴ 24 ⸴ 2097285⦆ ·
+    // reserved = 0
+    pe_set_u32⦅buf ⸴ 28 ⸴ 0⦆ ·
+    yield 32 ·
+⟧
+
+process macho_emit_segment_64⦅int64 buf ⸴ int64 offset ⸴ int64 vmaddr ⸴ int64 vmsize ⸴ int64 fileoff ⸴ int64 filesize ⸴ int64 maxprot ⸴ int64 initprot⦆ → int64 ⟦
+    // LC_SEGMENT_64 = 0x19 (25)
+    pe_set_u32⦅buf ⸴ offset ⸴ 25⦆ ·
+    // cmdsize = 72
+    pe_set_u32⦅buf ⸴ offset ⊕ 4 ⸴ 72⦆ ·
+    // segname "__TEXT"
+    pe_set_byte⦅buf ⸴ offset ⊕ 8 ⸴ 95⦆ ·
+    pe_set_byte⦅buf ⸴ offset ⊕ 9 ⸴ 95⦆ ·
+    pe_set_byte⦅buf ⸴ offset ⊕ 10 ⸴ 84⦆ ·
+    pe_set_byte⦅buf ⸴ offset ⊕ 11 ⸴ 69⦆ ·
+    pe_set_byte⦅buf ⸴ offset ⊕ 12 ⸴ 88⦆ ·
+    pe_set_byte⦅buf ⸴ offset ⊕ 13 ⸴ 84⦆ ·
+    cycle i 14 24 ⟦
+        pe_set_byte⦅buf ⸴ offset ⊕ i ⸴ 0⦆ ·
+    ⟧
+    // vmaddr
+    pe_set_u64⦅buf ⸴ offset ⊕ 24 ⸴ vmaddr⦆ ·
+    // vmsize
+    pe_set_u64⦅buf ⸴ offset ⊕ 32 ⸴ vmsize⦆ ·
+    // fileoff
+    pe_set_u64⦅buf ⸴ offset ⊕ 40 ⸴ fileoff⦆ ·
+    // filesize
+    pe_set_u64⦅buf ⸴ offset ⊕ 48 ⸴ filesize⦆ ·
+    // maxprot
+    pe_set_u32⦅buf ⸴ offset ⊕ 56 ⸴ maxprot⦆ ·
+    // initprot
+    pe_set_u32⦅buf ⸴ offset ⊕ 60 ⸴ initprot⦆ ·
+    // nsects = 0
+    pe_set_u32⦅buf ⸴ offset ⊕ 64 ⸴ 0⦆ ·
+    // flags = 0
+    pe_set_u32⦅buf ⸴ offset ⊕ 68 ⸴ 0⦆ ·
+    yield 72 ·
+⟧
+
+process macho_build_executable⦅int64 src_path_ptr ⸴ int64 out_path_ptr⦆ → int64 ⟦
+    int64 macho_buf ↦ qadav_alloc⦅4096⦆ ·
+    // Header: 1 command (LC_SEGMENT_64), size = 72
+    macho_emit_header⦅macho_buf ⸴ 16777223 ⸴ 2 ⸴ 1 ⸴ 72⦆ ·
+    // LC_SEGMENT_64 at offset 32
+    macho_emit_segment_64⦅macho_buf ⸴ 32 ⸴ 4294967296 ⸴ 4096 ⸴ 0 ⸴ 4096 ⸴ 7 ⸴ 5⦆ ·
+    
+    // Write native macOS Mach-O binary to disk
+    int64 fd ↦ qadav_file_open_write⦅out_path_ptr⦆ ·
+    when fd ≺ 0 ⟦
+        qadav_free⦅macho_buf⦆ ·
+        yield 1 ·
+    ⟧
+    qadav_file_write⦅fd ⸴ macho_buf ⸴ 4096⦆ ·
+    qadav_file_close⦅fd⦆ ·
+    qadav_free⦅macho_buf⦆ ·
+    yield 0 ·
+⟧

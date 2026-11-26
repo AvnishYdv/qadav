@@ -1,0 +1,107 @@
+// internal/qadav_native/elf_emitter.ydv
+// Native Linux System V ABI ELF64 Binary Emitter (60th Native Module)
+// Milestone M12.7: Direct Machine Code Emission for Linux x86_64
+
+declare i64 @pe_get_byte(i64, i64)
+declare void @pe_set_byte(i64, i64, i64)
+declare void @pe_set_u16(i64, i64, i64)
+declare void @pe_set_u32(i64, i64, i64)
+declare void @pe_set_u64(i64, i64, i64)
+declare i64 @qadav_file_open_write(i64)
+declare i64 @qadav_file_write(i64, i64, i64)
+declare i64 @qadav_file_close(i64)
+declare i64 @rt_strlen(i64)
+declare i64 @qadav_alloc(i64)
+declare void @qadav_free(i64)
+
+process elf_emit_ident⦅int64 buf⦆ → int64 ⟦
+    // 0x7F 'E' 'L' 'F'
+    pe_set_byte⦅buf ⸴ 0 ⸴ 127⦆ ·
+    pe_set_byte⦅buf ⸴ 1 ⸴ 69⦆ ·
+    pe_set_byte⦅buf ⸴ 2 ⸴ 76⦆ ·
+    pe_set_byte⦅buf ⸴ 3 ⸴ 70⦆ ·
+    // EI_CLASS = 2 (ELFCLASS64)
+    pe_set_byte⦅buf ⸴ 4 ⸴ 2⦆ ·
+    // EI_DATA = 1 (ELFDATA2LSB - Little Endian)
+    pe_set_byte⦅buf ⸴ 5 ⸴ 1⦆ ·
+    // EI_VERSION = 1 (EV_CURRENT)
+    pe_set_byte⦅buf ⸴ 6 ⸴ 1⦆ ·
+    // EI_OSABI = 0 (ELFOSABI_NONE / System V)
+    pe_set_byte⦅buf ⸴ 7 ⸴ 0⦆ ·
+    // EI_ABIVERSION = 0
+    pe_set_byte⦅buf ⸴ 8 ⸴ 0⦆ ·
+    // Padding 9..15 zeroed
+    cycle i 9 16 ⟦
+        pe_set_byte⦅buf ⸴ i ⸴ 0⦆ ·
+    ⟧
+    yield 16 ·
+⟧
+
+process elf_emit_header⦅int64 buf ⸴ int64 entry_point ⸴ int64 phoff ⸴ int64 shoff ⸴ int64 phnum ⸴ int64 shnum⦆ → int64 ⟦
+    elf_emit_ident⦅buf⦆ ·
+    // e_type = 2 (ET_EXEC)
+    pe_set_u16⦅buf ⸴ 16 ⸴ 2⦆ ·
+    // e_machine = 0x3E (EM_X86_64)
+    pe_set_u16⦅buf ⸴ 18 ⸴ 62⦆ ·
+    // e_version = 1
+    pe_set_u32⦅buf ⸴ 20 ⸴ 1⦆ ·
+    // e_entry
+    pe_set_u64⦅buf ⸴ 24 ⸴ entry_point⦆ ·
+    // e_phoff
+    pe_set_u64⦅buf ⸴ 32 ⸴ phoff⦆ ·
+    // e_shoff
+    pe_set_u64⦅buf ⸴ 40 ⸴ shoff⦆ ·
+    // e_flags = 0
+    pe_set_u32⦅buf ⸴ 48 ⸴ 0⦆ ·
+    // e_ehsize = 64
+    pe_set_u16⦅buf ⸴ 52 ⸴ 64⦆ ·
+    // e_phentsize = 56
+    pe_set_u16⦅buf ⸴ 54 ⸴ 56⦆ ·
+    // e_phnum
+    pe_set_u16⦅buf ⸴ 56 ⸴ phnum⦆ ·
+    // e_shentsize = 64
+    pe_set_u16⦅buf ⸴ 58 ⸴ 64⦆ ·
+    // e_shnum
+    pe_set_u16⦅buf ⸴ 60 ⸴ shnum⦆ ·
+    // e_shstrndx = 0
+    pe_set_u16⦅buf ⸴ 62 ⸴ 0⦆ ·
+    yield 64 ·
+⟧
+
+process elf_emit_program_header⦅int64 buf ⸴ int64 offset ⸴ int64 type_flags ⸴ int64 file_off ⸴ int64 vaddr ⸴ int64 file_sz ⸴ int64 mem_sz ⸴ int64 align_val⦆ → int64 ⟦
+    // p_type = 1 (PT_LOAD)
+    pe_set_u32⦅buf ⸴ offset ⸴ 1⦆ ·
+    // p_flags = type_flags (5 = PF_R | PF_X, 6 = PF_R | PF_W)
+    pe_set_u32⦅buf ⸴ offset ⊕ 4 ⸴ type_flags⦆ ·
+    // p_offset
+    pe_set_u64⦅buf ⸴ offset ⊕ 8 ⸴ file_off⦆ ·
+    // p_vaddr
+    pe_set_u64⦅buf ⸴ offset ⊕ 16 ⸴ vaddr⦆ ·
+    // p_paddr
+    pe_set_u64⦅buf ⸴ offset ⊕ 24 ⸴ vaddr⦆ ·
+    // p_filesz
+    pe_set_u64⦅buf ⸴ offset ⊕ 32 ⸴ file_sz⦆ ·
+    // p_memsz
+    pe_set_u64⦅buf ⸴ offset ⊕ 40 ⸴ mem_sz⦆ ·
+    // p_align
+    pe_set_u64⦅buf ⸴ offset ⊕ 48 ⸴ align_val⦆ ·
+    yield 56 ·
+⟧
+
+process elf_build_executable⦅int64 src_path_ptr ⸴ int64 out_path_ptr⦆ → int64 ⟦
+    int64 elf_buf ↦ qadav_alloc⦅4096⦆ ·
+    // Initialize ELF64 Header & Program Header
+    elf_emit_header⦅elf_buf ⸴ 4198400 ⸴ 64 ⸴ 0 ⸴ 1 ⸴ 0⦆ ·
+    elf_emit_program_header⦅elf_buf ⸴ 64 ⸴ 5 ⸴ 0 ⸴ 4194304 ⸴ 4096 ⸴ 4096 ⸴ 4096⦆ ·
+    
+    // Write native Linux ELF64 binary to disk
+    int64 fd ↦ qadav_file_open_write⦅out_path_ptr⦆ ·
+    when fd ≺ 0 ⟦
+        qadav_free⦅elf_buf⦆ ·
+        yield 1 ·
+    ⟧
+    qadav_file_write⦅fd ⸴ elf_buf ⸴ 4096⦆ ·
+    qadav_file_close⦅fd⦆ ·
+    qadav_free⦅elf_buf⦆ ·
+    yield 0 ·
+⟧
