@@ -1,0 +1,6 @@
+# Qadav QNMF Multi-Hop & Epistemic Records Dataset (M13.2)
+RECORD_01|Socrates|TeacherOf|Plato|0.95|FACTUAL
+RECORD_02|Plato|TeacherOf|Aristotle|0.94|FACTUAL
+RECORD_03|Aristotle|MentorOf|Alexander|0.92|FACTUAL
+RECORD_04|AdversarialClaim|EntangledWith|PseudoScience|0.58|AMBIGUOUS
+RECORD_05|SpeculativeCosmology|Predicts|TachyonSingularity|0.64|AMBIGUOUS

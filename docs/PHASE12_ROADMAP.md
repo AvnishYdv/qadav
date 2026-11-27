@@ -207,6 +207,7 @@ flowchart TD
 | **M12.14** | Month 5 (Outreach) | Investor / Grant Outreach Pack | 2,405-word memorandum, outreach templates, live showcase script [DONE] |
 | **M12.15** | Month 5 (Ecosystem Polish)| Workspace Cleanup & Bansuri Icon | Clean unneeded MD/TMP, Shri Krishna Bansuri file icon, VSIX rebuild [DONE] |
 | **M13.1**  | Phase 13 Target | Advanced QNMF Engine | Reversal Symmetrization, Epistemic Abstention, QERA Provenance & 1.002B MoE [DONE] |
+| **M13.2**  | Phase 13 Target | Multi-Hop QNMF & File Input | Multi-Hop Reversal, File-Driven ECRA Gating & QERA Tamper Verification [DONE] |
 
 ---
 
