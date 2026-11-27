@@ -1,0 +1,24 @@
+{
+  "iconDefinitions": {
+    "_qadav": {
+      "iconPath": "./qadav-bansuri.svg"
+    },
+    "_qadav_light": {
+      "iconPath": "./qadav-bansuri.svg"
+    }
+  },
+  "fileExtensions": {
+    "ydv": "_qadav"
+  },
+  "languageIds": {
+    "qadav": "_qadav"
+  },
+  "light": {
+    "fileExtensions": {
+      "ydv": "_qadav_light"
+    },
+    "languageIds": {
+      "qadav": "_qadav_light"
+    }
+  }
+}

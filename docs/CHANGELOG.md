@@ -5,6 +5,56 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M12.15] — Workspace Cleanup, Shri Krishna Bansuri Icon Theme & Multi-IDE Readiness
+## [M12.15] — कार्यक्षेत्र स्वच्छता, श्री कृष्ण बाँसुरी आइकन थीम एवं मल्टी-IDE तत्परता
+
+### Phase 12 M12.15 Overview: Markdown & TMP Audit, Bansuri File Icon, and IDE Ecosystem Polish
+- **Deliverable 1: Workspace Markdown & TMP Clutter Clean-Up:**
+  - Audited all markdown files across workspace and removed 12 superseded historical files (`PHASE9_*.md`, `PHASE10_FINAL_REPORT.md`, `PHASE11_FINAL_REPORT.md`, `docs/PHASE5_*.md`, `docs/PHASE8_ROADMAP.md`, `docs/PHASE11_ROADMAP.md`, `docs/QADAV_FUNDING_DOSSIER.md`, `benchmarks/PHASE5_RESULTS.md`) superseded by canonical Phase 12 reports and `docs/commercial/*`.
+  - Cleaned scratch `.exe`, `.ll`, `.o`, `.wasm`, `.ps1`, and temporary test staging directories from `TMP\`, preserving core reference files (`ref_*.ll`), 8 product demo executables, `qnmf_1b.exe`, `run_full_fc_suite.ps1`, and CSV logs.
+- **Deliverable 2: Shri Krishna Bansuri (.ydv) File Icon Suite:**
+  - Handcrafted high-contrast vector icon `assets/icons/qadav-bansuri.svg` and `editors/vscode/icons/qadav-bansuri.svg` depicting Shri Krishna's sacred bamboo Bansuri (flute) with golden body, 6 playing holes, and Mor Pankh (peacock feather) crest.
+  - Rendered crisp 256x256 anti-aliased PNG icons (`assets/icons/qadav-bansuri.png`, `editors/vscode/icons/qadav-bansuri.png`) using .NET `System.Drawing` on Windows host.
+  - Added clean file-icon theme `editors/vscode/icons/qadav-icon-theme.json` with dark and light theme mappings for `.ydv` files.
+- **Deliverable 3: VS Code / Open VSX Extension VSIX Rebuild:**
+  - Registered `"icon": "./icons/qadav-bansuri.png"` and `"iconThemes"` in `editors/vscode/package.json`.
+  - Validated all JSON configuration files via `ConvertFrom-Json`.
+  - Rebuilt `editors/vscode/qadav-lang-1.0.0.vsix` (15,122 bytes, 11 entries) supporting VS Code, Antigravity, Cursor, and VSCodium.
+- **Deliverable 4: Multi-IDE Readiness & Documentation:**
+  - Updated `docs/QUICKSTART_FOR_DEVS.md` with multi-IDE setup instructions for VS Code, Google Antigravity, Cursor, Neovim (built-in LSP via `vim.lsp.start`), and Emacs (`eglot`).
+  - Updated `editors/vscode/README.md` with file-icon theme activation instructions.
+
+---
+
+## [M12.14] — Investor / Grant Outreach Pack & One-Command Live Proof Script
+## [M12.14] — निवेशक / अनुदान आउटरीच पैक एवं एकल-कमांड लाइव प्रमाण स्क्रिप्ट
+
+### Phase 12 M12.14 Overview: Strategic Outreach Dossier & Auditor Showcase Script
+- **Deliverable 1: Commercial Outreach Memorandum (`docs/commercial/INVESTOR_GRANT_OUTREACH_PACK.md`):**
+  - Comprehensive 2,405-word dossier containing a 60-second elevator pitch and 1-page executive brief for institutional investors and grant committees.
+  - Transparent "What is Proven Today vs. What Funding Scales Next" matrix separating 8 GB single-node CPU proofs from multi-GPU HPC pre-training and physical QPU dispatch targets.
+  - Turnkey proposal and email outreach templates for Seed VC investors ($5.2M offering), Enterprise AI Safety pilots (60-day POC), and Sovereign R&D grants (₹12.50 Cr IndiaAI / National Quantum Mission proposal).
+  - Detailed $5.2M capital deployment breakdown across GPU infrastructure, compiler engineering, enterprise audits, and PCT patent prosecution.
+- **Deliverable 2: One-Command Live Proof Showcase Script (`scripts/live_proof_showcase.ps1`):**
+  - Pure PowerShell verification script demonstrating zero C/Go/Py invariants, compiler diagnostics, direct PE32+ build and run (`hello.ydv`), SMT formal bounds proof (`--pcc-formal` pass and negative out-of-bounds rejection), QNMF 1.002B parameter MoE training with Byzantine trimming (BARAT), cryptographic tamper trap abort (`0xDEADBEEF`), and native WebAssembly binary synthesis.
+
+---
+
+## [M12.13] — Comprehensive Provisional Patent Filing Brief for Top 5 Core Inventions
+## [M12.13] — शीर्ष 5 मुख्य आविष्कारों के लिए व्यापक अनंतिम पेटेंट फाइलिंग विवरण
+
+### Phase 12 M12.13 Overview: Technical Disclosure Dossier for Patent Counsel
+- **Deliverable 1: Comprehensive Patent Brief (`docs/commercial/PROVISIONAL_PATENT_FILING_BRIEF.md`):**
+  - 6,229-word patent attorney disclosure dossier covering the top 5 high-impact inventions for Indian Patent Office (IPO) and USPTO filing.
+  - Invention 1: QNMF Pillar 1 Commutative Bilateral Relational Encoding (solving the Reversal Curse without reverse training data).
+  - Invention 2: ECRA + TTPCR Adaptive Compute & Calibrated Abstention (variance-penalized confidence gating, 58.4% compute reduction, exit code `100`).
+  - Invention 3: QERA + MCTP Cryptographic Reasoning & Training Provenance (185-byte step commitments, rolling SHA3-256 chains, post-quantum WOTS+ Merkle containers).
+  - Invention 4: BARAT + CDAGA Byzantine-Robust Federated Aggregation (canonical UUID sorting, $\alpha$-trimmed mean exclusion, 896-byte selection proof).
+  - Invention 5: QESI Quantum-Entangled Sandbox Isolation (contained decoherence, host continuity, `0xDEADBEEF` tamper trap).
+  - Complete draft independent method, system, and storage medium claims for all 5 inventions with repo evidence pointers and pre-filing IP hygiene checklist.
+
+---
+
 ## [M12.12] — Advanced WASM SIMD Vector Loops + Multi-Worker Threads + Developer Quickstart & SDK Polish
 ## [M12.12] — उन्नत WASM SIMD वेक्टर लूप्स + मल्टी-वर्कर थ्रेड्स + डेवलपर त्वरित प्रारंभ एवं SDK परिष्करण
 

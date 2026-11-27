@@ -5,6 +5,7 @@
   "version": "1.0.0",
   "publisher": "qadav",
   "license": "Apache-2.0",
+  "icon": "./icons/qadav-bansuri.png",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -36,7 +37,18 @@
         "extensions": [
           ".ydv"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/qadav-bansuri.svg",
+          "dark": "./icons/qadav-bansuri.svg"
+        }
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "qadav-icon-theme",
+        "label": "Qadav Bansuri Icons",
+        "path": "./icons/qadav-icon-theme.json"
       }
     ],
     "grammars": [

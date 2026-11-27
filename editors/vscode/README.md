@@ -19,6 +19,9 @@ Official Visual Studio Code, VSCodium, and Open VSX extension for the **Qadav (`
   - `Qadav: Run Doctor Diagnostics`: Runs compiler and system health checks.
 - **Native LSP Integration:**
   - Built-in stdio client connecting directly to `bin\qyn.exe lsp`.
+- **Shri Krishna Bansuri File Icon Theme:**
+  - Custom file icon theme (`qadav-bansuri.svg` / `qadav-bansuri.png`) featuring Shri Krishna's golden bamboo Bansuri (flute) with playing finger holes and Mor Pankh (peacock feather) crest, rendering with high contrast in both dark and light modes.
+  - Activate via `File > Preferences > Theme > File Icon Theme > Qadav Bansuri Icons`.
 
 ## Extension Settings
 

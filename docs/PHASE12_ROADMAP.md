@@ -203,6 +203,9 @@ flowchart TD
 | **M12.10** | Month 5 (Weeks 19–20) | Global Launch & Qadav 2.0 | Foundation charter, international keynote, 2.0 RFC [DONE] |
 | **M12.11** | Month 5 (Post-Closure) | WebAssembly v128 SIMD + Threads | Native v128 SIMD, atomics, 4 Web Workers, AI token saver [DONE] |
 | **M12.12** | Month 5 (Post-Closure) | WASM Vector Loops & SDK Polish | Real v128 loops, Quickstart guide, AI guard & SMT bounds [DONE] |
+| **M12.13** | Month 5 (IP Fortress) | Top 5 Provisional Patent Brief | 6,229-word attorney disclosure dossier (IPO/USPTO format) [DONE] |
+| **M12.14** | Month 5 (Outreach) | Investor / Grant Outreach Pack | 2,405-word memorandum, outreach templates, live showcase script [DONE] |
+| **M12.15** | Month 5 (Ecosystem Polish)| Workspace Cleanup & Bansuri Icon | Clean unneeded MD/TMP, Shri Krishna Bansuri file icon, VSIX rebuild [DONE] |
 
 ---
 

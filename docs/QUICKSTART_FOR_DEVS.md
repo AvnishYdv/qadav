@@ -39,9 +39,9 @@ qyn 1.0.0-LTS (Phase 11 Complete | Self-Hosted x86_64-windows | C=0, Native=.ydv
 [DOCTOR] System Status:   HEALTHY — ready for native compilation
 ```
 
-### 1.2 Installing the IDE Extension (VS Code / Open VSX / Antigravity)
+### 1.2 Installing the IDE Extension (VS Code / Open VSX / Antigravity / Cursor)
 
-Qadav includes a full-featured extension in `editors/vscode/`:
+Qadav includes a full-featured extension and file-icon theme in `editors/vscode/`:
 
 ```powershell
 # Install directly via the VS Code CLI
@@ -52,10 +52,48 @@ code --install-extension editors\vscode\qadav-lang-1.0.0.vsix
 ```
 
 The extension provides:
-- Full syntax highlighting for all Qadav keywords and mathematical operators.
-- Native Language Server Protocol (`qyn lsp`) connection over stdio.
-- Real-time diagnostic error underlines and type hover cards.
-- Productive code snippets for fast Unicode entry.
+- **Shri Krishna Bansuri File Icon:** Custom high-contrast vector file icon (`qadav-bansuri.svg` / `qadav-bansuri.png`) with golden bamboo body, 6 playing finger holes, and Mor Pankh (peacock feather) crest, rendering legibly across dark and light themes at 16x16 and 24x24 tree sizes.
+- **Icon Theme Selection:** `File > Preferences > Theme > File Icon Theme > Qadav Bansuri Icons`.
+- **Full Syntax Highlighting:** Highlighting for all Qadav keywords, types, annotations, and mathematical Unicode operators (`↦`, `←`, `⟦ ⟧`, `·`, `⊕`, `⊗`, `≺`, `≡`).
+- **Native Language Server Protocol (`qyn lsp`):** Real-time JSON-RPC 2.0 diagnostics, completion items, and hover signatures over stdio.
+- **Productive Code Snippets:** 20+ built-in snippets for instantaneous Unicode entry.
+
+### 1.3 Multi-IDE & External Editor Setup Guide
+
+Qadav's native LSP architecture (`bin\qyn.exe lsp`) operates entirely over standard input/output (stdio) with zero external server dependencies, making it directly compatible with all modern editors:
+
+#### A. Google Antigravity & Cursor
+1. Install `editors/vscode/qadav-lang-1.0.0.vsix` via the Extensions panel (`Install from VSIX...`).
+2. Open Settings (`Ctrl+,`) and verify `qadav.compilerPath` points to your `bin\qyn.exe`.
+3. Select `Qadav Bansuri Icons` under File Icon Themes.
+
+#### B. Neovim (Built-in LSP Client)
+Add the following to your `init.lua`:
+```lua
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "qadav",
+  callback = function()
+    vim.lsp.start({
+      name = "qadav-lsp",
+      cmd = { "C:\\Users\\avnis\\Downloads\\Qadav\\bin\\qyn.exe", "lsp" },
+      root_dir = vim.fs.dirname(vim.fs.find({ ".git", "qpk.toml" }, { upward = true })[1]),
+    })
+  end,
+})
+vim.filetype.add({ extension = { ydv = "qadav" } })
+```
+
+#### C. Emacs (`eglot` or `lsp-mode`)
+Add to `init.el`:
+```elisp
+(add-to-list 'auto-mode-alist '("\\.ydv\\'" . qadav-mode))
+(with-eval-after-load 'eglot
+  (add-to-list 'eglot-server-programs
+               '(qadav-mode . ("bin/qyn.exe" "lsp"))))
+```
+
+#### D. Standalone File Icon Asset
+The standalone vector master icon is preserved in `assets/icons/qadav-bansuri.svg` (and rasterized `assets/icons/qadav-bansuri.png`) for desktop shortcuts, web portals, or custom IDE file associations.
 
 ---
 
