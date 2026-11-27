@@ -1,4 +1,4 @@
-﻿# scripts/new_ai_project.ps1
+# scripts/new_ai_project.ps1
 # Qadav AI Project Scaffolding CLI (Pure PowerShell, Zero Python, Zero C)
 # Automates new Qadav AGI & cognitive project setup with full QNMF & Vishwanath template
 
