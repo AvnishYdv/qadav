@@ -1,4 +1,4 @@
-﻿# projects/industrial_diagnostics_agent/tests/verify.ps1
+# projects/industrial_diagnostics_agent/tests/verify.ps1
 # Automated Multi-Tier Verification Suite for Industrial Diagnostics Agent
 # Verifies: Exit 0 (Nominal), Exit 100 (Abstain), Exit 101 (Rollback), Exit -559038737 (Tamper Fail-Stop)
 

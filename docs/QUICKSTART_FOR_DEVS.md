@@ -7,24 +7,44 @@ This quickstart guide helps new developers set up the toolchain, write their fir
 
 ---
 
-## 1. Installation & Environment Setup
+## 1. Installation & Environment Setup (3 Simple Steps)
 
-### 1.1 Automated Toolchain Installation (Windows x86_64)
-
-Run the automated installer from the repository root:
-
+### Step 1: Download or Clone the Repository
 ```powershell
-# Installs qyn.exe (compiler) & qpk.exe (package manager) to C:\Users\<User>\.qadav\bin
-# and adds the directory to your user PATH
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -AddToPath
+git clone https://github.com/AvnishYdv/qadav.git
+cd qadav
 ```
 
-Verify the installation in a new terminal:
+### Step 2: Run the One-Click Windows Installer
+Double-click `install_qadav.bat` or run from PowerShell:
 
 ```powershell
-qyn version
+# Installs qyn.exe (compiler), qpk.exe, stdlib, runtime & VS Code extension
+# and safely adds %LOCALAPPDATA%\Qadav\bin to your User PATH
+powershell -ExecutionPolicy Bypass -File .\scripts\install_qadav.ps1
+```
+
+**What this automatically configures:**
+- Copies compiler `qyn.exe`, package manager `qpk.exe`, stdlib, and runtime to `%LOCALAPPDATA%\Qadav\bin`.
+- Idempotently adds `%LOCALAPPDATA%\Qadav\bin` to your User `PATH` (no duplicate entries).
+- Registers `.ydv` file type metadata in Windows Registry (`HKCU\Software\Classes\.ydv` -> `QadavSourceFile`).
+- Auto-detects and installs `qadav-lang` extension to `%USERPROFILE%\.vscode\extensions` and `%USERPROFILE%\.cursor\extensions`.
+
+Verify the installation in any terminal:
+
+```powershell
+qyn --version
 qyn doctor
 ```
+
+### Step 3: Scaffold & Open in IDE (VS Code / Cursor / Compatible)
+In ANY folder across your machine, run:
+
+```powershell
+qadav-new my_first_agent
+code my_first_agent
+```
+Press **`Ctrl+Shift+B`** to automatically build and run the complete multi-tier cognitive & security verification suite!
 
 Expected diagnostic output:
 ```

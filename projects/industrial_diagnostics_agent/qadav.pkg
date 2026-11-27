@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "industrial_diagnostics_agent"
 version = "1.0.0"
 description = "Autonomous industrial telemetry diagnostics agent in pure Qadav (.ydv)"

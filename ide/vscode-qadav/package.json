@@ -1,0 +1,99 @@
+{
+  "name": "qadav-lang",
+  "displayName": "Qadav Language Support",
+  "description": "Rich language support, syntax highlighting, snippets, and native AGI tooling for the Qadav (.ydv) quantum-native programming language.",
+  "version": "1.0.0",
+  "publisher": "qadav",
+  "license": "Apache-2.0",
+  "icon": "./icons/qadav-bansuri.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Linters"
+  ],
+  "keywords": [
+    "qadav",
+    "ydv",
+    "quantum",
+    "agi",
+    "simd",
+    "avx2",
+    "qnmf",
+    "vishwanath"
+  ],
+  "activationEvents": [
+    "onLanguage:qadav",
+    "workspaceContains:qadav.pkg",
+    "workspaceContains:**/*.ydv"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "qadav",
+        "aliases": [
+          "Qadav",
+          "ydv"
+        ],
+        "extensions": [
+          ".ydv"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/qadav-bansuri.png",
+          "dark": "./icons/qadav-bansuri.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "qadav",
+        "scopeName": "source.ydv",
+        "path": "./syntaxes/ydv.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "qadav",
+        "path": "./snippets/qadav.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "qadav.build",
+        "title": "Qadav: Build Current File"
+      },
+      {
+        "command": "qadav.run",
+        "title": "Qadav: Run Current File"
+      },
+      {
+        "command": "qadav.typecheck",
+        "title": "Qadav: Typecheck Current File"
+      },
+      {
+        "command": "qadav.doctor",
+        "title": "Qadav: Run Compiler Diagnostics"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Qadav Configuration",
+      "properties": {
+        "qadav.compilerPath": {
+          "type": "string",
+          "default": "qyn",
+          "description": "Command or path to Qadav compiler executable (qyn)."
+        },
+        "qadav.packageManagerPath": {
+          "type": "string",
+          "default": "qpk",
+          "description": "Command or path to Qadav package manager executable (qpk)."
+        }
+      }
+    }
+  }
+}

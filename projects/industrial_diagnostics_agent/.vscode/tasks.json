@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Qadav: Build & Run",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tests/verify.ps1"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Qadav: Typecheck",
+      "type": "shell",
+      "command": "qyn",
+      "args": [
+        "check",
+        "${workspaceFolder}/src/main.ydv"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

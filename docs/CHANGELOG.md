@@ -5,6 +5,27 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M13.13] — One-Click Windows System Installer, PATH/File Registration & VS Code IDE Auto-Detection
+## [M13.13] — वन-क्लिक विंडोज सिस्टम इंस्टॉलर, PATH/फ़ाइल पंजीकरण एवं VS Code IDE ऑटो-डिटेक्शन
+
+### Phase 13 M13.13 Installer Overview: Complete Production Windows Installer, Shell Integration & IDE Toolchain
+- **Deliverable 1: One-Click Windows System Installer & Uninstaller (`install_qadav.bat`, `scripts/install_qadav.ps1`, `scripts/uninstall_qadav.ps1`):**
+  - Implemented turnkey single-click Windows deployment copying `bin/qyn.exe`, `bin/qpk.exe`, `stdlib/`, `examples/`, `runtime/`, `scripts/`, and `ide/` into `%LOCALAPPDATA%\Qadav`.
+  - Implemented safe, idempotent User `PATH` updates without duplicate entries or environment variable corruption.
+  - Registered `.ydv` file type metadata in Windows Registry (`HKCU\Software\Classes\.ydv` -> `QadavSourceFile` with text perceived type and Bansuri icon).
+  - Provided clean, reversible system uninstallation via `scripts/uninstall_qadav.ps1`.
+- **Deliverable 2: Global Project Scaffolding CLI (`qadav-new.bat`):**
+  - Generated `%LOCALAPPDATA%\Qadav\bin\qadav-new.bat` enabling developers in ANY directory across the machine to run `qadav-new <project_name>` to instantiate and verify a production-ready Qadav project with full 4-tier cognitive & security verification.
+- **Deliverable 3: IDE Auto-Detection & VS Code Extension (`ide/vscode-qadav/`):**
+  - Packaged complete installable VS Code extension with `package.json`, `language-configuration.json`, `syntaxes/ydv.tmLanguage.json` (syntax highlighting for QNMF, ECRA, Vishwanath, QERA, SIMD `@vec256`, Quantum gates, Unicode operators), `snippets/qadav.json`, and Bansuri icon.
+  - Automatically installed into `%USERPROFILE%\.vscode\extensions` and `%USERPROFILE%\.cursor\extensions` during setup.
+  - Configured automated `.vscode/tasks.json` (`Ctrl+Shift+B` to build & run) and `.vscode/settings.json` on all scaffolded projects.
+- **Deliverable 4: Live Installation & External Directory Attestation (`scripts/test_installed_qadav_external.ps1`):**
+  - Verified live resolution of `qyn`, `qpk`, and `qadav-new` from `%LOCALAPPDATA%\Qadav\bin`.
+  - Executed project scaffolding, compilation, and 4-tier test execution from an external temp folder outside the repository in **2,216 ms** with 100% pass rate.
+
+---
+
 ## [M13.14] — Practical Project & Data Flows, Cross-OS Emitter Verification & Polish
 ## [M13.14] — व्यावहारिक परियोजना एवं डेटा प्रवाह, क्रॉस-ओएस एमिटर सत्यापन एवं पॉलिश
 

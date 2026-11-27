@@ -8,15 +8,20 @@ param (
     [string]$ProjectName = "my_qadav_agent",
 
     [Parameter(Position = 1, Mandatory = $false)]
-    [string]$Destination = "projects",
+    [string]$Destination = ".",
 
     [Parameter(Mandatory = $false)]
     [switch]$RunVerification
 )
 
 $ErrorActionPreference = 'Stop'
-$rootDir = (Get-Item -Path $PSScriptRoot).Parent.FullName
-$targetPath = Join-Path (Resolve-Path $rootDir) (Join-Path $Destination $ProjectName)
+if ([System.IO.Path]::IsPathRooted($Destination)) {
+    $targetPath = Join-Path $Destination $ProjectName
+} elseif ($Destination -eq "." -or $Destination -eq "") {
+    $targetPath = Join-Path (Get-Location).Path $ProjectName
+} else {
+    $targetPath = Join-Path (Get-Location).Path (Join-Path $Destination $ProjectName)
+}
 
 Write-Host "================================================================================" -ForegroundColor Cyan
 Write-Host "  QADAV AI PROJECT SCAFFOLDER (qyn / qpk ecosystem)" -ForegroundColor Yellow
@@ -26,7 +31,8 @@ Write-Host "Target Directory:    $targetPath" -ForegroundColor Gray
 
 if (Test-Path $targetPath) {
     Write-Warning "Directory $targetPath already exists. Re-scaffolding inside..."
-} else {
+}
+else {
     New-Item -ItemType Directory -Path $targetPath -Force | Out-Null
 }
 
@@ -298,7 +304,14 @@ while ($cur -and (Test-Path $cur)) {
     if ($parent -eq $cur) { break }
     $cur = $parent
 }
-if (-not $repoRoot) { $repoRoot = (Resolve-Path (Join-Path $projRoot "..\..")).Path }
+if (-not $repoRoot) {
+    $installed = Join-Path $env:LOCALAPPDATA "Qadav"
+    if (Test-Path (Join-Path $installed "bin\qyn.exe")) {
+        $repoRoot = $installed
+    } else {
+        $repoRoot = (Resolve-Path (Join-Path $projRoot "..\..")).Path
+    }
+}
 Set-Location $projRoot
 
 Write-Host "================================================================================" -ForegroundColor Cyan
@@ -307,10 +320,21 @@ Write-Host "====================================================================
 
 $binDir = Join-Path $projRoot "bin"
 if (-not (Test-Path $binDir)) { New-Item -ItemType Directory -Path $binDir -Force | Out-Null }
+
 $tmpDir = Join-Path $repoRoot "TMP"
+if (-not (Test-Path $tmpDir)) {
+    $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "qadav_build"
+    New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+}
 
 $qyn = Join-Path $repoRoot "bin\qyn.exe"
 $rtObjs = "$tmpDir\runtime_objs\io.o $tmpDir\runtime_objs\rt.o"
+$installedIo = Join-Path $repoRoot "runtime\io.o"
+$installedRt = Join-Path $repoRoot "runtime\rt.o"
+if (Test-Path $installedIo) {
+    $rtObjs = "`"$installedIo`" `"$installedRt`""
+}
+
 $kernelLib = "C:\Users\avnis\.qadav\runtime\kernel32.lib"
 
 function Compile-YdvTarget([string]$srcFile, [string]$outFile) {
@@ -392,6 +416,62 @@ A high-performance sovereign AGI project powered by the **Qadav (.ydv)** program
 "@
 Set-Content -Path (Join-Path $targetPath "README.md") -Value $readmeContent -Encoding UTF8
 
+# 9. Generate .vscode/tasks.json & .vscode/settings.json for Instant IDE Integration
+$vscodeDir = Join-Path $targetPath ".vscode"
+New-Item -ItemType Directory -Path $vscodeDir -Force | Out-Null
+
+$tasksContent = @'
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Qadav: Build & Run",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tests/verify.ps1"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Qadav: Typecheck",
+      "type": "shell",
+      "command": "qyn",
+      "args": [
+        "check",
+        "${workspaceFolder}/src/main.ydv"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}
+'@
+Set-Content -Path (Join-Path $vscodeDir "tasks.json") -Value $tasksContent -Encoding UTF8
+
+$settingsContent = @'
+{
+  "files.associations": {
+    "*.ydv": "qadav"
+  },
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true
+}
+'@
+Set-Content -Path (Join-Path $vscodeDir "settings.json") -Value $settingsContent -Encoding UTF8
+
 Write-Host ""
 Write-Host "[SUCCESS] Qadav AI project scaffolded at: $targetPath" -ForegroundColor Green
 Write-Host "Files created:" -ForegroundColor White
@@ -402,6 +482,8 @@ Write-Host "  - src/agent_rollback.ydv     (Contradiction rollback, Exit 101)" -
 Write-Host "  - src/agent_tamper.ydv       (Hardware fail-stop anti-tamper, Exit -559038737)" -ForegroundColor Gray
 Write-Host "  - data/generate_telemetry.ps1(Structured batch telemetry stream generator)" -ForegroundColor Gray
 Write-Host "  - tests/verify.ps1           (Automated multi-tier verification runner)" -ForegroundColor Gray
+Write-Host "  - .vscode/tasks.json         (IDE Build & Run: Ctrl+Shift+B)" -ForegroundColor Gray
+Write-Host "  - .vscode/settings.json      (IDE Language association: .ydv)" -ForegroundColor Gray
 Write-Host "  - README.md                  (Project quickstart guide)" -ForegroundColor Gray
 Write-Host ""
 
