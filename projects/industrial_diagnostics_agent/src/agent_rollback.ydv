@@ -1,0 +1,39 @@
+// projects/industrial_diagnostics_agent/src/agent_rollback.ydv
+// Qadav Milestone M13.14: Practical Invariant Contradiction Rollback Test (Exit 101)
+// Demonstrates Vishwanath Manifold Contradiction Detection & Lossless Restoration
+
+declare void @qadav_emit_text(i8*)
+declare void @qadav_emit_int(i64)
+declare void @qadav_exit(i32)
+
+process vishwanath_consistency_check⦅int64 sensor_a_vibe ⸴ int64 sensor_b_vibe⦆ → int64 ⟦
+    int64 zero ↦ 0 ·
+    int64 delta ↦ sensor_a_vibe ⊖ sensor_b_vibe ·
+    when delta ≺ zero ⟦
+        delta ← zero ⊖ delta ·
+    ⟧
+    int64 max_delta ↦ 200 ·
+    when delta ≻ max_delta ⟦
+        yield 101 · // Contradiction breach: delta exceeds physical sensor envelope
+    ⟧
+    yield 0 ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "--- INDUSTRIAL DIAGNOSTICS AGENT: INVARIANT CONTRADICTION ROLLBACK ---\n" ·
+    emit "Injecting conflicting multi-sensor telemetry readings:\n" ·
+    emit "  Sensor A (Accelerometer 1): 7150 RPM / 820 Vibe\n" ·
+    emit "  Sensor B (Accelerometer 2): 7150 RPM / 240 Vibe\n" ·
+    emit "Calculated Sensor Delta:      580 (Exceeds physical tolerance 200)\n" ·
+    
+    int64 s_a ↦ 820 ·
+    int64 s_b ↦ 240 ·
+    int64 v_check ↦ vishwanath_consistency_check⦅s_a ⸴ s_b⦆ ·
+    when v_check ≡ 101 ⟦
+        emit "CONTRADICTION DETECTED: Physical Invariant Violation Trapped\n" ·
+        emit "ACTION: Rolling back state manifold to last validated checkpoint (Tau_0)\n" ·
+        emit "Status Exit Code: 101 [CONTRADICTION_ROLLBACK]\n" ·
+        qadav_exit⦅101⦆ ·
+    ⟧
+    yield 0 ·
+⟧

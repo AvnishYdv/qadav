@@ -1,0 +1,10 @@
+﻿[package]
+name = "industrial_diagnostics_agent"
+version = "1.0.0"
+description = "Autonomous industrial telemetry diagnostics agent in pure Qadav (.ydv)"
+entry = "src/main.ydv"
+requires_avx2 = 1
+license = "Proprietary"
+dependencies = "none"
+sha3_root = "0x8F4A2B9C1E3D5F7A"
+pcc_proof = "auto_generated_pcc_bounds"

@@ -1,0 +1,28 @@
+// projects/industrial_diagnostics_agent/src/agent_abstain.ydv
+// Qadav Milestone M13.14: Practical Calibrated Risk Abstention Test (Exit 100)
+// Demonstrates ECRA Epistemic Gating on Ambiguous or Low-Confidence Telemetry
+
+declare void @qadav_emit_text(i8*)
+declare void @qadav_emit_int(i64)
+declare void @qadav_exit(i32)
+
+process ecra_gate⦅int64 confidence ⸴ int64 threshold⦆ → int64 ⟦
+    when confidence ≺ threshold ⟦
+        yield 100 · // Calibrated abstention: refuse hallucination
+    ⟧
+    yield 0 ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "--- INDUSTRIAL DIAGNOSTICS AGENT: CALIBRATED ABSTENTION (ECRA) ---\n" ·
+    emit "Telemetry Stream Signal: Degraded Sensor Signal (Noise SNR < 12dB)\n" ·
+    emit "Calibrated Confidence:   38% (Threshold: 85%)\n" ·
+    int64 degraded_conf ↦ 38 ·
+    int64 verdict ↦ ecra_gate⦅degraded_conf ⸴ 85⦆ ·
+    when verdict ≡ 100 ⟦
+        emit "ACTION: Epistemic Abstention Triggered (Refusing Uncalibrated Claim)\n" ·
+        emit "Status Exit Code: 100 [ABSTAIN]\n" ·
+        qadav_exit⦅100⦆ ·
+    ⟧
+    yield 0 ·
+⟧

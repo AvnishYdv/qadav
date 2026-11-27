@@ -1,0 +1,35 @@
+// projects/industrial_diagnostics_agent/src/agent_tamper.ydv
+// Qadav Milestone M13.14: Practical Hardware Fail-Stop Anti-Tamper Abort Test
+// Demonstrates Immediate ExitProcess(0xDEADBEEF) / -559038737 on Cryptographic Signature Forgery
+
+declare void @qadav_emit_text(i8*)
+declare void @qadav_emit_int(i64)
+declare void @qadav_exit(i32)
+
+process verify_telemetry_signature⦅int64 incoming_sig ⸴ int64 trusted_root⦆ → int64 ⟦
+    when incoming_sig ≡ trusted_root ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "--- INDUSTRIAL DIAGNOSTICS AGENT: HARDWARE FAIL-STOP ANTI-TAMPER TEST ---\n" ·
+    emit "Telemetry Ingestion Pipeline: Intercepting Sensor Stream...\n" ·
+    emit "Injecting 1-bit forged sensor attestation certificate:\n" ·
+    emit "  Expected Root Hash: 0x88712390144\n" ·
+    emit "  Incoming Hash:      0x88712390145 (Forged Bit 0)\n" ·
+
+    int64 exp_root ↦ 88712390144 ·
+    int64 bad_hash ↦ 88712390145 ·
+    int64 auth_res ↦ verify_telemetry_signature⦅bad_hash ⸴ exp_root⦆ ·
+
+    when auth_res ≡ 0 ⟦
+        emit "CRITICAL SECURITY BREACH: Cryptographic Signature Tampering Detected!\n" ·
+        emit "ACTION: Executing Immediate Hardware Fail-Stop Trapping\n" ·
+        emit "Directing Kernel: ExitProcess(0xDEADBEEF) / -559038737\n" ·
+        int64 deadbeef ↦ 3735928559 ·
+        qadav_exit⦅deadbeef⦆ ·
+    ⟧
+    yield 0 ·
+⟧
