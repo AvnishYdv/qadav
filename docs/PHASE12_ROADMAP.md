@@ -210,6 +210,7 @@ flowchart TD
 | **M13.2**  | Phase 13 Target | Multi-Hop QNMF & File Input | Multi-Hop Reversal, File-Driven ECRA Gating & QERA Tamper Verification [DONE] |
 | **M13.3**  | Phase 13 Target | Deep QNMF & MoE Model Builder | Modular Model Builders, Multi-Domain Reversal & 12-Record ECRA Audit [DONE] |
 | **M13.4**  | Phase 13 Target | Vishwanath Engine in Pure Qadav | Multi-Constraint Engine, Tri-Sutra Guards, File Telemetry & Fail-Safe [DONE] |
+| **M13.5**  | Phase 13 Target | Vishwanath Multi-Trajectory & 5-Tier Guards | 20-Record Multi-Trajectory, 5-Tier Guards, State Rollback & Scale Audit [DONE] |
 
 ---
 
