@@ -1,4 +1,4 @@
-# scripts/new_ai_project.ps1
+﻿# scripts/new_ai_project.ps1
 # Qadav AI Project Scaffolding CLI (Pure PowerShell, Zero Python, Zero C)
 # Automates new Qadav AGI & cognitive project setup with full QNMF & Vishwanath template
 
@@ -8,7 +8,10 @@ param (
     [string]$ProjectName = "my_qadav_agent",
 
     [Parameter(Position = 1, Mandatory = $false)]
-    [string]$Destination = "projects"
+    [string]$Destination = "projects",
+
+    [Parameter(Mandatory = $false)]
+    [switch]$RunVerification
 )
 
 $ErrorActionPreference = 'Stop'
@@ -162,9 +165,9 @@ Set-Content -Path (Join-Path $targetPath "README.md") -Value $readmeContent -Enc
 $verifyContent = @"
 # tests/verify.ps1
 Set-Location "`$PSScriptRoot/.."
-qyn check src/main.ydv
+& "$rootDir\bin\qyn.exe" check src/main.ydv
 if (`$LASTEXITCODE -ne 0) { exit 1 }
-qyn build src/main.ydv -o bin/test_runner.exe
+& "$rootDir\bin\qyn.exe" build src/main.ydv -o bin/test_runner.exe
 & .\bin\test_runner.exe
 exit `$LASTEXITCODE
 "@
@@ -173,12 +176,22 @@ Set-Content -Path (Join-Path $testsDir "verify.ps1") -Value $verifyContent -Enco
 Write-Host ""
 Write-Host "[SUCCESS] Qadav AI project scaffolded at: $targetPath" -ForegroundColor Green
 Write-Host "Files created:" -ForegroundColor White
-Write-Host "  - qadav.pkg      (Package manager manifest)" -ForegroundColor Gray
-Write-Host "  - src/main.ydv   (Core AI agent implementation)" -ForegroundColor Gray
+Write-Host "  - qadav.pkg        (Package manager manifest)" -ForegroundColor Gray
+Write-Host "  - src/main.ydv     (Core AI agent implementation)" -ForegroundColor Gray
 Write-Host "  - tests/verify.ps1 (Automated verification script)" -ForegroundColor Gray
-Write-Host "  - README.md      (Project quickstart guide)" -ForegroundColor Gray
+Write-Host "  - README.md        (Project quickstart guide)" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Next steps:" -ForegroundColor Yellow
-Write-Host "  cd `"$targetPath`"" -ForegroundColor Cyan
-Write-Host "  qyn build src/main.ydv -o bin/$ProjectName.exe" -ForegroundColor Cyan
-Write-Host "  .\bin\$ProjectName.exe" -ForegroundColor Cyan
+
+if ($RunVerification) {
+    Write-Host "[VERIFY] Running automated project verification..." -ForegroundColor Yellow
+    & "$rootDir\bin\qyn.exe" check (Join-Path $srcDir "main.ydv")
+    if ($LASTEXITCODE -ne 0) { throw "Typecheck failed on scaffolded project" }
+    & "$rootDir\bin\qyn.exe" build (Join-Path $srcDir "main.ydv") -o (Join-Path $binDir "$ProjectName.exe")
+    if ($LASTEXITCODE -ne 0) { throw "Build failed on scaffolded project" }
+    Write-Host "[VERIFY] Verification succeeded! Output binary: bin/$ProjectName.exe" -ForegroundColor Green
+} else {
+    Write-Host "Next steps:" -ForegroundColor Yellow
+    Write-Host "  cd `"$targetPath`"" -ForegroundColor Cyan
+    Write-Host "  qyn build src/main.ydv -o bin/$ProjectName.exe" -ForegroundColor Cyan
+    Write-Host "  .\bin\$ProjectName.exe" -ForegroundColor Cyan
+}
