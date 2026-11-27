@@ -95,6 +95,27 @@ Add to `init.el`:
 #### D. Standalone File Icon Asset
 The standalone vector master icon is preserved in `assets/icons/qadav-bansuri.svg` (and rasterized `assets/icons/qadav-bansuri.png`) for desktop shortcuts, web portals, or custom IDE file associations.
 
+### 1.4 Scaffolding a New Qadav AI Project with One Command
+
+Qadav includes an automated project generation script in `scripts/new_ai_project.ps1` that generates a ready-to-run, fully configured AI and cognitive application:
+
+```powershell
+# Scaffold a new AI project named 'my_agent' under 'projects/'
+powershell -ExecutionPolicy Bypass -File .\scripts\new_ai_project.ps1 -ProjectName "my_agent" -Destination "projects"
+
+# Navigate and build
+cd projects\my_agent
+qyn check src\main.ydv
+qyn build src\main.ydv -o bin\my_agent.exe
+.\bin\my_agent.exe
+```
+
+The generated project structure includes:
+- `qadav.pkg`: Declarative package manager manifest with PCC attestation.
+- `src/main.ydv`: Connected implementation of QNMF Bilateral Encoding, ECRA Risk Abstention, and Vishwanath Invariant Guards.
+- `tests/verify.ps1`: Automated typecheck and build regression script.
+- `README.md`: Project-specific architectural quickstart.
+
 ---
 
 ## 2. Why Does Qadav Use Mathematical & Unicode Operators?
