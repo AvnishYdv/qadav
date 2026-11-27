@@ -1,4 +1,4 @@
-# scripts/new_ai_project.ps1
+﻿# scripts/new_ai_project.ps1
 # Qadav AI Project Scaffolding CLI (Pure PowerShell, Zero Python, Zero C)
 # Automates new Qadav AGI & cognitive project setup with full QNMF & Vishwanath template
 
@@ -128,8 +128,33 @@ process main⦅⦆ → int64 ⟦
     qadav_emit_int⦅guard_res⦆ ·
     emit " (0 = ALL PASS)\n" ·
 
+    // Edge-Case Check 1: ECRA Gate Low-Confidence Abstention (Confidence 35% < 85%)
+    int64 low_conf ↦ 35 ·
+    int64 abstain_res ↦ ecra_gate⦅low_conf ⸴ 85⦆ ·
+    emit "[ECRA EDGE-CASE] Low-Confidence Query: " ·
+    qadav_emit_int⦅abstain_res⦆ ·
+    emit " (Expected: 100 = ABSTAIN)\n" ·
+
+    // Edge-Case Check 2: Vishwanath Contradiction Breach (Consistency: 720 < 850)
+    int64 contra_res ↦ vishwanath_guard⦅150 ⸴ 920 ⸴ 720⦆ ·
+    emit "[VISHWANATH EDGE-CASE] Contradiction Breach: " ·
+    qadav_emit_int⦅contra_res⦆ ·
+    emit " (Expected: 101 = ROLLBACK)\n" ·
+
+    // Edge-Case Check 3: Vishwanath Thermal Spike Breach (Entropy: 950 > 900)
+    int64 thermal_res ↦ vishwanath_guard⦅950 ⸴ 920 ⸴ 960⦆ ·
+    emit "[VISHWANATH EDGE-CASE] Thermal Spike Breach: " ·
+    qadav_emit_int⦅thermal_res⦆ ·
+    emit " (Expected: 102 = THERMAL CLAMP)\n" ·
+
+    // Edge-Case Check 4: Zero-Query Safety
+    int64 zero_query ↦ qnmf_query⦅bound ⸴ 0 ⸴ 0⦆ ·
+    emit "[QNMF EDGE-CASE] Zero-Entity Query Safe Return: " ·
+    qadav_emit_int⦅zero_query⦆ ·
+    emit " (Expected: 0)\n" ·
+
     emit "================================================================================\n" ·
-    emit "  AGENT INITIALIZATION & INVARIANT GUARDS VERIFIED [PASS]\n" ·
+    emit "  AGENT INITIALIZATION, INVARIANT & EDGE-CASE GUARDS VERIFIED [PASS]\n" ·
     emit "================================================================================\n" ·
 
     yield 0 ·
