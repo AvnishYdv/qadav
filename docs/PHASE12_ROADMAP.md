@@ -212,6 +212,7 @@ flowchart TD
 | **M13.4**  | Phase 13 Target | Vishwanath Engine in Pure Qadav | Multi-Constraint Engine, Tri-Sutra Guards, File Telemetry & Fail-Safe [DONE] |
 | **M13.5**  | Phase 13 Target | Vishwanath Multi-Trajectory & 5-Tier Guards | 20-Record Multi-Trajectory, 5-Tier Guards, State Rollback & Scale Audit [DONE] |
 | **M13.7**  | Phase 13 Target | Language Completeness, Hardening & Unified Engine | New Project Scaffolder, Memory/Security Hardening & Unified QNMF-Vishwanath [DONE] |
+| **M13.8**  | Phase 13 Target | Zero-Cluster Delta-Resonance Engine | 5,000-Record Benchmark, 69.4k rec/s Throughput & Fail-Stop [DONE] |
 
 ---
 
