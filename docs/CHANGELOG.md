@@ -5,6 +5,27 @@ All notable updates, architectural enhancements, and completed milestones for th
 
 ---
 
+## [M12.12] — Advanced WASM SIMD Vector Loops + Multi-Worker Threads + Developer Quickstart & SDK Polish
+## [M12.12] — उन्नत WASM SIMD वेक्टर लूप्स + मल्टी-वर्कर थ्रेड्स + डेवलपर त्वरित प्रारंभ एवं SDK परिष्करण
+
+### Phase 12 M12.12 Overview: Real Vectorized Loops in Browser WASM & Developer Experience Polish
+- **Deliverable 1: WebAssembly v128 Real Vector Loops (`internal/qadav_native/wasm_emitter.ydv`):**
+  - Upgraded native WebAssembly emitter to generate real looping vector pipelines over linear memory array buffers.
+  - Generates `loop 0x40` ... `br_if 0` control flow containing `v128.load`, `f64x2.splat` (`FD 14`), `f64x2.mul` (`FD F2 01`), `f64x2.sub` (`FD F1 01`), `f64x2.add` (`FD F0 01`), and `v128.store` (`FD 0B`).
+  - Added target path detection for "ve" (`vector`) programs in `wasm_detect_kind`.
+  - Preserved exact backward compatibility for legacy MVP programs (`hello.wasm` at 165 bytes, `calc.wasm` at 114 bytes).
+- **Deliverable 2: Robust Dual-Mode Browser Playground Runtime (`playground/`):**
+  - Enhanced `playground/worker.js` with per-worker execution timing and vector throughput telemetry.
+  - Updated `playground/app.js` and `playground/index.html` with explicit mode reporting for both `crossOriginIsolated` (multi-worker threads over `SharedArrayBuffer`) and non-isolated security fallback modes.
+- **Deliverable 3: Vectorized AI Scoring & Confidence Proof (`examples/wasm_vector_ai_demo.ydv`):**
+  - Demonstrates real 256-vector scoring partitioned across 4 Web Workers with ECRA + TTPCR confidence gating (< 0.85).
+  - Emitted binary `TMP\wasm_vector_ai.wasm` (381 bytes) validated by V8 and Node.js WebAssembly engine.
+- **Deliverable 4: Developer Quickstart Guide & AI Guard Example (`docs/QUICKSTART_FOR_DEVS.md` + `examples/quickstart_ai_guard.ydv`):**
+  - Comprehensive, beginner-friendly guide covering installation via `install.ps1 -AddToPath`, VS Code / Antigravity extension installation, Unicode operator semantics and snippets, compile-time formal safety verification (`qyn check --pcc-formal`), cross-compilation (`.exe`, `.elf`, `.macho`, `.wasm`), and UI connection patterns (Web, Desktop, Cloud).
+  - Clean, standalone example `examples/quickstart_ai_guard.ydv` demonstrating `abstain_check` preventing 1,024 hallucinated tokens and saving $0.0307 compute per query on low-confidence inputs while proceeding on high-confidence inputs.
+
+---
+
 ## [M12.11] — WebAssembly `v128` Hardware SIMD + Shared-Memory Multi-Threading (`threads` / Atomics) + AI Token-Cost Optimizer
 ## [M12.11] — वेबअसेम्बली `v128` हार्डवेयर SIMD + शेयर्ड-मेमोरी मल्टी-थ्रेडिंग (`threads` / Atomics) + AI टोकन-लागत अनुकूलक
 

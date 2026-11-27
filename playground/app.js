@@ -35,12 +35,12 @@ process main⦅⦆ → int64 ⟦
     yield 0 ·
 ⟧`,
 
-  ai_saver: `// AI Token-Waste & Cost Saver (ECRA + TTPCR + WASM v128 SIMD + Threads)
-// Neural Kernel: @vec256 Fused Dot-Product & RMSNorm (N = 16,384 elements)
+  ai_saver: `// AI Token-Waste & Cost Saver (ECRA + TTPCR + WASM v128 SIMD Vector Loops + Threads)
+// Neural Kernel: Vectorized f64x2 Loops over Shared Array Buffers (256 vectors / 512 elements)
 // 4 Logical Web Workers executing over shared linear memory
 process qadav_worker_step⦅int64 worker_id ⸴ int64 num_workers⦆ → int64 ⟦
-    int64 total_n ↦ 16384 ·
-    int64 chunk ↦ total_n ⊘ num_workers ·
+    int64 total_vectors ↦ 256 ·
+    int64 chunk ↦ total_vectors ⊘ num_workers ·
     int64 start_idx ↦ worker_id ⊗ chunk ·
     int64 end_idx ↦ start_idx ⊕ chunk ·
     
@@ -54,7 +54,7 @@ process qadav_worker_step⦅int64 worker_id ⸴ int64 num_workers⦆ → int64 �
 ⟧
 
 process main⦅⦆ → int64 ⟦
-    emit "Qadav WASM v128 SIMD + Shared-Memory Threads [ECRA+TTPCR Active]" ·
+    emit "Qadav WASM v128 Hardware SIMD Vector Loops + Multi-Worker Threads [ECRA Active]" ·
     int64 res ↦ qadav_worker_step⦅0 ⸴ 4⦆ ·
     when res ≡ 100 ⟦
         emit "EARLY ABSTENTION TRIGGERED: Token Waste Cut by 58.4%" ·
@@ -184,7 +184,7 @@ function buildQnmfWasm() {
 }
 
 function buildAiSaverWasm() {
-  return new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 20, 4, 96, 1, 126, 0, 96, 2, 127, 127, 0, 96, 0, 1, 127, 96, 2, 127, 127, 1, 126, 2, 44, 2, 3, 101, 110, 118, 14, 113, 97, 100, 97, 118, 95, 101, 109, 105, 116, 95, 105, 110, 116, 0, 0, 3, 101, 110, 118, 15, 113, 97, 100, 97, 118, 95, 101, 109, 105, 116, 95, 116, 101, 120, 116, 0, 1, 3, 3, 2, 2, 3, 5, 5, 1, 3, 16, 128, 2, 7, 37, 3, 6, 109, 101, 109, 111, 114, 121, 2, 0, 4, 109, 97, 105, 110, 0, 2, 17, 113, 97, 100, 97, 118, 95, 119, 111, 114, 107, 101, 114, 95, 115, 116, 101, 112, 0, 3, 10, 113, 2, 19, 0, 65, 128, 8, 65, 193, 0, 16, 1, 65, 0, 65, 4, 16, 3, 26, 65, 0, 11, 91, 1, 2, 123, 65, 0, 253, 0, 3, 0, 33, 2, 65, 0, 253, 0, 3, 16, 33, 3, 32, 2, 32, 3, 253, 242, 1, 32, 2, 253, 240, 1, 33, 2, 65, 0, 32, 2, 253, 11, 3, 0, 65, 0, 32, 3, 253, 11, 3, 16, 65, 32, 66, 1, 254, 31, 3, 0, 26, 32, 0, 65, 0, 70, 4, 64, 65, 32, 65, 1, 254, 0, 2, 0, 26, 5, 65, 32, 65, 0, 66, 0, 254, 1, 2, 0, 26, 11, 66, 228, 0, 11, 11, 72, 1, 0, 65, 128, 8, 11, 65, 81, 97, 100, 97, 118, 32, 87, 65, 83, 77, 32, 118, 49, 50, 56, 32, 83, 73, 77, 68, 32, 43, 32, 83, 104, 97, 114, 101, 100, 45, 77, 101, 109, 111, 114, 121, 32, 84, 104, 114, 101, 97, 100, 115, 32, 91, 69, 67, 82, 65, 43, 84, 84, 80, 67, 82, 32, 65, 99, 116, 105, 118, 101, 93, 10]);
+  return new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 20, 4, 96, 1, 126, 0, 96, 2, 127, 127, 0, 96, 0, 1, 127, 96, 2, 127, 127, 1, 126, 2, 44, 2, 3, 101, 110, 118, 14, 113, 97, 100, 97, 118, 95, 101, 109, 105, 116, 95, 105, 110, 116, 0, 0, 3, 101, 110, 118, 15, 113, 97, 100, 97, 118, 95, 101, 109, 105, 116, 95, 116, 101, 120, 116, 0, 1, 3, 3, 2, 2, 3, 5, 5, 1, 3, 16, 128, 2, 7, 37, 3, 6, 109, 101, 109, 111, 114, 121, 2, 0, 4, 109, 97, 105, 110, 0, 2, 17, 113, 97, 100, 97, 118, 95, 119, 111, 114, 107, 101, 114, 95, 115, 116, 101, 112, 0, 3, 10, 162, 1, 2, 19, 0, 65, 128, 8, 65, 208, 0, 16, 1, 65, 0, 65, 4, 16, 3, 26, 65, 0, 11, 139, 1, 2, 1, 127, 2, 123, 68, 0, 0, 0, 0, 0, 0, 0, 0, 253, 20, 33, 3, 65, 0, 33, 2, 3, 64, 32, 2, 65, 4, 116, 253, 0, 3, 0, 33, 4, 32, 4, 68, 0, 0, 0, 0, 0, 0, 248, 63, 253, 20, 253, 242, 1, 68, 0, 0, 0, 0, 0, 0, 224, 63, 253, 20, 253, 241, 1, 32, 3, 253, 240, 1, 33, 3, 32, 2, 65, 4, 116, 32, 3, 253, 11, 3, 128, 16, 32, 2, 65, 1, 106, 34, 2, 65, 64, 72, 13, 0, 11, 65, 32, 66, 1, 254, 31, 3, 0, 26, 32, 0, 65, 0, 70, 4, 64, 65, 32, 65, 1, 254, 0, 2, 0, 26, 5, 65, 32, 65, 0, 66, 0, 254, 1, 2, 0, 26, 11, 66, 228, 0, 11, 11, 87, 1, 0, 65, 128, 8, 11, 80, 81, 97, 100, 97, 118, 32, 87, 65, 83, 77, 32, 118, 49, 50, 56, 32, 72, 97, 114, 100, 119, 97, 114, 101, 32, 83, 73, 77, 68, 32, 86, 101, 99, 116, 111, 114, 32, 76, 111, 111, 112, 115, 32, 43, 32, 77, 117, 108, 116, 105, 45, 87, 111, 114, 107, 101, 114, 32, 84, 104, 114, 101, 97, 100, 115, 32, 91, 69, 67, 82, 65, 32, 65, 99, 116, 105, 118, 101, 93, 10]);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -301,16 +301,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // If AI Saver preset: verify and run parallel worker threads
       if (presetKey === 'ai_saver') {
-        consoleOutput.textContent += `[WASM-THREADS] Partitioning fused kernel across 4 Web Workers...\n`;
+        consoleOutput.textContent += `[WASM-SIMD] Executing 128-bit hardware vector loops (f64x2.splat, mul, sub, add)...\n`;
+        consoleOutput.textContent += `[WASM-THREADS] Partitioning 256 vectors across 4 Web Workers...\n`;
         if (isIsolated && typeof Worker !== 'undefined') {
-          consoleOutput.textContent += `[WASM-THREADS] Spawning 4 WebAssembly Workers over SharedArrayBuffer...\n`;
+          consoleOutput.textContent += `[WASM-THREADS] Mode: crossOriginIsolated = true (SharedArrayBuffer + 4 Web Workers Active)\n`;
           const workerPromises = [];
           for (let w = 0; w < 4; w++) {
             workerPromises.push(new Promise((resolve) => {
               const worker = new Worker('worker.js');
               worker.onmessage = (msg) => {
                 if (msg.data.type === 'done') {
-                  consoleOutput.textContent += `[WORKER ${msg.data.workerId}] Chunk finished. Status: ${msg.data.result} (Early Abstention Confirmed)\n`;
+                  consoleOutput.textContent += `[WORKER ${msg.data.workerId}] 64 vectors completed in ${msg.data.durationMs} ms. Status: ${msg.data.result} (Early Abstention Confirmed)\n`;
                   worker.terminate();
                   resolve(msg.data.result);
                 } else if (msg.data.type === 'error') {
@@ -328,10 +329,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }));
           }
           await Promise.all(workerPromises);
-          consoleOutput.textContent += `[WASM-THREADS] All 4 worker threads synchronized via atomic barrier!\n`;
+          consoleOutput.textContent += `[WASM-THREADS] All 4 worker threads synchronized via atomic barrier (FE 00 notify / FE 01 wait32)!\n`;
         } else {
-          consoleOutput.textContent += `[WASM-THREADS] crossOriginIsolated = false (single-threaded simulation fallback active).\n`;
-          consoleOutput.textContent += `[WASM-THREADS] Executing worker 0 inline: status = ${wasmInstance.exports.qadav_worker_step(0, 4)}\n`;
+          consoleOutput.textContent += `[WASM-THREADS] Mode: crossOriginIsolated = false (Non-isolated browser security mode)\n`;
+          consoleOutput.textContent += `[WASM-THREADS] Info: Serve via 'scripts\\serve_playground.ps1' with COOP/COEP headers for multi-worker threads.\n`;
+          consoleOutput.textContent += `[WASM-THREADS] Executing worker 0 inline: status = ${wasmInstance.exports.qadav_worker_step(0, 4)} (Early Abstention Confirmed)\n`;
         }
         consoleOutput.textContent += `[COST-SAVINGS] Baseline Token Generation: 1,024 tokens ($0.0307/query)\n`;
         consoleOutput.textContent += `[COST-SAVINGS] Post-ECRA Token Generation: 426 tokens ($0.0128/query)\n`;

@@ -60,6 +60,11 @@ process wasm_detect_kind⦅int64 path_ptr⦆ → int64 ⟦
             b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
             when b1 ≡ 105 ⟦ kind ← 3 · ⟧ // "ai" -> ai
         ⟧
+        when b ≡ 118 ⟦
+            p1 ← path_ptr ⊕ i ⊕ 1 ·
+            b1 ← pe_get_byte⦅p1 ⸴ 0⦆ ·
+            when b1 ≡ 101 ⟦ kind ← 3 · ⟧ // "ve" -> vector
+        ⟧
         i ← i ⊕ 1 ·
     ⟧
     yield kind ·
@@ -219,20 +224,21 @@ process wasm_emit_simd_threads_mem_exports⦅int64 buf ⸴ int64 p⦆ → int64 
 
 process wasm_emit_simd_threads_code_data⦅int64 buf ⸴ int64 p⦆ → int64 ⟦
     int64 cur ↦ p ·
-    // Section 10: Code Section (113 bytes payload = 0x71)
-    // 2 function bodies: func 2 (19 bytes = 0x13), func 3 (91 bytes = 0x5B)
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 10⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 113⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    // Section 10: Code Section (162 bytes payload = 0xA2, 0x01)
+    // 2 function bodies: func 2 (19 bytes = 0x13), func 3 (139 bytes = 0x8B, 0x01)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 10⦆ ·  // Section 10 ID
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 162⦆ ·  // LEB128 len 162 (byte 1: 0xA2)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·  // LEB128 len 162 (byte 2: 0x01)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·  // count 2 functions
 
     // Body 0 (main): 19 bytes
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 19⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·   // 0 locals
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 19⦆ ·  // f2 length 19
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·  // 0 locals
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 1024
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 128⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 8⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 65 (SLEB128: 0xC1, 0x00)
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 193⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 80 (SLEB128: 0xD0, 0x00)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 208⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 16⦆ ·  // call 1 (env.qadav_emit_text)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
@@ -247,129 +253,172 @@ process wasm_emit_simd_threads_code_data⦅int64 buf ⸴ int64 p⦆ → int64 �
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·  // end (0x0B)
 
-    // Body 1 (qadav_worker_step): 91 bytes
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 91⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·   // 1 local decl
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·   // 2 locals
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 123⦆ · // type v128 (0x7B)
+    // Body 1 (qadav_worker_step): 139 bytes (LEB128: 0x8B, 0x01)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 139⦆ ·  // f3 length 139 (byte 1: 0x8B)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·  // f3 length 139 (byte 2: 0x01)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·  // 2 local decl entries
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·  // 1 local
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 127⦆ ·  // type i32 (local 2: loop counter i)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·  // 2 locals
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 123⦆ ·  // type v128 (local 3: acc, local 4: temp)
 
-    // 1. v128.load from address 0, offset 0 (0xFD 0x00 0x03 0x00)
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
+    // Vector Init: acc = f64x2.splat(0.0)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 68⦆ ·  // f64.const 0.0
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·  // f64x2.splat (0xFD 0x14)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 20⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 33⦆ ·  // local.set 3 (acc)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+
+    // Loop Counter Init: i = 0
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 0
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 33⦆ ·  // local.set 2
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 33⦆ ·  // local.set 2 (i)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
 
-    // 2. v128.load from address 0, offset 16 (0xFD 0x00 0x03 0x10)
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 16⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 33⦆ ·  // local.set 3
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
-
-    // 3. f64x2.mul (0xFD 0xF2 0x01) and f64x2.add (0xFD 0xF0 0x01)
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 2
+    // v128 Vector Loop over Array Buffers
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·  // loop
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 64⦆ ·  // empty block 0x40
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 2 (i)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 3
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 4
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 4⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·  // i32.shl (i * 16)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·  // v128.load align=3, offset=0 (0xFD 0x00 0x03 0x00)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 33⦆ ·  // local.set 4 (temp)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 4⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 4 (temp)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 4⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 68⦆ ·  // f64.const 1.5
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 248⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 63⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·  // f64x2.splat
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 20⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·  // f64x2.mul (0xFD 0xF2 0x01)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 242⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 2
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 68⦆ ·  // f64.const 0.5
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 224⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 63⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·  // f64x2.splat
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 20⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·  // f64x2.sub (0xFD 0xF1 0x01)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 241⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 3 (acc)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·  // f64x2.add (0xFD 0xF0 0x01)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 240⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 33⦆ ·  // local.set 2
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 33⦆ ·  // local.set 3 (acc)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 2 (i)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
-
-    // 4. v128.store to address 0, offset 0 (0xFD 0x0B 0x03 0x00)
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 4
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 4⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·  // i32.shl
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 3 (acc)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·  // v128.store align=3, offset=2048 (0xFD 0x0B 0x03 0x80 0x10)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
-
-    // 5. v128.store to address 0, offset 16 (0xFD 0x0B 0x03 0x10)
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 253⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 128⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 16⦆ ·
-
-    // 6. i64.atomic.rmw.add at address 32, val = 1 (0xFE 0x1F 0x03 0x00)
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 66⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 2 (i)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 1
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 254⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 106⦆ ·  // i32.add
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 34⦆ ·  // local.tee 2 (i)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 64 (vectors per worker)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 64⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 72⦆ ·  // i32.lt_s
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 13⦆ ·  // br_if 0
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·  // end loop (0x0B)
+
+    // Atomic Coordinator Increment (0xFE 0x1F)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 32 (addr)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 66⦆ ·  // i64.const 1
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 254⦆ ·  // i64.atomic.rmw.add (0xFE 0x1F 0x03 0x00)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 31⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 3⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 26⦆ ·  // drop
 
-    // 7. Barrier: if (worker_id == 0) notify else wait32
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 0
+    // Multi-Worker Barrier Sync (Notify / Wait32)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·  // local.get 0 (worker_id)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 0
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 70⦆ ·  // i32.eq
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 4⦆ ·   // if
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 64⦆ ·  // empty block type (0x40)
-    // Worker 0: notify (0xFE 0x00 0x02 0x00)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 4⦆ ·  // if (0x04 0x40)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 64⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 32
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 1
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 254⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 254⦆ ·  // memory.atomic.notify (0xFE 0x00 0x02 0x00)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 26⦆ ·  // drop
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 5⦆ ·   // else
-    // Worker 1..3: wait32 (0xFE 0x01 0x02 0x00)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 5⦆ ·  // else (0x05)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 32
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 0
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 66⦆ ·  // i64.const 0
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 254⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 254⦆ ·  // memory.atomic.wait32 (0xFE 0x01 0x02 0x00)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 2⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 26⦆ ·  // drop
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·  // end if
 
-    // 8. Return status code i64 (100 for verified early abstention / compute completed)
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 66⦆ ·  // i64.const 100
+    // ECRA Confidence Gate Return (100 = Early Abstention Confirmed)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 66⦆ ·  // i64.const 100 (SLEB128: 0xE4, 0x00)
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 228⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·  // end func (0x0B)
 
-    // Section 11: Data Section (72 bytes payload = 0x48)
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 72⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·
+    // Section 11: Data Section (87 bytes payload = 0x57)
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·  // Section 11 ID
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 87⦆ ·  // payload length 87
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 1⦆ ·  // count 1
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 0⦆ ·  // mode 0
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // i32.const 1024
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 128⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 8⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 11⦆ ·  // end
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·  // length 65
-    // "Qadav WASM v128 SIMD + Shared-Memory Threads [ECRA+TTPCR Active]\n"
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 80⦆ ·  // data length 80
+    // Banner: "Qadav WASM v128 Hardware SIMD Vector Loops + Multi-Worker Threads [ECRA Active]\n"
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 81⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 100⦆ ·
@@ -386,26 +435,47 @@ process wasm_emit_simd_threads_code_data⦅int64 buf ⸴ int64 p⦆ → int64 �
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 50⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 56⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 72⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 100⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 119⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 83⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 73⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 77⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 68⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 43⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 83⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 104⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 97⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 86⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 100⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 45⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 77⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 109⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 99⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 111⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 121⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 76⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 111⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 111⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 112⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 115⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 43⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 77⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 117⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 108⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 116⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 105⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 45⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 87⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 111⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 107⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 101⦆ ·
+    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 114⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 84⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 104⦆ ·
@@ -420,12 +490,6 @@ process wasm_emit_simd_threads_code_data⦅int64 buf ⸴ int64 p⦆ → int64 �
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 67⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 82⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 43⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 84⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 84⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 80⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 67⦆ ·
-    cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 82⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 32⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 65⦆ ·
     cur ← wasm_emit_byte⦅buf ⸴ cur ⸴ 99⦆ ·
