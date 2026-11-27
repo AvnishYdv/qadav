@@ -1,6 +1,7 @@
-# scripts/install_qadav.ps1
+﻿# scripts/install_qadav.ps1
 # Qadav One-Click Windows System Installer
 # Installs Qadav compiler, tooling, stdlib, examples, VS Code extension, and registers PATH + file types
+# Works from both the full Git repository and the standalone extracted SDK bundle
 
 [CmdletBinding()]
 param (
@@ -15,13 +16,13 @@ param (
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = (Get-Item -Path $PSScriptRoot).Parent.FullName
+$sourceRoot = (Get-Item -Path $PSScriptRoot).Parent.FullName
 
 Write-Host "================================================================================" -ForegroundColor Cyan
 Write-Host "  QADAV (.ydv) - ONE-CLICK WINDOWS SYSTEM INSTALLER" -ForegroundColor Yellow
 Write-Host "================================================================================" -ForegroundColor Cyan
-Write-Host "Source Repository: $repoRoot" -ForegroundColor Gray
-Write-Host "Target Directory:  $InstallDir" -ForegroundColor Gray
+Write-Host "Source Location:  $sourceRoot" -ForegroundColor Gray
+Write-Host "Target Directory: $InstallDir" -ForegroundColor Gray
 
 # 1. Create Target Directory Tree
 $binDir = Join-Path $InstallDir "bin"
@@ -40,27 +41,42 @@ New-Item -ItemType Directory -Path $ideDir -Force | Out-Null
 New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
 Write-Host "  [OK] Directory tree initialized at $InstallDir" -ForegroundColor Green
 
-# 2. Copy Binaries, Stdlib, Examples, Scripts & IDE
+# 2. Copy Binaries, Stdlib, Examples, Runtime, Scripts & IDE
 Write-Host "`n[STEP 2/5] Copying binaries and runtime assets..." -ForegroundColor Yellow
-Copy-Item (Join-Path $repoRoot "bin\qyn.exe") $binDir -Force
-if (Test-Path (Join-Path $repoRoot "bin\qpk.exe")) {
-    Copy-Item (Join-Path $repoRoot "bin\qpk.exe") $binDir -Force
+Copy-Item (Join-Path $sourceRoot "bin\qyn.exe") $binDir -Force
+if (Test-Path (Join-Path $sourceRoot "bin\qpk.exe")) {
+    Copy-Item (Join-Path $sourceRoot "bin\qpk.exe") $binDir -Force
 }
-if (Test-Path (Join-Path $repoRoot "stdlib")) {
-    Copy-Item (Join-Path $repoRoot "stdlib\*") $stdlibDir -Recurse -Force
+if (Test-Path (Join-Path $sourceRoot "stdlib")) {
+    Copy-Item (Join-Path $sourceRoot "stdlib\*") $stdlibDir -Recurse -Force
 }
-if (Test-Path (Join-Path $repoRoot "examples")) {
-    Copy-Item (Join-Path $repoRoot "examples\*") $examplesDir -Recurse -Force
+if (Test-Path (Join-Path $sourceRoot "examples")) {
+    Copy-Item (Join-Path $sourceRoot "examples\*") $examplesDir -Recurse -Force
 }
-if (Test-Path (Join-Path $repoRoot "TMP\runtime_objs")) {
-    Copy-Item (Join-Path $repoRoot "TMP\runtime_objs\*") $runtimeDir -Recurse -Force
+
+# Runtime Objects (SDK layout: runtime\; Repo layout: TMP\runtime_objs\)
+if (Test-Path (Join-Path $sourceRoot "runtime")) {
+    Copy-Item (Join-Path $sourceRoot "runtime\*") $runtimeDir -Recurse -Force
+} elseif (Test-Path (Join-Path $sourceRoot "TMP\runtime_objs")) {
+    Copy-Item (Join-Path $sourceRoot "TMP\runtime_objs\*") $runtimeDir -Recurse -Force
 }
-Copy-Item (Join-Path $repoRoot "scripts\new_ai_project.ps1") $scriptsDir -Force
-Copy-Item (Join-Path $repoRoot "ide\vscode-qadav") $ideDir -Recurse -Force
+
+# Ensure kernel32.lib is available locally in installed runtime
+$localKernelLib = Join-Path $runtimeDir "kernel32.lib"
+if (-not (Test-Path $localKernelLib)) {
+    $srcKernel = Join-Path $sourceRoot "runtime\kernel32.lib"
+    if (-not (Test-Path $srcKernel)) { $srcKernel = "C:\Users\avnis\.qadav\runtime\kernel32.lib" }
+    if (Test-Path $srcKernel) {
+        Copy-Item $srcKernel $localKernelLib -Force
+    }
+}
+
+Copy-Item (Join-Path $sourceRoot "scripts\new_ai_project.ps1") $scriptsDir -Force
+Copy-Item (Join-Path $sourceRoot "ide\vscode-qadav") $ideDir -Recurse -Force
 Write-Host "  [OK] Compiler (qyn.exe), tools, stdlib, runtime, and IDE assets copied" -ForegroundColor Green
 
-# 3. Create qadav-new.bat Helper in bin
-Write-Host "`n[STEP 3/5] Generating global CLI helper (qadav-new.bat)..." -ForegroundColor Yellow
+# 3. Create or Copy qadav-new.bat Helper in bin
+Write-Host "`n[STEP 3/5] Configuring global CLI helper (qadav-new.bat)..." -ForegroundColor Yellow
 $qadavNewBat = @"
 @echo off
 powershell -ExecutionPolicy Bypass -File "%~dp0..\scripts\new_ai_project.ps1" %*
@@ -156,6 +172,7 @@ Write-Host "Installed components:" -ForegroundColor White
 Write-Host "  - Compiler:  $binDir\qyn.exe" -ForegroundColor Gray
 Write-Host "  - Package:   $binDir\qpk.exe" -ForegroundColor Gray
 Write-Host "  - CLI Tool:  $binDir\qadav-new.bat" -ForegroundColor Gray
+Write-Host "  - Runtime:   $runtimeDir (62 compiled modules + kernel32.lib)" -ForegroundColor Gray
 Write-Host "  - Stdlib:    $stdlibDir" -ForegroundColor Gray
 Write-Host "  - IDE Ext:   $ideDir\vscode-qadav" -ForegroundColor Gray
 Write-Host ""

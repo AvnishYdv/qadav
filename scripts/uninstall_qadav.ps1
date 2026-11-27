@@ -1,4 +1,4 @@
-# scripts/uninstall_qadav.ps1
+﻿# scripts/uninstall_qadav.ps1
 # Qadav Clean Windows Uninstaller
 
 [CmdletBinding()]
