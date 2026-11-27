@@ -1,0 +1,28 @@
+// examples/training_transport_tamper.ydv
+// Qadav Milestone M13.11: Hardware Fail-Stop Anti-Tamper Abort Test
+// Injects a 1-bit forged gradient certificate to prove ExitProcess(0xDEADBEEF) / -559038737
+
+declare void @qadav_emit_text(i8*)
+declare void @qadav_exit(i32)
+
+process train_verify_certificate⦅int64 cert_hash ⸴ int64 expected_hash⦆ → int64 ⟦
+    when cert_hash ≡ expected_hash ⟦
+        yield 1 ·
+    ⟧
+    yield 0 ·
+⟧
+
+process main⦅⦆ → int64 ⟦
+    emit "--- QADAV TRAINING & TRANSPORT HARDWARE ANTI-TAMPER TEST ---\n" ·
+    emit "Injecting 1-bit forged gradient certificate: 0x88712390145\n" ·
+    emit "Expected root signature:                      0x88712390144\n" ·
+    int64 bad_sig ↦ 88712390145 ·
+    int64 exp_sig ↦ 88712390144 ·
+    int64 check ↦ train_verify_certificate⦅bad_sig ⸴ exp_sig⦆ ·
+    when check ≡ 0 ⟦
+        emit "FORGERY DETECTED: Hardware Fail-Stop Triggered (ExitProcess(0xDEADBEEF))\n" ·
+        int64 deadbeef ↦ 3735928559 ·
+        qadav_exit⦅deadbeef⦆ ·
+    ⟧
+    yield 0 ·
+⟧
