@@ -1,4 +1,4 @@
-﻿// internal/qadav_native/quantum.ydv
+// internal/qadav_native/quantum.ydv
 // Aaronson-Gottesman (2004) Stabilizer Tableau & Fast Clifford Simulation
 // Target Architecture: Phase 11 M11.5
 // Supports 1,024+ Logical Qubits in Exact O(n^2) Symplectic Memory
@@ -8,6 +8,8 @@ declare void @pe_set_byte(i64, i64, i64)
 declare void @pe_set_u64(i64, i64, i64)
 declare i64 @qadav_alloc(i64)
 declare void @qadav_free(i64)
+declare i64 @qadav_hw_rdtsc()
+declare void @qadav_sha3_256(i64, i64, i64)
 
 process tab_get_dim⦅int64 tab⦆ → int64 ⟦
     when tab ≡ 0 ⟦ yield 0 · ⟧
@@ -417,11 +419,204 @@ process qadav_stab_measure⦅int64 tab ⸴ int64 q ⸴ int64 entropy_seed⦆ →
     yield det_outcome ·
 ⟧
 
-// Non-Clifford T-gate hybrid approximation / small-angle fallback
+// Non-Clifford T-gate cannot be represented in a pure Clifford Stabilizer Tableau;
+// return -1 honestly instead of faking an S-gate. Use qadav_sv_* for exact T-gate circuits.
 process qadav_stab_t_approx⦅int64 tab ⸴ int64 q⦆ → int64 ⟦
     when tab ≡ 0 ⟦ yield 0 · ⟧
-    qadav_stab_s⦅tab ⸴ q⦆ ·
+    int64 zn ↦ 0 ·
+    yield zn ⊖ 1 ·
+⟧
+
+// Genuine SHA3-256 + x86_64 RDTSC hardware cycle entropy mixer (replaces hardcoded seed 42)
+process qadav_csprng_seed⦅int64 salt⦆ → int64 ⟦
+    int64 buf ↦ qadav_alloc⦅64⦆ ·
+    int64 dig ↦ qadav_alloc⦅32⦆ ·
+    int64 tk ↦ qadav_hw_rdtsc⦅⦆ ·
+    pe_set_u64⦅buf ⸴ 0 ⸴ tk⦆ ·
+    pe_set_u64⦅buf ⸴ 8 ⸴ salt⦆ ·
+    pe_set_u64⦅buf ⸴ 16 ⸴ buf⦆ ·
+    qadav_sha3_256⦅buf ⸴ 24 ⸴ dig⦆ ·
+    int64 r ↦ 0 ·
+    int64 k ↦ 0 ·
+    cycle k ≺ 8 ⟦
+        int64 b ↦ pe_get_byte⦅dig ⸴ k⦆ ·
+        r ← ⦅r ⊗ 256⦆ ⊕ b ·
+        k ← k ⊕ 1 ·
+    ⟧
+    qadav_free⦅buf⦆ ·
+    qadav_free⦅dig⦆ ·
+    when r ≺ 0 ⟦
+        int64 zr ↦ 0 ·
+        r ← zr ⊖ r ·
+    ⟧
+    yield r ·
+⟧
+
+// Small-width (n <= 10) Exact Complex Statevector Simulator (SCALE = 1,000,000)
+// Layout: [n_qubits, dim, re_0, im_0, re_1, im_1, ...] (each 8 bytes via pe_set_u64/pe_get_byte)
+process sv_get_i64⦅int64 ptr ⸴ int64 idx⦆ → int64 ⟦
+    int64 off ↦ idx ⊗ 8 ·
+    int64 v ↦ 0 ·
+    int64 k ↦ 7 ·
+    cycle k ≽ 0 ⟦
+        int64 b ↦ pe_get_byte⦅ptr ⸴ off ⊕ k⦆ ·
+        v ← ⦅v ⊗ 256⦆ ⊕ b ·
+        k ← k ⊖ 1 ·
+    ⟧
+    yield v ·
+⟧
+
+process sv_set_i64⦅int64 ptr ⸴ int64 idx ⸴ int64 val⦆ → int64 ⟦
+    pe_set_u64⦅ptr ⸴ idx ⊗ 8 ⸴ val⦆ ·
+    yield 0 ·
+⟧
+
+process qadav_sv_init⦅int64 n_qubits⦆ → int64 ⟦
+    when n_qubits ≺ 1 ∨ n_qubits ≻ 10 ⟦ yield 0 · ⟧
+    int64 dim ↦ 1 ·
+    int64 i ↦ 0 ·
+    cycle i ≺ n_qubits ⟦ dim ← dim ⊗ 2 · i ← i ⊕ 1 · ⟧
+    int64 i2_sv ↦ 2 ·
+    int64 d2_sv ↦ dim ⊗ i2_sv ·
+    int64 tot_i64 ↦ i2_sv ⊕ d2_sv ·
+    int64 sv ↦ qadav_alloc⦅tot_i64 ⊗ 8⦆ ·
+    when sv ≡ 0 ⟦ yield 0 · ⟧
+    int64 z ↦ 0 ·
+    cycle z ≺ tot_i64 ⟦ sv_set_i64⦅sv ⸴ z ⸴ 0⦆ · z ← z ⊕ 1 · ⟧
+    sv_set_i64⦅sv ⸴ 0 ⸴ n_qubits⦆ ·
+    sv_set_i64⦅sv ⸴ 1 ⸴ dim⦆ ·
+    sv_set_i64⦅sv ⸴ 2 ⸴ 1000000⦆ · // |0...0> = 1.0 + 0i
+    yield sv ·
+⟧
+
+process qadav_sv_h⦅int64 sv ⸴ int64 q⦆ → int64 ⟦
+    when sv ≡ 0 ⟦ yield 0 · ⟧
+    int64 dim ↦ sv_get_i64⦅sv ⸴ 1⦆ ·
+    int64 step ↦ 1 ·
+    int64 qi ↦ 0 ·
+    cycle qi ≺ q ⟦ step ← step ⊗ 2 · qi ← qi ⊕ 1 · ⟧
+    int64 block ↦ step ⊗ 2 ·
+    int64 inv_s2 ↦ 707107 ·
+    int64 sc ↦ 1000000 ·
+    int64 base ↦ 0 ·
+    cycle base ≺ dim ⟦
+        int64 j ↦ 0 ·
+        cycle j ≺ step ⟦
+            int64 i0 ↦ base ⊕ j ·
+            int64 i1 ↦ i0 ⊕ step ·
+            int64 i2_h ↦ 2 ·
+            int64 i0_2 ↦ i0 ⊗ i2_h ·
+            int64 i1_2 ↦ i1 ⊗ i2_h ·
+            int64 p0 ↦ i2_h ⊕ i0_2 ·
+            int64 p1 ↦ i2_h ⊕ i1_2 ·
+            int64 r0 ↦ sv_get_i64⦅sv ⸴ p0⦆ ·
+            int64 m0 ↦ sv_get_i64⦅sv ⸴ p0 ⊕ 1⦆ ·
+            int64 r1 ↦ sv_get_i64⦅sv ⸴ p1⦆ ·
+            int64 m1 ↦ sv_get_i64⦅sv ⸴ p1 ⊕ 1⦆ ·
+            int64 sr ↦ r0 ⊕ r1 ·
+            int64 sm ↦ m0 ⊕ m1 ·
+            int64 dr ↦ r0 ⊖ r1 ·
+            int64 dm ↦ m0 ⊖ m1 ·
+            int64 sr_m ↦ sr ⊗ inv_s2 ·
+            int64 sm_m ↦ sm ⊗ inv_s2 ·
+            int64 dr_m ↦ dr ⊗ inv_s2 ·
+            int64 dm_m ↦ dm ⊗ inv_s2 ·
+            int64 nr0 ↦ sr_m ⊘ sc ·
+            int64 nm0 ↦ sm_m ⊘ sc ·
+            int64 nr1 ↦ dr_m ⊘ sc ·
+            int64 nm1 ↦ dm_m ⊘ sc ·
+            sv_set_i64⦅sv ⸴ p0 ⸴ nr0⦆ ·
+            sv_set_i64⦅sv ⸴ p0 ⊕ 1 ⸴ nm0⦆ ·
+            sv_set_i64⦅sv ⸴ p1 ⸴ nr1⦆ ·
+            sv_set_i64⦅sv ⸴ p1 ⊕ 1 ⸴ nm1⦆ ·
+            j ← j ⊕ 1 ·
+        ⟧
+        base ← base ⊕ block ·
+    ⟧
     yield 1 ·
+⟧
+
+process qadav_sv_t⦅int64 sv ⸴ int64 q⦆ → int64 ⟦
+    when sv ≡ 0 ⟦ yield 0 · ⟧
+    int64 dim ↦ sv_get_i64⦅sv ⸴ 1⦆ ·
+    int64 bit ↦ 1 ·
+    int64 qi ↦ 0 ·
+    cycle qi ≺ q ⟦ bit ← bit ⊗ 2 · qi ← qi ⊕ 1 · ⟧
+    int64 inv_s2 ↦ 707107 ·
+    int64 sc ↦ 1000000 ·
+    int64 bit2 ↦ bit ⊗ 2 ·
+    int64 idx ↦ 0 ·
+    cycle idx ≺ dim ⟦
+        int64 q1 ↦ idx ⊘ bit ·
+        int64 q2 ↦ idx ⊘ bit2 ·
+        int64 q2m ↦ q2 ⊗ 2 ·
+        int64 has_bit ↦ q1 ⊖ q2m ·
+        when has_bit ≡ 1 ⟦
+            int64 i2_t ↦ 2 ·
+            int64 idx2_t ↦ idx ⊗ i2_t ·
+            int64 p ↦ i2_t ⊕ idx2_t ·
+            int64 re ↦ sv_get_i64⦅sv ⸴ p⦆ ·
+            int64 im ↦ sv_get_i64⦅sv ⸴ p ⊕ 1⦆ ·
+            int64 dre ↦ re ⊖ im ·
+            int64 sim ↦ re ⊕ im ·
+            int64 dre_m ↦ dre ⊗ inv_s2 ·
+            int64 sim_m ↦ sim ⊗ inv_s2 ·
+            int64 nre ↦ dre_m ⊘ sc ·
+            int64 nim ↦ sim_m ⊘ sc ·
+            sv_set_i64⦅sv ⸴ p ⸴ nre⦆ ·
+            sv_set_i64⦅sv ⸴ p ⊕ 1 ⸴ nim⦆ ·
+        ⟧
+        idx ← idx ⊕ 1 ·
+    ⟧
+    yield 1 ·
+⟧
+
+process qadav_sv_prob0_micro⦅int64 sv ⸴ int64 q⦆ → int64 ⟦
+    when sv ≡ 0 ⟦ yield 0 · ⟧
+    int64 dim ↦ sv_get_i64⦅sv ⸴ 1⦆ ·
+    int64 bit ↦ 1 ·
+    int64 qi ↦ 0 ·
+    cycle qi ≺ q ⟦ bit ← bit ⊗ 2 · qi ← qi ⊕ 1 · ⟧
+    int64 p0_sum ↦ 0 ·
+    int64 p_tot ↦ 0 ·
+    int64 bit2 ↦ bit ⊗ 2 ·
+    int64 idx ↦ 0 ·
+    cycle idx ≺ dim ⟦
+        int64 i2_p ↦ 2 ·
+        int64 idx2_p ↦ idx ⊗ i2_p ·
+        int64 p ↦ i2_p ⊕ idx2_p ·
+        int64 re ↦ sv_get_i64⦅sv ⸴ p⦆ ·
+        int64 im ↦ sv_get_i64⦅sv ⸴ p ⊕ 1⦆ ·
+        int64 re2 ↦ re ⊗ re ·
+        int64 im2 ↦ im ⊗ im ·
+        int64 sq ↦ re2 ⊕ im2 ·
+        int64 prob_m ↦ sq ⊘ 1000000 ·
+        p_tot ← p_tot ⊕ prob_m ·
+        int64 q1 ↦ idx ⊘ bit ·
+        int64 q2 ↦ idx ⊘ bit2 ·
+        int64 q2m ↦ q2 ⊗ 2 ·
+        int64 has_bit ↦ q1 ⊖ q2m ·
+        when has_bit ≡ 0 ⟦ p0_sum ← p0_sum ⊕ prob_m · ⟧
+        idx ← idx ⊕ 1 ·
+    ⟧
+    when p_tot ≼ 0 ⟦ yield 500000 · ⟧
+    int64 num_p ↦ p0_sum ⊗ 1000000 ·
+    yield num_p ⊘ p_tot ·
+⟧
+
+process qadav_sv_measure⦅int64 sv ⸴ int64 q ⸴ int64 salt⦆ → int64 ⟦
+    int64 p0_m ↦ qadav_sv_prob0_micro⦅sv ⸴ q⦆ ·
+    int64 rnd ↦ qadav_csprng_seed⦅salt⦆ ·
+    int64 q_u ↦ rnd ⊘ 1000000 ·
+    int64 q_m ↦ q_u ⊗ 1000000 ·
+    int64 u ↦ rnd ⊖ q_m ·
+    when u ≺ p0_m ⟦ yield 0 · ⟧
+    yield 1 ·
+⟧
+
+process qadav_sv_free⦅int64 sv⦆ → int64 ⟦
+    when sv ≠ 0 ⟦ qadav_free⦅sv⦆ · ⟧
+    yield 0 ·
 ⟧
 
 // Backward-compatible Bridges for Phase 10
@@ -449,6 +644,7 @@ process quantum_gate_cnot_native⦅int64 qs_ptr ⸴ int64 control ⸴ int64 targ
 
 process quantum_measure_native⦅int64 qs_ptr ⸴ int64 qid⦆ → int64 ⟦
     when qs_ptr ≡ 0 ⟦ yield 0 · ⟧
-    int64 res ↦ qadav_stab_measure⦅qs_ptr ⸴ qid ⸴ 42⦆ ·
+    int64 cs_seed ↦ qadav_csprng_seed⦅qs_ptr ⊕ qid⦆ ·
+    int64 res ↦ qadav_stab_measure⦅qs_ptr ⸴ qid ⸴ cs_seed⦆ ·
     yield res ·
 ⟧
