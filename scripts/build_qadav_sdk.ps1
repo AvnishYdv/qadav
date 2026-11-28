@@ -58,8 +58,13 @@ if (Test-Path $runtimeObjsDir) {
     Copy-Item (Join-Path $runtimeObjsDir "*.o") (Join-Path $sdkDir "runtime\") -Force
 }
 # Copy kernel32.lib into runtime/
-$srcKernel = "C:\Users\avnis\.qadav\runtime\kernel32.lib"
-if (Test-Path $srcKernel) {
+$kernelCandidates = @(
+    (Join-Path $repoRoot "runtime\kernel32.lib"),
+    (Join-Path $env:LOCALAPPDATA "Qadav\runtime\kernel32.lib"),
+    (Join-Path $env:USERPROFILE ".qadav\runtime\kernel32.lib")
+)
+$srcKernel = $kernelCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($srcKernel) {
     Copy-Item $srcKernel (Join-Path $sdkDir "runtime\kernel32.lib") -Force
 }
 $runtimeFiles = (Get-ChildItem (Join-Path $sdkDir "runtime")).Count

@@ -1,4 +1,4 @@
-﻿# scripts/install_qadav.ps1
+# scripts/install_qadav.ps1
 # Qadav One-Click Windows System Installer
 # Installs Qadav compiler, tooling, stdlib, examples, VS Code extension, and registers PATH + file types
 # Works from both the full Git repository and the standalone extracted SDK bundle
@@ -64,9 +64,13 @@ if (Test-Path (Join-Path $sourceRoot "runtime")) {
 # Ensure kernel32.lib is available locally in installed runtime
 $localKernelLib = Join-Path $runtimeDir "kernel32.lib"
 if (-not (Test-Path $localKernelLib)) {
-    $srcKernel = Join-Path $sourceRoot "runtime\kernel32.lib"
-    if (-not (Test-Path $srcKernel)) { $srcKernel = "C:\Users\avnis\.qadav\runtime\kernel32.lib" }
-    if (Test-Path $srcKernel) {
+    $kernelCandidates = @(
+        (Join-Path $sourceRoot "runtime\kernel32.lib"),
+        (Join-Path $env:USERPROFILE ".qadav\runtime\kernel32.lib"),
+        (Join-Path $env:LOCALAPPDATA "Qadav\runtime\kernel32.lib")
+    )
+    $srcKernel = $kernelCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($srcKernel) {
         Copy-Item $srcKernel $localKernelLib -Force
     }
 }

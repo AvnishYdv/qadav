@@ -364,7 +364,9 @@ if (Test-Path $installedIo) {
     $rtObjs = "`"$installedIo`" `"$installedRt`""
 }
 
-$kernelLib = "C:\Users\avnis\.qadav\runtime\kernel32.lib"
+$kernelLib = Join-Path $repoRoot "runtime\kernel32.lib"
+if (-not (Test-Path $kernelLib)) { $kernelLib = Join-Path $env:LOCALAPPDATA "Qadav\runtime\kernel32.lib" }
+if (-not (Test-Path $kernelLib)) { $kernelLib = Join-Path $env:USERPROFILE ".qadav\runtime\kernel32.lib" }
 
 function Compile-YdvTarget([string]$srcFile, [string]$outFile) {
     $srcPath = Join-Path $projRoot $srcFile

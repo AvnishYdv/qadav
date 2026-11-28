@@ -34,16 +34,26 @@ function activate(context) {
 
 function getCompilerPath() {
     const config = vscode.workspace.getConfiguration('qadav');
-    const configuredPath = config.get('compilerPath', 'bin/qyn.exe');
+    const configuredPath = config.get('compilerPath', 'qyn');
     if (path.isAbsolute(configuredPath)) {
         return configuredPath;
     }
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (workspaceFolders && workspaceFolders.length > 0) {
         const rootPath = workspaceFolders[0].uri.fsPath;
+        const localBin = path.join(rootPath, 'bin', 'qyn.exe');
+        if (fs.existsSync(localBin)) {
+            return localBin;
+        }
         const resolved = path.join(rootPath, configuredPath);
         if (fs.existsSync(resolved)) {
             return resolved;
+        }
+    }
+    if (process.env.LOCALAPPDATA) {
+        const installed = path.join(process.env.LOCALAPPDATA, 'Qadav', 'bin', 'qyn.exe');
+        if (fs.existsSync(installed)) {
+            return installed;
         }
     }
     return configuredPath;
